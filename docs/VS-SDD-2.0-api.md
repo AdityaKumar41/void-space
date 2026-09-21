@@ -141,7 +141,52 @@ Asynchronous work enqueued by these routes: `ipfs-pin` (FR-8.1) and `ai-enrichme
 (FR-7.x). Each job is mirrored into `jobs` and surfaced on the asset detail, so the UI polls
 one endpoint (FR-11.2).
 
-### 2.5 Audit — `apps/api/src/modules/audit`
+### 2.5 Review — `apps/api/src/modules/review`
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/review/queue` | 🔑 `review:decide` | FR-4.1–4.2 queue ordered oldest-first, filterable by `status`/`needsManualReview`, each row carrying the AI signal |
+| POST | `/assets/:id/decisions` | 🔑 `review:decide` | FR-4.3–4.5 approve / revision / reject. Records the decision, applies the §5.1 transition, and accepts AI output in the same call (FR-7.5) |
+| POST | `/assets/:id/comments` | 🔑 `review:comment` | FR-4.6 threaded comment (one level of replies) |
+| GET | `/assets/:id/comments` | 🔑 `catalog:view` | Thread for the asset console |
+
+A comment is **required** for `revision` and `rejected`, and self-approval is refused when the
+caller is the asset's own creator (FR-4.4) — the two rules that keep the audit trail meaningful.
+
+### 2.6 Publishing & licensing — `apps/api/src/modules/licensing`
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| POST | `/assets/:id/publish` | 🔑 `asset:publish` | FR-5.1–5.2 + FR-9.1: approves a licence, mints the on-chain token and pins licence metadata, then enqueues the §5.1 `published` transition |
+| POST | `/assets/:id/license/revoke` | 🔑 `asset:revoke-license` | FR-9.3: flags the token revoked on-chain and records the reason here. The NFT is not burned |
+| GET | `/licenses` | 🔑 `catalog:view` | FR-9.5 licence registry with `status`, `holder`, `assetId` filters |
+| GET | `/licenses/:tokenId` | 🔑 `catalog:view` | Single licence incl. `tokenUri` and `ipfsMetadataCid` |
+
+Publishing is a **two-step** operation on purpose: the request commits the licence intent, then the
+`chain-license` worker submits the transaction and only then transitions the asset. A chain
+outage therefore cannot leave an asset marked `published` without a token.
+
+### 2.7 Notifications — `apps/api/src/modules/notifications`
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/notifications` | 🔒 any session | FR-6.2 inbox with `unreadOnly`; the bell polls `unreadCount` |
+| POST | `/notifications/:id/read` | 🔒 any session | Mark one read |
+| POST | `/notifications/read-all` | 🔒 any session | Mark all read |
+
+Rows are written by the `notify` worker, not by the routes that cause them, so a notification
+cannot be lost to an API crash and delivery is retried under the §3.10 policy.
+
+### 2.8 Dashboard — `apps/api/src/modules/dashboard`
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/dashboard` | 🔒 any session | FR-11.1 single aggregate for the overview: asset counts by lifecycle state, review backlog, ingest volume (FR-3.5), queue telemetry (§3.10), recent audit slice, platform counts (FR-14.1) |
+
+One call rather than six keeps the console's first paint to a single round trip, and every
+component in it is either tenant-scoped or derived from data the caller may already read.
+
+### 2.9 Audit — `apps/api/src/modules/audit`
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
@@ -150,7 +195,7 @@ one endpoint (FR-11.2).
 Read-only by construction: `UPDATE`/`DELETE` on `audit_logs` are revoked from the
 runtime role at the database level (FR-13.3), so there is no write path to expose.
 
-### 2.6 Health — `/health`
+### 2.10 Health — `/health`
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
@@ -172,6 +217,9 @@ in the code. Same treatment as the Phase 2 data-model gap-fills.
 | `/auth/providers`, `/tenant`, `/users/*`, `/roles` | §6.1, FR-1.2/1.3 | The SRS specifies the capabilities (workspace switcher, member administration, settings) without fixing paths; the frontend needs read models for them. |
 | SIWE nonce store is in-process | FR-2.6 | Correct for the single-API-instance local stack; a horizontally scaled deployment moves this map to the Redis already in the compose stack. Recorded so it is not forgotten. |
 | Wallet unlink detaches instead of deleting | FR-2.6, §3.9.2 | A minted licence may reference the address; deleting the row would break provenance. |
+| `assets.description` column | FR-3.2, FR-7.5 | **Not yet implemented.** Accepting the AI description records it on `ai_suggestions.acceptedDescription` (auditable), but the asset itself has no description field, so nothing renders it in the catalog. Add `description` plus a `metadata` JSON column to close FR-3.2's tenant-required fields and FR-7.5's one-click accept. |
+| Public catalog read path | §6.1 "Public Catalog" | **Not yet implemented.** `/catalog` currently requires a session and is served from the tenant-scoped `GET /assets?publishedOnly=true`. A genuinely anonymous catalog needs a deliberate cross-tenant read (a dedicated view or the platform role) — a security decision, not an oversight. |
+| Asset fixture GLBs are synthetic in the seed | — | The seeded demo assets point at a hand-written GLB whose buffer views are declared but empty, so three.js refuses them (`Invalid typed array length`). Uploads through the API are real. Use `scripts/make-demo-glb.mjs` to produce a valid cube for demos. |
 
 ## 4. Open questions for the SRS owner
 

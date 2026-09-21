@@ -34,6 +34,9 @@ export {
   type AuditLogRow,
 } from './audit';
 
+/** Deterministic demo identifiers — shared by the seed, workers and the test harness. */
+export { demoId, demoCid, demoHash } from './demo-ids';
+
 export {
   generateApiKey,
   hashApiKey,

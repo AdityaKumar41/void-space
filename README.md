@@ -157,14 +157,22 @@ Additional guarantees worth knowing:
 ## Testing
 
 ```bash
-pnpm --filter @void-space/contracts test    # 35 Foundry tests: minting, role gate, revocation, ERC-721
-pnpm --filter @void-space/db test           # 22 Vitest tests against dockerized Postgres
+pnpm test                                     # everything: 171 tests across 11 turbo tasks
+pnpm --filter @void-space/api test            # 64 API tests: auth, RBAC, tenancy, assets, review
+pnpm --filter @void-space/worker test         # 22 worker tests: enrichment, chain, queue policies
+pnpm --filter @void-space/db test             # 22 tests against dockerized Postgres
+pnpm --filter @void-space/contracts test      # 35 Foundry tests: minting, role gate, revocation, ERC-721
+pnpm --filter @void-space/types test          # 28 tests: the §3.6 RBAC matrix and the §5.1 lifecycle
 ```
 
 The data-layer suite is the security regression net: cross-tenant read/update/delete attempts,
 `WITH CHECK` rejection of smuggled tenant ids, fail-closed behaviour without a tenant context,
 context leakage across pooled connections, an automated RLS schema audit, the platform role's
 privilege envelope, and database-level append-only enforcement of the audit log.
+
+The API suite drives the *real* application — same plugins, guards and database — through
+`app.inject()`, including multipart uploads and real EIP-4361 signatures. It cleans up the assets
+it creates (`removeTestAssets`), so running the tests does not pollute the demo workspace.
 
 ## Troubleshooting
 
@@ -191,24 +199,51 @@ privilege envelope, and database-level append-only enforcement of the audit log.
 | 2 | Prisma schema, RLS policies, tenant context, seed, isolation tests | ✅ |
 | 3 | API core: auth (password/Google/SIWE), RBAC, tenancy, audit | ✅ |
 | 4 | Assets, versions, streamed uploads, job infrastructure | ✅ |
-| 5 | Workers: `ipfs-pin`, `ai-enrichment`, `notify` | ✅ |
-| 6 | Review workflow: queue, decisions, threaded comments | ⏳ next |
-| 7 | Publishing & licensing: mint, IPFS metadata, catalog, revoke | ⏳ |
-| 8 | Dashboard: login → shell → library/upload → detail + 3D preview → review → catalog | ⏳ |
+| 5 | Workers: `ipfs-pin`, `ai-enrichment`, `notify`, `chain-license`, `xr-publish` | ✅ |
+| 6 | Review workflow: queue, decisions, threaded comments | ✅ |
+| 7 | Publishing & licensing: mint, IPFS metadata, catalog, revoke | ✅ |
+| 8 | Dashboard: login → overview → library/upload → detail + 3D preview → review → catalog → licences | ✅ |
 | 9–14 | Notifications UI, developer API, admin consoles, Blender/import tools, EoN publish, E2E | ⏳ |
+
+### The dashboard
+
+`apps/web` is the asset operations console. It is intentionally plain: no rounded cards, no
+gradients, no spring animations — it reads as an instrument, because the people using it are
+checking whether a licence really exists on-chain, not browsing a marketing site.
+
+| Screen | What it does |
+|---|---|
+| `/login` | Sign-in, with the demo accounts listed for evaluation |
+| `/` | Overview: lifecycle distribution, review backlog, ingest volume, queue telemetry, recent ledger |
+| `/library` | Search + state filter, streamed upload panel, inline ingest results |
+| `/assets/:id` | The asset console: 3D preview (drag to orbit, `WIREFRAME` to toggle), integrity data (CID, polycount, pin state), review decision + AI acceptance, discussion, queue jobs, versions, ledger slice |
+| `/review` | Assessor triage queue ordered oldest-first, with the AI signal and confidence per asset |
+| `/catalog` | Published assets with their licence and XR module |
+| `/licenses` | Licence registry with on-chain token id and transaction hash |
+| `/admin` | Members, roles, invitations, workspace settings, counts |
+| `/audit`, `/notifications` | Full ledger, and the alert inbox |
+
+Controls are permission-gated client-side from the same §3.6 matrix the API enforces, so a
+Creator never sees an approve button that would 403 — and the API refuses it anyway.
 
 ### The verified end-to-end journey (today)
 
 ```
-creator uploads helmet.glb  ──▶  POST /api/v1/assets        201, status=pending
-        GLB JSON chunk parsed ─▶  polycount 2500 (no geometry loaded)
-        ipfs-pin worker       ──▶  CID bafkrei…, pinStatus=pinned, staging cleared
-        ai-enrichment worker  ──▶  tags + description + quality flags + confidence
-        audit trail           ──▶  asset.created → asset.submitted → ipfs.pinned → ai.enrichment_completed
-        gateway read          ──▶  /ipfs/<cid> 200, byte-identical, MISS then HIT
+creator signs in             ─▶  POST /auth/login           cookies HttpOnly; Secure; Lax
+creator uploads cube.glb     ─▶  POST /assets               201, status=pending
+        GLB JSON chunk parsed─▶  polycount 12 (no geometry loaded)
+        ipfs-pin worker      ─▶  CID bafkrei…, pinStatus=pinned, staging cleared
+        ai-enrichment worker ─▶  tags + description + confidence 0.35 (honest: no API key)
+assessor approves in the UI  ─▶  POST /assets/:id/decisions  201, AI tags merged
+assessor publishes           ─▶  POST /assets/:id/publish    202, XR module id assigned
+        chain-license worker ─▶  mintLicense() tx 0x4b36…, token #4, gas 320005
+        xr-publish worker    ─▶  EON-6E44AD26-V1
+public catalog               ─▶  license CC-BY, CID + token + tx visible
+gateway read                 ─▶  /ipfs/<cid> 200, byte-identical, MISS then HIT
 ```
 
 Set `ANTHROPIC_API_KEY` in `.env` to swap the offline enricher for Claude; nothing else changes.
+Generate a valid model for demos with `node scripts/make-demo-glb.mjs /tmp/cube.glb`.
 
 ### What Phase 3 delivers
 

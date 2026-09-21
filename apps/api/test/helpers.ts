@@ -6,6 +6,7 @@
  * shipping code path rather than a mock of it. The dockerized Postgres must be up
  * and seeded (`pnpm dev:up` / `pnpm db:seed`).
  */
+import { demoId, withTenant } from '@void-space/db';
 import type { FastifyInstance } from 'fastify';
 
 import { buildApp } from '../src/app';
@@ -29,6 +30,18 @@ export const DEMO = {
     /** Present in both Aurora and Northwind — exercises FR-1.4. */
     multiTenant: 'priya@void-space.dev',
   },
+} as const;
+
+/**
+ * Deterministic demo tenant ids.
+ *
+ * The seed derives ids from names (`demoId('tenant:aurora')`) so re-running it is idempotent;
+ * tests reuse the same derivation rather than hard-coding UUIDs.
+ */
+export const DEMO_TENANT_IDS = {
+  platform: demoId('tenant:platform'),
+  aurora: demoId('tenant:aurora'),
+  northwind: demoId('tenant:northwind'),
 } as const;
 
 export interface TestApp {
@@ -130,4 +143,41 @@ export async function login(
     accessToken: readCookie(setCookie, 'vs_access') ?? '',
     refreshToken: readCookie(setCookie, 'vs_refresh') ?? '',
   };
+}
+
+/**
+ * Asset names the acceptance tests create.
+ *
+ * The suite drives real multipart uploads against the development database, so without a
+ * teardown every run leaves fixtures behind — inflating the dashboard's totals and filling the
+ * library with rows like "Test Helmet 4f2a1c".
+ */
+const TEST_ASSET_NAME_PREFIXES = [
+  'Test Helmet ',
+  'Draft ',
+  'Explicit false ',
+  'Malicious',
+  'Mislabelled',
+  'Wrong category',
+  'No file',
+  'Viewer upload',
+  'Bad file',
+] as const;
+
+/**
+ * Deletes the assets created by a test run. Related versions, review comments, decisions and
+ * licences cascade away with them.
+ *
+ * Audit rows are intentionally left in place: `audit_logs` is append-only by database grant, and
+ * the ledger should record that the work really happened.
+ */
+export async function removeTestAssets(tenantId: string): Promise<number> {
+  const result = await withTenant(tenantId, (db) =>
+    db.asset.deleteMany({
+      where: {
+        OR: TEST_ASSET_NAME_PREFIXES.map((prefix) => ({ name: { startsWith: prefix } })),
+      },
+    }),
+  );
+  return result.count;
 }

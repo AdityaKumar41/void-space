@@ -3,11 +3,11 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Next.js App Router frontend for VOID·SPACE — Creator / Assessor / Admin UI (SRS §3.2, §6.1).",
+  "description": "Next.js App Router frontend for VOID\u00b7SPACE \u2014 Creator / Assessor / Admin UI (SRS \u00a73.2, \u00a76.1).",
   "scripts": {
     "dev": "next dev --port 3000",
-    "build": "next build",
-    "start": "next start --port 3000",
+    "build": "NODE_ENV=production next build",
+    "start": "NODE_ENV=production next start --port 3000",
     "typecheck": "tsc --noEmit",
     "test": "echo \"@void-space/web: unit-tested via Playwright journeys (Phase 13)\"",
     "test:e2e": "playwright test"

@@ -26,6 +26,10 @@ import { authPlugin } from './plugins/auth';
 import { openApiPlugin } from './plugins/openapi';
 import { auditRoutes } from './modules/audit/routes';
 import { assetRoutes } from './modules/assets/routes';
+import { dashboardRoutes } from './modules/dashboard/routes';
+import { licensingRoutes } from './modules/licensing/routes';
+import { notificationRoutes } from './modules/notifications/routes';
+import { reviewRoutes } from './modules/review/routes';
 import { authRoutes } from './modules/auth/routes';
 import { googleRoutes } from './modules/auth/google-routes';
 import { siweRoutes } from './modules/auth/siwe-routes';
@@ -243,6 +247,10 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   await app.register(tenantRoutes, { prefix: '/api/v1' });
   await app.register(auditRoutes, { prefix: '/api/v1' });
   await app.register(assetRoutes, { prefix: '/api/v1', env, producer });
+  await app.register(reviewRoutes, { prefix: '/api/v1', env, producer });
+  await app.register(licensingRoutes, { prefix: '/api/v1', env, producer });
+  await app.register(notificationRoutes, { prefix: '/api/v1' });
+  await app.register(dashboardRoutes, { prefix: '/api/v1' });
 
   return app;
 }

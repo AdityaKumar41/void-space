@@ -74,7 +74,18 @@ export interface DemoAssetSpec {
   readonly publishToXr?: boolean;
 }
 
+/**
+ * First token id used by fabricated demo licences.
+ *
+ * Chosen far above any plausible demo mint, so a freshly seeded registry can render
+ * real-looking rows without ever occupying an id the chain is about to issue
+ * (AssetLicenseRegistry starts at 1). Genuine licences minted through the UI always land
+ * below this range, and the two sources stay distinguishable in the registry.
+ */
+const DEMO_TOKEN_ID_BASE = 900_000n;
+
 export interface AssetSeedResult {
+
   readonly assets: number;
   readonly licenses: number;
   readonly auditEntries: number;
@@ -552,7 +563,9 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
       latencyMs: 2_180,
     },
     decision: { kind: 'approved', comment: 'Approved — meets the XR polycount budget.' },
-    license: { tokenId: 1n, licenseType: 'CC0' },
+    // Token ids for demo licences live in a reserved range: the real contract starts
+    // at 1, so fabricated rows in the low range would collide with the first real mint.
+    license: { tokenId: DEMO_TOKEN_ID_BASE + 1n, licenseType: 'CC0' },
     publishToXr: true,
     jobs: [
       { queue: 'ipfs_pin', status: 'completed' },
@@ -585,7 +598,7 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
     },
     /* Revoked afterwards: demonstrates a takedown that keeps the history (FR-9.5). */
     license: {
-      tokenId: 2n,
+      tokenId: DEMO_TOKEN_ID_BASE + 2n,
       licenseType: 'Commercial-Use',
       revoked: true,
       revokedReason: 'Takedown requested by the original author',
@@ -631,7 +644,7 @@ const NORTHWIND_ASSETS: readonly DemoAssetSpec[] = [
     versions: [{ versionNumber: 1, format: GLB, sizeBytes: 3_145_728, polycount: 12_880 }],
     currentVersionNumber: 1,
     decision: { kind: 'approved', comment: 'Approved for the roof-safety module.' },
-    license: { tokenId: 1n, licenseType: 'Internal-Only' },
+    license: { tokenId: DEMO_TOKEN_ID_BASE + 3n, licenseType: 'Internal-Only' },
     publishToXr: true,
     jobs: [
       { queue: 'ipfs_pin', status: 'completed' },

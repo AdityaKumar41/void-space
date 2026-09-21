@@ -9,7 +9,15 @@ import { randomUUID } from 'node:crypto';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { DEMO, cookieHeader, createTestApp, login, type TestApp } from './helpers';
+import {
+  DEMO,
+  cookieHeader,
+  createTestApp,
+  DEMO_TENANT_IDS,
+  login,
+  removeTestAssets,
+  type TestApp,
+} from './helpers';
 import { FIXTURE_TRIANGLES, makeGlb } from './fixtures/glb';
 
 let context: TestApp;
@@ -19,6 +27,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Leave the development database as we found it.
+  await removeTestAssets(DEMO_TENANT_IDS.aurora);
   await context?.close();
 });
 

@@ -13,8 +13,11 @@ import IORedis from 'ioredis';
 import pino from 'pino';
 
 import { createAiEnrichmentProcessor } from './processors/ai-enrichment';
+import { createChainLicenseProcessor } from './processors/chain-license';
 import { createIpfsPinProcessor } from './processors/ipfs-pin';
 import { createNotifyProcessor } from './processors/notify';
+import { createXrPublishProcessor } from './processors/xr-publish';
+import { createWorkerProducer } from './lib/producer';
 import { concurrencyFor, createQueueRegistry, jobOptionsFor } from './queues';
 
 const logger = pino({
@@ -44,6 +47,10 @@ export async function main(): Promise<void> {
 
   const registry = createQueueRegistry(connection);
 
+  // The worker also produces a little: a completed mint queues the EoN push and the
+  // Creator's notification. One producer per process, sharing the Redis connection.
+  const producer = createWorkerProducer(connection);
+
   PROCESSORS['ipfs-pin'] = createIpfsPinProcessor({
     ipfsApiUrl: process.env.IPFS_API_URL ?? 'http://localhost:5001',
     logger,
@@ -57,6 +64,22 @@ export async function main(): Promise<void> {
   }) as Processor;
 
   PROCESSORS['notify'] = createNotifyProcessor({ logger }) as Processor;
+
+  PROCESSORS['chain-license'] = createChainLicenseProcessor({
+    logger,
+    rpcUrl: process.env.ANVIL_RPC_URL ?? 'http://localhost:8545',
+    contractAddress: process.env.CONTRACT_ADDRESS ?? '',
+    privateKey: process.env.PLATFORM_SIGNER_SEED ?? '',
+    ipfsApiUrl: process.env.IPFS_API_URL ?? 'http://localhost:5001',
+    producer,
+  }) as Processor;
+
+  PROCESSORS['xr-publish'] = createXrPublishProcessor({
+    logger,
+    apiUrl: process.env.EON_API_URL,
+    apiKey: process.env.EON_API_KEY,
+    publicBaseUrl: process.env.EON_PUBLIC_BASE_URL ?? 'https://localhost/eon',
+  }) as Processor;
 
   const workers: Worker[] = [];
 
@@ -108,6 +131,7 @@ export async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`${signal} received — shutting down`);
     await Promise.all(workers.map((worker) => worker.close()));
+    await producer.close();
     await registry.close();
     await connection.quit();
     process.exit(0);
