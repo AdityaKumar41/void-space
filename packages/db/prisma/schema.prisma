@@ -443,7 +443,10 @@ model License {
   approverId       String?       @map("approver_id") @db.Uuid
   tokenId          BigInt        @map("token_id")
   contractAddress  String        @map("contract_address") @db.VarChar(42)
-  txHash           String        @map("tx_hash") @db.VarChar(66)
+  /// Null when the token was adopted rather than minted by this system — e.g. a previous
+  /// attempt minted and crashed before writing the row. The chain is the authority on whether
+  /// a mint happened; inventing a hash to fill the column would poison every consumer of it.
+  txHash           String?       @map("tx_hash") @db.VarChar(66)
   blockNumber      BigInt?       @map("block_number")
   gasUsed          BigInt?       @map("gas_used")
   /// §3.9.2 — the ipfs:// document reachable through tokenURI.

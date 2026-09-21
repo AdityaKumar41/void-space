@@ -19,6 +19,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        {/* Keyboard users land here first; the nav is reachable but skippable. */}
+        <a href="#main" className="vs-skip-link">
+          SKIP TO CONTENT
+        </a>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -338,7 +338,7 @@ interface LicenseRow {
   readonly id: string;
   readonly tokenId: bigint;
   readonly contractAddress: string;
-  readonly txHash: string;
+  readonly txHash: string | null;
   readonly blockNumber: bigint | null;
   readonly gasUsed: bigint | null;
   readonly ipfsMetadataCid: string | null;
@@ -369,7 +369,7 @@ function toDetail(license: LicenseRow, explorerBase: string): LicenseDetail {
     explorer: {
       // Anvil ships no block explorer; these links are the documented local inspector
       // endpoints so a reviewer can still trace the transaction (FR-9.6).
-      txUrl: `${explorerBase}/tx/${license.txHash}`,
+      txUrl: license.txHash ? `${explorerBase}/tx/${license.txHash}` : null,
       addressUrl: `${explorerBase}/address/${license.contractAddress}`,
     },
   };

@@ -30,6 +30,21 @@ export interface OnChainLicense {
   readonly revokedReason: string;
 }
 
+/**
+ * Whether an on-chain record is a **live licence** for this asset.
+ *
+ * Split out from the scan loop so the rule can be tested without an RPC endpoint, because the
+ * rule is the load-bearing part. A revoked licence grants nothing: it is history. Treating one as
+ * an existing licence makes a republish adopt the withdrawn token instead of minting, so the
+ * asset returns to `published` against a licence the contract reports as invalid, and the new
+ * content is never licensed at all.
+ */
+export function isLiveLicenceFor(record: OnChainLicense | null, assetId: string): boolean {
+  if (!record) return false;
+  if (record.assetId !== assetId) return false;
+  return !record.revoked;
+}
+
 export interface MintParams {
   readonly assetId: string;
   readonly ipfsCid: string;
@@ -55,11 +70,17 @@ export interface ChainClient {
   getLicense(tokenId: bigint): Promise<OnChainLicense | null>;
   totalMinted(): Promise<bigint>;
   /**
-   * Finds an existing token for an asset id by scanning the most recent tokens.
+   * Finds a **valid** token for an asset id by scanning the most recent tokens.
    *
    * The chain is the only place that knows a mint succeeded, so a retry after a crash
    * between the transaction and the database write must ask it — otherwise the asset ends
    * up with two licence tokens, and a duplicate licence is worse than a slow one.
+   *
+   * Revoked tokens are skipped deliberately. A revoked licence is not a licence: it grants
+   * nothing, and it is already recorded. Matching one here would make a republish adopt the
+   * withdrawn token — the asset would go back to `published` against a licence the contract
+   * reports as invalid, and the new content would never be minted. Minting a fresh token is
+   * the whole point of republishing after a revocation.
    */
   findTokenForAsset(assetId: string, lookback?: number): Promise<bigint | null>;
 }
@@ -186,7 +207,7 @@ export function createChainClient(options: ChainClientOptions): ChainClient {
       const oldest = total - BigInt(lookback) + 1n > 1n ? total - BigInt(lookback) + 1n : 1n;
       for (let tokenId = total; tokenId >= oldest; tokenId -= 1n) {
         const record = await this.getLicense(tokenId);
-        if (record && record.assetId === assetId) return tokenId;
+        if (isLiveLicenceFor(record, assetId)) return tokenId;
       }
       return null;
     },

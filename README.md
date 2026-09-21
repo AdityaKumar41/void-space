@@ -41,6 +41,7 @@ void-space/
 │  └─ config/     Shared Tailwind preset and ESLint baseline
 ├─ docker/        Dockerfiles, nginx templates, IPFS entrypoint, cert script
 ├─ docs/          SRS + generated data-model / design notes
+├─ models/        Bundled demo scans, seeded + pinned + licensed (see below)
 ├─ scripts/       dev-up.sh, dev-down.sh
 └─ docker-compose.yml
 ```
@@ -218,9 +219,9 @@ checking whether a licence really exists on-chain, not browsing a marketing site
 | `/login` | Sign-in, with the demo accounts listed for evaluation |
 | `/` | Overview: lifecycle distribution, review backlog, ingest volume, queue telemetry, recent ledger |
 | `/library` | Search + state filter, streamed upload panel, inline ingest results |
-| `/assets/:id` | The asset console: 3D preview (drag to orbit, `WIREFRAME` to toggle), integrity data (CID, polycount, pin state), review decision + AI acceptance, discussion, queue jobs, versions, ledger slice |
+| `/assets/:id` | The asset console: 3D preview with a decode-vs-record integrity readout (drag to orbit, `WIREFRAME` to toggle), integrity data (CID, polycount, pin state), licence token + tx, review decision + AI acceptance, discussion, queue jobs, versions, ledger slice |
 | `/review` | Assessor triage queue ordered oldest-first, with the AI signal and confidence per asset |
-| `/catalog` | Published assets with their licence and XR module |
+| `/catalog` | The marketplace: published assets with their licence and XR module, sortable by name or **complexity**, filterable by category, each card opening a 3D quick-look with its full manifest |
 | `/licenses` | Licence registry with on-chain token id and transaction hash |
 | `/admin` | Members, roles, invitations, workspace settings, counts |
 | `/audit`, `/notifications` | Full ledger, and the alert inbox |
@@ -246,10 +247,58 @@ gateway read                 ─▶  /ipfs/<cid> 200, byte-identical, MISS then 
 
 Set `ANTHROPIC_API_KEY` in `.env` to swap the offline enricher for Claude; nothing else changes.
 
-Seeding generates and **pins** a GLB for every demo asset (valid geometry, exact triangle count),
-so the library renders out of the box; if IPFS is down the seed stores placeholder CIDs and
-says so rather than failing.
-Generate a valid model for demos with `pnpm --filter @void-space/db demo:glb /tmp/cube.glb 12000`.
+### The bundled models
+
+`models/` carries two real scans, seeded, pinned and licensed on every `pnpm db:seed`:
+
+| File | Triangles | Vertices | Textures | Extent |
+|---|---|---|---|---|
+| `heart.glb` (7.2 MB) | 22,562 | 12,013 | 3 | 2.171 × 3.211 × 1.764 |
+| `blue_whale_skeleton.glb` (16.7 MB) | 247,170 | 136,005 | 37 | 13.266 × 38.432 × 16.346 |
+
+They are measured from the file at seed time — not declared in a fixture — so the polycount, vertex,
+material and texture counts in the interface are the artefact's own numbers. Both seed as `approved`
+and publish in one click, which mints a real licence token on Anvil. The whale's original Sketchfab
+export required re-exporting to render at all; see `models/README.md` for what changed and why.
+
+The seed is honest about its other assets: the generated `.glb` fixtures are built to match their
+declared triangle count exactly, and non-previewable formats get small placeholder bytes so every
+gateway link still resolves. If IPFS is down the seed stores placeholder CIDs and says so rather
+than failing. `pnpm --filter @void-space/db demo:glb /tmp/cube.glb 12000` generates a throwaway model.
+
+### Verifying an artifact, not just viewing it
+
+The 3D preview measures the geometry that actually reaches the GPU and prints it next to the record:
+
+```
+DECODED 22,562 TRI   = RECORD ✓
+```
+
+`DECODED` is read from the decoded three.js scene graph; `RECORD` is the polycount stored on the
+version. When they disagree past a small tolerance the marker turns red and names both numbers
+(`≠ RECORD 999`), because a version whose record does not describe its file is a licence-integrity
+problem worth seeing rather than a display quirk. Tamper the record and the viewer says so.
+
+### Licence lifecycle: revocation is not deletion
+
+A revoked licence stays in the registry and stays on chain — the NFT is never burned, and
+`isLicenseValid(tokenId)` simply starts returning `false` (`FR-9.6`). That has one consequence worth
+knowing before you demo it: **republishing a revoked asset must mint a new token, not reuse the old
+one.** A revoked token grants nothing, so adopting it would put the asset back into `published`
+against a licence the contract reports as invalid, and the new content would never be licensed.
+
+The worker enforces this by asking the chain only for *live* tokens
+(`findTokenForAsset` → `isLiveLicenceFor`). The path is exercised end to end by the whale, which was
+re-exported and therefore re-licensed:
+
+```
+REVOKE   token #5   tx 0x394c…   isLicenseValid(5) → false
+PUBLISH  token #10  tx 0xb16a…   gas 337105   metadata → the new CID   isLicenseValid(10) → true
+```
+
+Re-running `pnpm db:seed` will not undo it either: the seed establishes a starting state, so it will
+not move an asset *out* of `published`, which would otherwise leave an `approved` asset holding an
+active licence — a combination no workflow can produce.
 
 ### What Phase 3 delivers
 

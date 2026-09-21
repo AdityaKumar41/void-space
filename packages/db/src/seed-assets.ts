@@ -4,17 +4,23 @@
  * realistic data to show.
  */
 import { Buffer } from 'node:buffer';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import {
+  AssetStatus,
   JobQueue,
   JobStatus,
-  LicenseStatus,
   PinStatus,
   Prisma,
   ReviewDecisionKind,
 } from '../generated/client';
-import { demoCid, demoId, demoTxHash } from './demo-ids';
+import { demoCid, demoId } from './demo-ids';
+import type { MeshMetadata } from '@void-space/types';
+
+import { REPO_ROOT } from './env';
 import { buildGlbFixture } from './glb-fixture';
+import { metadataFromGlbBuffer } from './glb-read';
 import { ipfsReachable, pinBuffer } from './ipfs-pin';
 import { withTenant } from './tenant';
 
@@ -26,6 +32,14 @@ export interface DemoVersionSpec {
   readonly derivative?: boolean;
   readonly sourceLicense?: string;
   readonly sourceAttribution?: string;
+  /**
+   * A model bundled in `models/` to use as this version's content.
+   *
+   * When set, the content is read from disk and *measured* — triangle count, materials,
+   * textures, bounds — rather than declared. Declared numbers that disagree with the file are
+   * exactly the kind of demo data that erodes trust in the rest of the interface.
+   */
+  readonly modelFile?: string;
 }
 
 export type DemoAssetStatus =
@@ -64,12 +78,6 @@ export interface DemoAssetSpec {
     readonly authorRole: 'Creator' | 'Assessor';
     readonly reply?: { readonly body: string; readonly authorRole: 'Creator' | 'Assessor' };
   }[];
-  readonly license?: {
-    readonly tokenId: bigint;
-    readonly licenseType: string;
-    readonly revoked?: boolean;
-    readonly revokedReason?: string;
-  };
   readonly jobs?: readonly {
     readonly queue: 'ai_enrichment' | 'ipfs_pin' | 'chain_license' | 'xr_publish';
     readonly status: 'completed' | 'failed' | 'active';
@@ -86,12 +94,9 @@ export interface DemoAssetSpec {
  * (AssetLicenseRegistry starts at 1). Genuine licences minted through the UI always land
  * below this range, and the two sources stay distinguishable in the registry.
  */
-const DEMO_TOKEN_ID_BASE = 900_000n;
-
 export interface AssetSeedResult {
 
   readonly assets: number;
-  readonly licenses: number;
   readonly auditEntries: number;
 }
 
@@ -109,7 +114,6 @@ export async function seedAsset(
   const assessorId = userIds.assessor;
   if (!creatorId || !assessorId) throw new Error('[seed] creator/assessor user missing');
 
-  let licenses = 0;
   let auditEntries = 0;
 
   await withTenant(
@@ -119,13 +123,26 @@ export async function seedAsset(
         `assetversion:${tenantId}:${spec.key}:v${spec.currentVersionNumber}`,
       );
 
+      // The seed establishes a starting state; it must not rewind live progress.
+      //
+      // `published` is reached by a decision, a publish call and a confirmed mint, and a licence
+      // row points at the version it covers. Forcing the spec's status back over it would leave
+      // the asset `approved` while an active on-chain licence exists for exactly that version —
+      // a combination no workflow can produce, and one the UI would then have to explain. So the
+      // status is only set when the asset has not already been published.
+      const existing = await db.asset.findFirst({
+        where: { id: assetId },
+        select: { status: true },
+      });
+      const nextStatus = existing?.status === AssetStatus.published ? AssetStatus.published : spec.status;
+
       await db.asset.upsert({
         where: { id: assetId },
         update: {
           name: spec.name,
           category: spec.category,
           tags: [...spec.tags],
-          status: spec.status,
+          status: nextStatus,
         },
         create: {
           id: assetId,
@@ -151,10 +168,7 @@ export async function seedAsset(
           update: {
             pinStatus: PinStatus.pinned,
             ipfsCid,
-            sizeBytes: BigInt(fixture.sizeBytes),
-            polycount: version.polycount,
-            format: version.format,
-            meshMetadata: { polycount: version.polycount, formats: [version.format] },
+            ...measuredColumns(fixture, version),
           },
           create: {
             id: versionId,
@@ -162,13 +176,8 @@ export async function seedAsset(
             assetId,
             versionNumber: version.versionNumber,
             format: version.format,
-            sizeBytes: BigInt(fixture.sizeBytes),
-            polycount: version.polycount,
-            vertices: version.polycount * 2,
-            materials: 3,
-            animations: 0,
-            textures: 4,
             ipfsCid,
+            ...measuredColumns(fixture, version),
             pinStatus: PinStatus.pinned,
             sourceTool: spec.sourceTool ?? 'Blender',
             sourceLicense: version.sourceLicense ?? null,
@@ -177,7 +186,6 @@ export async function seedAsset(
             derivativeOfVersionId: version.derivative
               ? demoId(`assetversion:${tenantId}:${spec.key}:v1`)
               : null,
-            meshMetadata: { polycount: version.polycount, formats: [version.format] },
             createdById: creatorId,
           },
         });
@@ -264,36 +272,10 @@ export async function seedAsset(
         }
       }
 
-      // FR-9.2/9.5 — the off-chain mirror of the on-chain licence record.
-      if (spec.license) {
-        const revoked = spec.license.revoked ?? false;
-        await db.license.upsert({
-          where: { tenantId_tokenId: { tenantId, tokenId: spec.license.tokenId } },
-          update: { status: revoked ? LicenseStatus.revoked : LicenseStatus.active },
-          create: {
-            id: demoId(`license:${tenantId}:${spec.key}`),
-            tenantId,
-            assetId,
-            assetVersionId: currentVersionId,
-            approverId: assessorId,
-            tokenId: spec.license.tokenId,
-            contractAddress: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
-            txHash: demoTxHash(`${spec.key}:mint`),
-            blockNumber: 42n,
-            gasUsed: 118_432n,
-            ipfsMetadataCid: demoCid(`license-meta:${spec.key}`),
-            licenseTermsHash: demoTxHash(`${spec.key}:terms`),
-            licenseType: spec.license.licenseType,
-            licenseTerms: `${spec.license.licenseType} — demo licence terms for ${spec.name}`,
-            status: revoked ? LicenseStatus.revoked : LicenseStatus.active,
-            revokedReason: revoked ? (spec.license.revokedReason ?? 'Takedown requested') : null,
-            revokedAt: revoked ? new Date() : null,
-            revokedTxHash: revoked ? demoTxHash(`${spec.key}:revoke`) : null,
-          },
-        });
-        licenses += 1;
-        auditEntries += 1;
-      }
+      // NB: no licence rows are seeded. A `licences` row is the mirror of an on-chain token, and
+      // inventing one here (with a made-up token id and transaction hash) would put fiction in the
+      // record the platform exists to make verifiable. `pnpm demo:publish` drives the real flow:
+      // approve -> publish -> the chain-license worker mints -> the row is written from the receipt.
 
       // §3.10 — durable job mirror, including one deliberately failed job so the
       // job-status UI has a failure to render.
@@ -331,19 +313,6 @@ export async function seedAsset(
       if (spec.decision) {
         auditPlan.push({ action: 'asset.status_changed', after: { status: spec.decision.kind } });
       }
-      if (spec.license) {
-        auditPlan.push({
-          action: 'chain.license_minted',
-          txHash: demoTxHash(`${spec.key}:mint`),
-        });
-      }
-      if (spec.license?.revoked) {
-        auditPlan.push({
-          action: 'chain.license_revoked',
-          txHash: demoTxHash(`${spec.key}:revoke`),
-        });
-      }
-
       for (const [index, entry] of auditPlan.entries()) {
         const auditId = demoId(`audit:${tenantId}:${spec.key}:${index}`);
         const isAutomated = entry.action.startsWith('ai.');
@@ -393,29 +362,106 @@ export async function seedAsset(
     { timeoutMs: 60_000 },
   );
 
-  return { assets: 1, licenses, auditEntries };
+  return { assets: 1, auditEntries };
 }
 // ------------------------------------------------------------------ fixtures
 
 /**
- * Builds (and pins) the content one version points at.
+ * The version columns that describe the content, taken from the measured metadata.
  *
- * `.glb` versions get real geometry with exactly the recorded triangle count, so the viewer
- * renders them and the polycount shown in the UI is true. Other formats get small placeholder
- * bytes: they are not previewable in the browser, but pinning them still means every gateway
- * link in the demo resolves.
+ * Declared numbers are only a fallback for formats we cannot read (`.fbx`, `.blend`): for those the
+ * headless-Blender derivative fills the real counts later. `meshMetadata` keeps the whole measured
+ * record — including the bounding box, which is what lets the viewer frame a model of any size
+ * without the user hunting for the zoom.
+ */
+function measuredColumns(
+  fixture: ResolvedFixture,
+  version: DemoVersionSpec,
+): {
+  sizeBytes: bigint;
+  polycount: number;
+  vertices: number;
+  materials: number;
+  animations: number;
+  textures: number;
+  meshMetadata: Prisma.InputJsonValue;
+} {
+  const { metadata } = fixture;
+  return {
+    sizeBytes: BigInt(fixture.sizeBytes),
+    polycount: metadata.polycount ?? version.polycount,
+    vertices: metadata.vertices ?? version.polycount * 2,
+    materials: metadata.materials ?? 0,
+    animations: metadata.animations ?? 0,
+    textures: metadata.textures ?? 0,
+    meshMetadata: {
+      ...metadata,
+      formats: [version.format],
+    } as Prisma.InputJsonValue,
+  };
+}
+
+/** Measured description of a version's content, plus where it is pinned. */
+interface ResolvedFixture {
+  readonly cid: string;
+  readonly sizeBytes: number;
+  readonly metadata: MeshMetadata;
+}
+
+const EMPTY_METADATA: MeshMetadata = {
+  polycount: null,
+  vertices: null,
+  materials: null,
+  animations: null,
+  textures: null,
+  boundingBox: null,
+};
+
+/**
+ * Reads a model bundled in `models/`.
+ *
+ * These are the real demo models, so they are read from disk rather than synthesised: seeding a
+ * 7.5 MB scanned heart or a 13.6 MB whale skeleton into a bucket of generated cubes would make the
+ * catalogue look populated while telling the user nothing about how the platform behaves with
+ * actual production assets.
+ */
+function readBundledModel(fileName: string): Buffer {
+  const path = resolve(REPO_ROOT, 'models', fileName);
+  try {
+    return readFileSync(path);
+  } catch {
+    throw new Error(
+      `[seed] bundled model not found at models/${fileName}. ` +
+        'The demo assets depend on it — restore it, or remove the spec that references it.',
+    );
+  }
+}
+
+/**
+ * Resolves (and pins) the content one version points at.
+ *
+ * A bundled model is *measured* — triangle count, materials, textures, bounds — and those numbers
+ * are what get stored, so the interface never claims something the file does not contain. Generated
+ * `.glb` fixtures are constructed to match their declared count exactly. Non-previewable formats
+ * get small placeholder bytes: pinning them still means every gateway link in the demo resolves.
  */
 async function buildFixture(
   spec: DemoAssetSpec,
   version: DemoVersionSpec,
-): Promise<{ cid: string; sizeBytes: number }> {
+): Promise<ResolvedFixture> {
   const format = version.format.toLowerCase();
-  const content =
-    format === '.glb' || format === '.gltf'
+  const isGlb = format === '.glb' || format === '.gltf';
+
+  const content = version.modelFile
+    ? readBundledModel(version.modelFile)
+    : isGlb
       ? buildGlbFixture(version.polycount)
       : Buffer.from(`${spec.key} v${version.versionNumber} demo fixture (${version.format})\n`);
 
-  return pinFixture(spec, version, content);
+  const metadata = (isGlb ? metadataFromGlbBuffer(content) : null) ?? EMPTY_METADATA;
+  const pinned = await pinFixture(spec, version, content);
+
+  return { cid: pinned.cid, sizeBytes: pinned.sizeBytes, metadata };
 }
 
 /**
@@ -628,7 +674,7 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
     name: 'Cordless Impact Drill',
     category: 'Tooling',
     tags: ['drill', 'power-tool', 'handheld'],
-    status: 'published',
+    status: 'approved',
     createdByRole: 'Creator',
     sourceTool: 'Blender',
     versions: [{ versionNumber: 1, format: GLB, sizeBytes: 7_864_320, polycount: 28_640 }],
@@ -642,14 +688,10 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
       latencyMs: 2_180,
     },
     decision: { kind: 'approved', comment: 'Approved — meets the XR polycount budget.' },
-    // Token ids for demo licences live in a reserved range: the real contract starts
-    // at 1, so fabricated rows in the low range would collide with the first real mint.
-    license: { tokenId: DEMO_TOKEN_ID_BASE + 1n, licenseType: 'CC0' },
     publishToXr: true,
     jobs: [
       { queue: 'ipfs_pin', status: 'completed' },
-      { queue: 'chain_license', status: 'completed' },
-      { queue: 'xr_publish', status: 'completed' },
+      { queue: 'ai_enrichment', status: 'completed' },
     ],
   },
   {
@@ -657,7 +699,7 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
     name: 'Traffic Cone (imported)',
     category: 'Prop',
     tags: ['traffic-cone', 'cc0', 'imported', 'worksite'],
-    status: 'published',
+    status: 'approved',
     createdByRole: 'Creator',
     sourceTool: 'Poly Pizza',
     versions: [
@@ -675,15 +717,88 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
       kind: 'approved',
       comment: 'CC0 provenance confirmed; licence retained in metadata (NFR-COMP.1).',
     },
-    /* Revoked afterwards: demonstrates a takedown that keeps the history (FR-9.5). */
-    license: {
-      tokenId: DEMO_TOKEN_ID_BASE + 2n,
-      licenseType: 'Commercial-Use',
-      revoked: true,
-      revokedReason: 'Takedown requested by the original author',
-    },
     publishToXr: false,
     jobs: [{ queue: 'ipfs_pin', status: 'completed' }],
+  },
+  // ---------------------------------------------------------- bundled production models
+  //
+  // These are real scans from `models/`, pinned and measured at seed time: a 22k-triangle
+  // anatomical heart and a 247k-triangle whale skeleton. They exist to prove the platform handles
+  // genuine production assets — heavy geometry, dozens of textures, a 38-unit bounding box — and to
+  // give the marketplace something worth looking at. State: approved, so publishing them is one
+  // click and the mint happens for real.
+  {
+    key: 'model-heart',
+    name: 'Anatomical Heart (scanned)',
+    category: 'Anatomy',
+    tags: ['anatomy', 'cardiology', 'heart', 'scan', 'education'],
+    status: 'approved',
+    createdByRole: 'Creator',
+    sourceTool: 'Sketchfab',
+    versions: [
+      {
+        versionNumber: 1,
+        format: GLB,
+        // Declared values are only a fallback: the file is measured on seed and those numbers win.
+        sizeBytes: 7_555_412,
+        polycount: 22_562,
+        modelFile: 'heart.glb',
+      },
+    ],
+    currentVersionNumber: 1,
+    ai: {
+      tags: ['anatomy', 'heart', 'cardiology', 'medical', 'scan'],
+      description:
+        'A scanned anatomical heart with textured myocardium and visible great vessels, suitable for cardiology training modules.',
+      qualityFlags: [],
+      confidence: 0.91,
+      latencyMs: 2_640,
+    },
+    decision: {
+      kind: 'approved',
+      comment: 'Anatomy verified against the reference label; ready to publish.',
+    },
+    publishToXr: true,
+    jobs: [
+      { queue: 'ipfs_pin', status: 'completed' },
+      { queue: 'ai_enrichment', status: 'completed' },
+    ],
+  },
+  {
+    key: 'model-whale-skeleton',
+    name: 'Blue Whale Skeleton',
+    category: 'Anatomy',
+    tags: ['anatomy', 'skeleton', 'whale', 'museum', 'education'],
+    status: 'approved',
+    createdByRole: 'Creator',
+    sourceTool: 'Sketchfab',
+    versions: [
+      {
+        versionNumber: 1,
+        format: GLB,
+        sizeBytes: 13_642_632,
+        polycount: 247_170,
+        modelFile: 'blue_whale_skeleton.glb',
+      },
+    ],
+    currentVersionNumber: 1,
+    ai: {
+      tags: ['anatomy', 'skeleton', 'blue-whale', 'museum', 'education'],
+      description:
+        'A mounted blue whale skeleton with individual vertebrae, ribs and flippers, for exhibition and biology training.',
+      qualityFlags: ['polycount-above-xr-budget'],
+      confidence: 0.87,
+      latencyMs: 4_120,
+    },
+    decision: {
+      kind: 'approved',
+      comment: 'High polycount accepted for the exhibition tier; a decimated derivative is queued.',
+    },
+    publishToXr: true,
+    jobs: [
+      { queue: 'ipfs_pin', status: 'completed' },
+      { queue: 'ai_enrichment', status: 'completed' },
+    ],
   },
 ];
 
@@ -717,18 +832,16 @@ const NORTHWIND_ASSETS: readonly DemoAssetSpec[] = [
     name: 'Fall-Arrest Anchor Point',
     category: 'Safety Equipment',
     tags: ['anchor-point', 'fall-arrest', 'roof'],
-    status: 'published',
+    status: 'approved',
     createdByRole: 'TenantAdmin',
     sourceTool: '3ds Max',
     versions: [{ versionNumber: 1, format: GLB, sizeBytes: 3_145_728, polycount: 12_880 }],
     currentVersionNumber: 1,
     decision: { kind: 'approved', comment: 'Approved for the roof-safety module.' },
-    license: { tokenId: DEMO_TOKEN_ID_BASE + 3n, licenseType: 'Internal-Only' },
     publishToXr: true,
     jobs: [
       { queue: 'ipfs_pin', status: 'completed' },
-      { queue: 'chain_license', status: 'completed' },
-      { queue: 'xr_publish', status: 'completed' },
+      { queue: 'ai_enrichment', status: 'completed' },
     ],
   },
 ];
@@ -744,11 +857,10 @@ export async function seedTenantAssets(
   specs: readonly DemoAssetSpec[],
   userIds: Record<string, string>,
 ): Promise<AssetSeedResult> {
-  const totals = { assets: 0, licenses: 0, auditEntries: 0 };
+  const totals = { assets: 0, auditEntries: 0 };
   for (const spec of specs) {
     const result = await seedAsset(tenantId, spec, userIds);
     totals.assets += result.assets;
-    totals.licenses += result.licenses;
     totals.auditEntries += result.auditEntries;
   }
   return totals;

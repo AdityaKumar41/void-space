@@ -167,23 +167,32 @@ async function publish(
   }
 
   // A previous attempt may have minted and then crashed before writing the row. Ask the
-  // chain, which is the only authority on whether a mint happened.
+  // chain, which is the only authority on whether a mint happened. Only *valid* tokens are
+  // reported, so a revoked licence never makes a republish adopt itself.
   const onChainToken = await chain.findTokenForAsset(payload.assetId);
   if (onChainToken) {
     deps.logger.warn(
       { assetId: payload.assetId, tokenId: onChainToken.toString() },
-      'token already exists on chain without a database row — adopting it instead of minting again',
+      'token already exists on chain without a live database row — adopting it instead of minting again',
     );
     await withTenant(tenantId, async (db) => {
-      await db.license.create({
-        data: {
+      // `upsert`, not `create`: adoption is an idempotent repair of a half-written mint, and a
+      // retry after the row lands must reconcile the existing row rather than fail the job with
+      // a unique-constraint violation on (tenantId, tokenId).
+      await db.license.upsert({
+        where: { tenantId_tokenId: { tenantId, tokenId: onChainToken } },
+        create: {
           tenantId,
           tokenId: onChainToken,
           assetId: payload.assetId,
           assetVersionId: payload.assetVersionId,
           approverId: null,
           contractAddress: chain.contractAddress,
-          txHash: '0x-adopted-from-chain',
+          // Deliberately null, not a sentinel: we genuinely did not observe the transaction, and a
+          // `tx_hash` holding anything but a hash is a lie that every consumer (explorer links,
+          // hash validation, diffing against the chain) would have to special-case. The adoption is
+          // recorded in the audit ledger instead, where it can be explained.
+          txHash: null,
           licenseTermsHash: payload.licenseTermsHash,
           licenseType: payload.licenseType,
           licenseTerms: payload.licenseTerms ?? null,
@@ -191,7 +200,32 @@ async function publish(
           ipfsMetadataCid: null,
           status: 'active',
         },
+        update: {
+          assetId: payload.assetId,
+          assetVersionId: payload.assetVersionId,
+          licenseTermsHash: payload.licenseTermsHash,
+          licenseType: payload.licenseType,
+          licenseTerms: payload.licenseTerms ?? null,
+          recipientAddress: payload.recipientAddress ?? null,
+          status: 'active',
+        },
       });
+
+      await recordAudit(
+        {
+          action: 'chain.license_adopted',
+          entityType: 'license',
+          entityId: onChainToken.toString(),
+          actorLabel: 'worker:chain-license',
+          afterState: {
+            assetId: payload.assetId,
+            tokenId: onChainToken.toString(),
+            reason: 'token present on chain without a database row',
+            txHash: null,
+          },
+        },
+        db,
+      );
     });
     await markPublished(deps.producer, chain, tenantId, payload, onChainToken);
     return { tokenId: onChainToken.toString(), adopted: true };

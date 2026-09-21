@@ -349,3 +349,230 @@ body::after {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--vs-fg-faint);
 }
+
+/* ==========================================================================
+ * Interaction polish
+ *
+ * The brutalist rules reject decoration, but they must not reject feedback: a control that gives
+ * no sign of being clickable, hovered, focused or busy is a usability defect, not a style choice.
+ * Everything here is still square, 1px and unshadowed.
+ * ========================================================================== */
+
+/* Keyboard users get a visible ring; mouse users do not. */
+:focus-visible {
+  outline: 2px solid var(--vs-accent);
+  outline-offset: 2px;
+}
+
+.vs-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* Quiet: a real action that should not compete with the primary one. */
+.vs-btn-quiet {
+  background: transparent;
+  border-color: var(--vs-line-strong);
+  color: var(--vs-fg-dim);
+}
+
+.vs-btn-quiet:hover:not(:disabled) {
+  background: var(--vs-surface-2);
+  color: var(--vs-fg);
+}
+
+/* Ghost: an overlay control sitting on top of imagery or a 3D canvas. */
+.vs-btn-ghost {
+  padding: 5px 9px;
+  font-size: 10px;
+  background: rgba(10, 10, 10, 0.72);
+  border-color: var(--vs-line-strong);
+  color: var(--vs-fg-dim);
+  backdrop-filter: blur(2px);
+}
+
+.vs-btn-ghost:hover:not(:disabled) {
+  background: var(--vs-fg);
+  color: var(--vs-bg);
+}
+
+.vs-btn-ghost[aria-pressed='true'] {
+  border-color: var(--vs-accent);
+  color: var(--vs-accent);
+}
+
+.vs-btn-ghost[aria-pressed='true']:hover {
+  background: var(--vs-accent);
+  color: var(--vs-bg);
+}
+
+/* Skip link: hidden until focused, then it lands in the top-left as a real control. */
+.vs-skip-link {
+  position: fixed;
+  top: -100px;
+  left: 8px;
+  z-index: 10000;
+  padding: 10px 14px;
+  background: var(--vs-accent);
+  color: var(--vs-bg);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vs-skip-link:focus {
+  top: 8px;
+}
+
+/* --- Marketplace cards ---------------------------------------------------- */
+
+.vs-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vs-line-strong);
+  background: var(--vs-surface);
+  transition: border-color 120ms linear, background 120ms linear;
+}
+
+.vs-card:hover {
+  border-color: var(--vs-fg-faint);
+  background: var(--vs-surface-2);
+}
+
+/* The preview well: fixed aspect so a grid of cards stays a grid. */
+.vs-card-well {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-bottom: 1px solid var(--vs-line);
+  background: #0b0b0c;
+  overflow: hidden;
+}
+
+.vs-card-badges {
+  position: absolute;
+  inset: 8px 8px auto 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.vs-card-badges > * {
+  background: rgba(10, 10, 10, 0.78);
+}
+
+/* --- Feedback: busy, loading, empty --------------------------------------- */
+
+.vs-loader {
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--vs-line-strong);
+  border-top-color: var(--vs-accent);
+  animation: vs-spin 0.9s linear infinite;
+}
+
+@keyframes vs-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vs-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--vs-surface-2) 0%,
+    var(--vs-line) 50%,
+    var(--vs-surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: vs-sweep 1.3s linear infinite;
+}
+
+@keyframes vs-sweep {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vs-loader,
+  .vs-skeleton {
+    animation: none;
+  }
+}
+
+/* --- Toasts --------------------------------------------------------------- */
+
+.vs-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 260px;
+  max-width: 420px;
+  padding: 11px 13px;
+  border: 1px solid var(--vs-line-strong);
+  border-left-width: 3px;
+  background: var(--vs-surface-2);
+  animation: vs-toast-in 140ms ease-out;
+}
+
+.vs-toast[data-tone='ok'] {
+  border-left-color: var(--vs-signal);
+}
+
+.vs-toast[data-tone='error'] {
+  border-left-color: var(--vs-accent);
+}
+
+.vs-toast[data-tone='info'] {
+  border-left-color: var(--vs-fg-faint);
+}
+
+@keyframes vs-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vs-toast {
+    animation: none;
+  }
+}
+
+/* --- Tabs ----------------------------------------------------------------- */
+
+.vs-tab {
+  padding: 9px 14px;
+  border-bottom: 2px solid transparent;
+  color: var(--vs-fg-dim);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: transparent;
+  cursor: pointer;
+}
+
+.vs-tab:hover {
+  color: var(--vs-fg);
+  background: var(--vs-surface-2);
+}
+
+.vs-tab[aria-selected='true'] {
+  border-bottom-color: var(--vs-accent);
+  color: var(--vs-fg);
+}
+
+/* --- Prose inside panels -------------------------------------------------- */
+
+.vs-prose {
+  max-width: 68ch;
+  line-height: 1.6;
+  font-size: 12.5px;
+  color: var(--vs-fg-dim);
+}
+
+.vs-prose strong {
+  color: var(--vs-fg);
+  font-weight: 600;
+}

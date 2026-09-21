@@ -11,7 +11,7 @@ import { EmptyState, ErrorNote, Loading, Panel } from '../../../components/ui-ki
 interface LicenceRow {
   readonly tokenId: string;
   readonly contractAddress: string;
-  readonly txHash: string;
+  readonly txHash: string | null;
   readonly blockNumber: string | null;
   readonly gasUsed: string | null;
   readonly ipfsCid: string;
@@ -90,8 +90,8 @@ export default function LicencesPage() {
                         shortCid(row.ipfsCid)
                       )}
                     </td>
-                    <td className="vs-data opacity-70" title={row.txHash}>
-                      {row.txHash.slice(0, 14)}…
+                    <td className="vs-data opacity-70" title={row.txHash ?? 'mint transaction not observed'}>
+                      {row.txHash ? `${row.txHash.slice(0, 14)}…` : 'NOT OBSERVED'}
                     </td>
                     <td className="vs-data whitespace-nowrap text-right opacity-70">{formatDateTime(row.mintedAt).slice(0, 16)}</td>
                   </tr>

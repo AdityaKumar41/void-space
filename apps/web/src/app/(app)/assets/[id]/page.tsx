@@ -27,6 +27,8 @@ import {
   shortId,
 } from '../../../../lib/format';
 import { ModelViewer } from '../../../../components/model-viewer';
+import { CopyButton } from '../../../../components/copy-button';
+import { useToast } from '../../../../components/toast';
 import { BackLink, ErrorNote, Loading, Panel, StatusPill, Tag } from '../../../../components/ui-kit';
 
 interface AssetDetailView {
@@ -47,10 +49,17 @@ interface AssetDetailView {
     readonly pinStatus: string;
     readonly ipfsCid: string | null;
     readonly gatewayUrl: string | null;
+    readonly stats: {
+      readonly vertices: number | null;
+      readonly materials: number | null;
+      readonly textures: number | null;
+      readonly animations: number | null;
+    };
+    readonly dimensions: { x: number; y: number; z: number } | null;
   } | null;
   readonly license: {
     readonly tokenId: string;
-    readonly txHash: string;
+    readonly txHash: string | null;
     readonly blockNumber: string | null;
     readonly gasUsed: string | null;
     readonly status: string;
@@ -168,6 +177,7 @@ export default function AssetConsolePage() {
 
   const permissions = me.data?.user.permissions ?? [];
   const may = (permission: string) => permissions.includes(permission);
+  const toast = useToast();
 
   /**
    * Runs a mutation while locking the other actions.
@@ -182,9 +192,11 @@ export default function AssetConsolePage() {
       await action();
       await queryClient.invalidateQueries({ queryKey: ['asset', assetId] });
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success(`${label.charAt(0) + label.slice(1).toLowerCase()} done`);
     } catch (caught) {
       const apiError = caught as ApiRequestError;
       setError({ message: apiError.message, code: apiError.code });
+      toast.failure(label.charAt(0) + label.slice(1).toLowerCase() + ' failed', apiError.message);
     } finally {
       setPetition(null);
     }
@@ -233,7 +245,13 @@ export default function AssetConsolePage() {
             className="h-[420px]"
           >
             <div className="h-[380px]">
-              <ModelViewer cid={version?.ipfsCid ?? null} format={version?.format ?? '.glb'} />
+              <ModelViewer
+                cid={version?.ipfsCid ?? null}
+                format={version?.format ?? '.glb'}
+                label={asset.name}
+                dimensions={version?.dimensions ?? null}
+                recordedPolycount={version?.polycount ?? null}
+              />
             </div>
           </Panel>
 
@@ -285,11 +303,19 @@ export default function AssetConsolePage() {
               {asset.license ? (
                 <div className="flex justify-between gap-4 py-1">
                   <dt className="vs-label">Tx</dt>
-                  <dd className="vs-data truncate" title={asset.license.txHash}>
-                    {asset.license.txHash} / GAS {asset.license.gasUsed ?? '—'}
+                  <dd
+                    className="vs-data truncate"
+                    title={asset.license.txHash ?? 'mint transaction not observed'}
+                  >
+                    {asset.license.txHash ?? 'NOT OBSERVED'} / GAS {asset.license.gasUsed ?? '—'}
                   </dd>
                 </div>
               ) : null}
+              <div className="flex flex-wrap justify-end gap-2 py-2">
+                <CopyButton label="CID" value={version?.ipfsCid ?? null} />
+                <CopyButton label="Transaction hash" value={asset.license?.txHash ?? null} />
+                <CopyButton label="Licence token" value={asset.license?.tokenId ?? null} />
+              </div>
               <div className="flex justify-between gap-4 py-1">
                 <dt className="vs-label">XR module</dt>
                 <dd className="vs-data truncate">

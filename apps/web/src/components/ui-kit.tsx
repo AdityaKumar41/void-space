@@ -109,28 +109,57 @@ export function Tag({ children, tone = 'default' }: { children: React.ReactNode;
   );
 }
 
-export function EmptyState({ title, hint }: { title: string; hint?: string }) {
+export function EmptyState({
+  title,
+  hint,
+  action,
+}: {
+  title: string;
+  hint?: string;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="p-8 text-center">
-      <div className="vs-display text-xl opacity-70">{title}</div>
-      {hint ? <div className="vs-label mt-2">{hint}</div> : null}
+      <div className="vs-display text-xl opacity-80">{title}</div>
+      {hint ? <div className="vs-label mx-auto mt-2 max-w-md">{hint}</div> : null}
+      {action ? <div className="mt-4 flex justify-center gap-2">{action}</div> : null}
     </div>
   );
 }
 
 export function Loading({ label = 'QUERYING' }: { label?: string }) {
   return (
-    <div className="vs-data vs-cursor p-6 opacity-70">
-      {label}
+    <div className="p-6">
+      <div className="vs-data vs-cursor mb-4 opacity-70">{label}</div>
+      <div className="space-y-2" aria-hidden>
+        <div className="vs-skeleton h-4 w-2/3" />
+        <div className="vs-skeleton h-4 w-1/2" />
+        <div className="vs-skeleton h-4 w-3/4" />
+      </div>
     </div>
   );
 }
 
-export function ErrorNote({ message, code }: { message: string; code?: string }) {
+/** Placeholder block, for pages that need finer control than <Loading>. */
+export function Skeleton({ className = 'h-4 w-full' }: { className?: string }) {
+  return <div className={`vs-skeleton ${className}`} aria-hidden />;
+}
+
+export function ErrorNote({
+  message,
+  code,
+  hint,
+}: {
+  message: string;
+  code?: string;
+  /** What the reader can do about it. A bare code is not an answer. */
+  hint?: string;
+}) {
   return (
-    <div className="border p-3" style={{ borderColor: 'var(--vs-accent)' }}>
-      <div className="vs-data vs-accent">&gt;&gt;&gt; FAULT{code ? ` / ${code}` : ''}</div>
+    <div className="border p-3" style={{ borderColor: 'var(--vs-accent)' }} role="alert">
+      <div className="vs-data vs-accent">&gt;&gt;&gt; {code ?? 'FAULT'}</div>
       <div className="mt-1 text-[12px]">{message}</div>
+      {hint ? <div className="vs-label mt-2">{hint}</div> : null}
     </div>
   );
 }

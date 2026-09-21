@@ -34,6 +34,17 @@ export {
   type AuditLogRow,
 } from './audit';
 
+/** Deterministic, valid GLB fixtures — used by the seed and, in tests, by the upload path. */
+export { buildGlbFixture } from './glb-fixture';
+
+export {
+  metadataFromGlbBuffer,
+  metadataFromGltfJson,
+  readGlbMetadata,
+  exceedsPolycountBudget,
+  type GltfDocument,
+} from './glb-read';
+
 /** Deterministic demo identifiers — shared by the seed, workers and the test harness. */
 export { demoId, demoCid, demoHash } from './demo-ids';
 

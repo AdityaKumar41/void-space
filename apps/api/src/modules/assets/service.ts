@@ -33,7 +33,7 @@ import {
 } from '@void-space/types';
 
 import { ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors';
-import { readGlbMetadata } from '../../lib/gltf';
+import { readGlbMetadata } from '@void-space/db';
 import type { JobProducer } from '../../lib/jobs';
 import type { StagedFile, StagingStorage } from '../../lib/storage';
 
@@ -110,6 +110,26 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
     return cid ? `/ipfs/${cid}` : null;
   }
 
+/**
+ * Reads the measured extent out of `meshMetadata`, for display.
+ *
+ * The bounding box is stored on ingest, so the interface can report scale without downloading the
+ * model first — and without inventing a plausible-looking number.
+ */
+function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: number; z: number } | null {
+  const box = (meshMetadata as { boundingBox?: { min?: number[]; max?: number[] } } | null)
+    ?.boundingBox;
+  if (!box?.min || !box?.max || box.min.length < 3 || box.max.length < 3) return null;
+
+  const [minX = 0, minY = 0, minZ = 0] = box.min;
+  const [maxX = 0, maxY = 0, maxZ = 0] = box.max;
+  return {
+    x: Number((maxX - minX).toFixed(3)),
+    y: Number((maxY - minY).toFixed(3)),
+    z: Number((maxZ - minZ).toFixed(3)),
+  };
+}
+
   function toVersionSummary(version: VersionRow, currentVersionId: string | null): AssetVersionSummary {
     return {
       id: version.id,
@@ -125,6 +145,13 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
       createdAt: version.createdAt.toISOString(),
       gatewayUrl: gatewayUrl(version.ipfsCid),
       isCurrent: version.id === currentVersionId,
+      stats: {
+        vertices: version.vertices,
+        materials: version.materials,
+        textures: version.textures,
+        animations: version.animations,
+      },
+      dimensions: dimensionsFrom(version.meshMetadata),
     };
   }
 

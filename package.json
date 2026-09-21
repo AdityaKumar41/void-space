@@ -2,7 +2,7 @@
   "name": "void-space",
   "version": "2.0.0",
   "private": true,
-  "description": "VOID·SPACE — AI-enhanced, multi-tenant 3D Digital Asset Management & XR publishing platform (VS-SRS-2.0)",
+  "description": "VOID\u00b7SPACE \u2014 AI-enhanced, multi-tenant 3D Digital Asset Management & XR publishing platform (VS-SRS-2.0)",
   "packageManager": "pnpm@9.15.9",
   "engines": {
     "node": ">=20 <25"
@@ -31,7 +31,8 @@
     "test": "turbo run test",
     "test:e2e": "pnpm --filter @void-space/web test:e2e",
     "lint": "eslint .",
-    "format": "prettier --write \"{apps,packages,scripts,docker}/**/*.{ts,tsx,js,mjs,json,md,yml,yaml,css}\""
+    "format": "prettier --write \"{apps,packages,scripts,docker}/**/*.{ts,tsx,js,mjs,json,md,yml,yaml,css}\"",
+    "demo:publish": "node scripts/demo-publish.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",

@@ -18,9 +18,15 @@ import {
   removeTestAssets,
   type TestApp,
 } from './helpers';
-import { FIXTURE_TRIANGLES, makeGlb } from './fixtures/glb';
+import { buildGlbFixture } from '@void-space/db';
 
 let context: TestApp;
+
+/**
+ * Uploads use genuinely renderable geometry (the same generator the seed uses) rather than a
+ * synthetic container: the ingest path is then exercised against a file a viewer can also open.
+ */
+const FIXTURE_TRIANGLES = 2500;
 
 beforeAll(async () => {
   context = await createTestApp();
@@ -99,7 +105,7 @@ const glbFile = (name = 'helmet.glb', sizeMultiplier = 1): MultipartFile => ({
   field: 'file',
   filename: name,
   mime: 'model/gltf-binary',
-  content: makeGlb(sizeMultiplier),
+  content: buildGlbFixture(FIXTURE_TRIANGLES * sizeMultiplier),
 });
 
 describe('FR-3.1 upload acceptance', () => {
@@ -185,7 +191,7 @@ describe('FR-3.1 upload acceptance', () => {
     const { statusCode, body } = await upload(
       cookie,
       { name: 'Mislabelled', category: 'Prop', submitForReview: 'true' },
-      { field: 'file', filename: 'model.glb', mime: 'text/html', content: makeGlb(1) },
+      { field: 'file', filename: 'model.glb', mime: 'text/html', content: buildGlbFixture(FIXTURE_TRIANGLES) },
     );
 
     expect(statusCode).toBe(400);

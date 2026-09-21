@@ -183,7 +183,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto p-4">{children}</main>
+        <main id="main" className="min-h-0 flex-1 overflow-y-auto p-4">{children}</main>
       </div>
     </div>
   );

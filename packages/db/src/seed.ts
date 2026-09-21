@@ -151,6 +151,7 @@ export interface SeedSummary {
   readonly tenants: number;
   readonly users: number;
   readonly assets: number;
+  /** Licences present after seeding. Zero on a fresh seed by design — see the note below. */
   readonly licenses: number;
   readonly auditEntries: number;
   readonly apiKey: { readonly label: string; readonly key: string } | null;
@@ -187,7 +188,7 @@ async function seedTenantRow(spec: { id: string; name: string; slug: string }): 
         tenantId: spec.id,
         defaultPolycountBudget: 50_000,
         requiredMetadataFields: ['tags'],
-        allowedCategories: ['Machinery', 'Safety Equipment', 'Environment', 'Prop', 'Vehicle'],
+        allowedCategories: ['Machinery', 'Safety Equipment', 'Environment', 'Prop', 'Vehicle', 'Anatomy'],
       },
     });
 
@@ -312,11 +313,22 @@ export async function runSeed(): Promise<SeedSummary> {
       ? await seedApiKey(DEMO_TENANTS.aurora.id, developerId, 'Demo developer key')
       : null;
 
+  // Counted rather than assumed: the seed creates no licences (a licence mirrors an on-chain
+  // token, and only a real mint may create one), so this reports what is actually there when
+  // seeding on top of an existing database.
+  //
+  // Counted per tenant, inside each tenant's context: `licenses` is a content table, so the
+  // platform role is denied it by design (§5.3) — a cross-tenant count is not something this
+  // process is allowed to do, and it should not be.
+  const licenses =
+    (await withTenant(DEMO_TENANTS.aurora.id, (db) => db.license.count())) +
+    (await withTenant(DEMO_TENANTS.northwind.id, (db) => db.license.count()));
+
   return {
     tenants: 3,
     users: DEMO_USERS.length,
     assets: aurora.assets + northwind.assets,
-    licenses: aurora.licenses + northwind.licenses,
+    licenses,
     auditEntries: aurora.auditEntries + northwind.auditEntries,
     apiKey,
   };
@@ -332,6 +344,14 @@ export function printSummary(summary: SeedSummary): void {
     `  assets         ${summary.assets}`,
     `  licences       ${summary.licenses}`,
     `  audit entries  ${summary.auditEntries}`,
+    ...(summary.licenses === 0
+      ? [
+          '',
+          '  No licences yet — the catalogue is empty until something is published,',
+          '  because a licence mirrors a real on-chain token. Mint them with:',
+          '    pnpm demo:publish      (or click PUBLISH in the console)',
+        ]
+      : []),
     '',
     '  Sign in at https://localhost with any of:',
     `    admin@aurora.dev        TenantAdmin  (Aurora)`,

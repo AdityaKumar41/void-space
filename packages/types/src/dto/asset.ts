@@ -61,6 +61,20 @@ export interface AssetVersionSummary {
   /** Gateway URL served through the Nginx cache (FR-8.3). */
   readonly gatewayUrl: string | null;
   readonly isCurrent: boolean;
+  /** Meshes / textures / animations, as measured on ingest. */
+  readonly stats: {
+    readonly vertices: number | null;
+    readonly materials: number | null;
+    readonly textures: number | null;
+    readonly animations: number | null;
+  };
+  /**
+   * Extent of the geometry in model units, or null when the format could not be read.
+   *
+   * Shown in the interface because scale is the first thing anyone evaluating a 3D asset for XR
+   * needs to know, and it is measured rather than guessed.
+   */
+  readonly dimensions: { readonly x: number; readonly y: number; readonly z: number } | null;
 }
 
 export interface AiSuggestionSummary {
@@ -82,7 +96,8 @@ export interface LicenseSummary {
   readonly id: string;
   readonly tokenId: string;
   readonly contractAddress: string;
-  readonly txHash: string;
+  /** Null when the mint transaction was not observed (token adopted from chain state). */
+  readonly txHash: string | null;
   readonly blockNumber: string | null;
   readonly gasUsed: string | null;
   readonly ipfsMetadataCid: string | null;

@@ -38,7 +38,8 @@ export type PublishResponse = z.infer<typeof publishResponseSchema>;
 export interface LicenseDetail {
   readonly tokenId: string;
   readonly contractAddress: string;
-  readonly txHash: string;
+  /** Null when the mint transaction was not observed (token adopted from chain state). */
+  readonly txHash: string | null;
   readonly blockNumber: string | null;
   readonly gasUsed: string | null;
   readonly ipfsCid: string;
