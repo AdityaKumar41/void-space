@@ -16,7 +16,12 @@ import { recordAudit, withTenant } from '@void-space/db';
 import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
 
-import { attemptOf, createJobContext, type JobPayload } from '../lib/job-tracking';
+import {
+  attemptOf,
+  createJobContext,
+  isTerminalFailure,
+  type JobPayload,
+} from '../lib/job-tracking';
 
 export interface XrPublishDeps {
   readonly logger: Logger;
@@ -126,7 +131,9 @@ export function createXrPublishProcessor(deps: XrPublishDeps) {
       await ctx.succeed({ moduleRef, moduleUrl, simulated });
       return { moduleRef, moduleUrl, simulated };
     } catch (error) {
-      const terminal = ctx.attempt >= ctx.maxAttempts;
+      // Terminal when the policy is spent *or* the error is unrecoverable — see
+      // isTerminalFailure, which also keeps the row out of a permanent "will retry".
+      const terminal = isTerminalFailure(error, ctx);
       await ctx.fail(error, terminal);
       deps.logger.warn({ err: error, assetId, terminal }, 'EoN publish failed');
       throw error;

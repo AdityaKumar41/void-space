@@ -40,6 +40,25 @@ export function jobQueueEnum(queue: QueueName): Prisma.JobCreateInput['queue'] {
   return queue.replace(/-/g, '_') as Prisma.JobCreateInput['queue'];
 }
 
+/**
+ * Whether a Prisma error is "no record found" (P2025).
+ *
+ * Checked structurally rather than with `instanceof PrismaClientKnownRequestError`: this package
+ * and the generated client are separate module instances under some bundlers, so an `instanceof`
+ * across that boundary silently returns false and the error would escape anyway.
+ *
+ * Processors use this to tell "the row I was working on is gone" — an asset deleted while its
+ * ingest was queued, which makes the job obsolete — from a genuine write failure.
+ */
+export function isRecordNotFound(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2025'
+  );
+}
+
 export interface TrackJobParams {
   readonly jobId: string;
   readonly tenantId: string;
@@ -56,8 +75,27 @@ export interface TrackJobParams {
 export function createJobContext(params: TrackJobParams): JobContext {
   const { jobId, tenantId } = params;
 
+  /**
+   * Bookkeeping must never break the work it describes.
+   *
+   * The `jobs` row is a mirror for the operator's benefit; the transaction, the pin and the
+   * licence are the actual work. A job row can legitimately be gone — an asset purged while its
+   * ingest was still queued takes its jobs with it — and a status write failing there says
+   * nothing about whether the work succeeded. So a missing row is reported and dropped rather
+   * than thrown, which would otherwise convert a completed pin into a failed job.
+   */
   async function update(data: Prisma.JobUpdateInput): Promise<void> {
-    await withTenant(tenantId, (db) => db.job.update({ where: { id: jobId }, data }));
+    try {
+      await withTenant(tenantId, (db) => db.job.update({ where: { id: jobId }, data }));
+    } catch (error) {
+      if (isRecordNotFound(error)) {
+        console.warn(
+          `[jobs] no row for ${jobId} (${params.queue}) — the job's subject was removed; bookkeeping skipped`,
+        );
+        return;
+      }
+      throw error;
+    }
   }
 
   return {
@@ -93,4 +131,34 @@ export function createJobContext(params: TrackJobParams): JobContext {
 /** Attempt number for a BullMQ job (1-based, matching the §3.10 "1 initial run" wording). */
 export function attemptOf(job: { attemptsMade: number }): number {
   return job.attemptsMade + 1;
+}
+
+/**
+ * Whether a failed attempt is the last one for this job.
+ *
+ * Two independent reasons, and both have to be considered. The obvious one is that the retry
+ * policy is exhausted. The other is that the error cannot be recovered from at all: BullMQ stops
+ * retrying an `UnrecoverableError` whatever the policy says, so judging terminality by attempt
+ * count alone would leave the row reading "failed, will retry" for a job BullMQ has already
+ * discarded — a spinner in the dashboard that never resolves.
+ *
+ * Checked by name as well as `instanceof`, because this module and the processors can end up with
+ * different copies of the bullmq package under some bundlers, and a cross-instance `instanceof`
+ * quietly returns false.
+ */
+export function isTerminalFailure(
+  error: unknown,
+  ctx: Pick<JobContext, 'attempt' | 'maxAttempts'>,
+): boolean {
+  if (isUnrecoverable(error)) return true;
+  return ctx.attempt >= ctx.maxAttempts;
+}
+
+function isUnrecoverable(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    (error as { name?: unknown }).name === 'UnrecoverableError'
+  );
 }

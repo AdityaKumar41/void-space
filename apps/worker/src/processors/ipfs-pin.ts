@@ -7,11 +7,17 @@
  * inside the tenant transaction together with the audit row.
  */
 import { recordAudit, withTenant } from '@void-space/db';
-import type { Job } from 'bullmq';
+import { UnrecoverableError, type Job } from 'bullmq';
 import type { Logger } from 'pino';
 
 import { createIpfsClient, type IpfsClient } from '../lib/ipfs';
-import { attemptOf, createJobContext, type JobPayload } from '../lib/job-tracking';
+import {
+  attemptOf,
+  createJobContext,
+  isRecordNotFound,
+  isTerminalFailure,
+  type JobPayload,
+} from '../lib/job-tracking';
 import { removeStagedFile } from '../lib/staging';
 
 export interface IpfsPinDeps {
@@ -57,7 +63,15 @@ export function createIpfsPinProcessor(deps: IpfsPinDeps) {
           },
         }),
       );
-      if (!version) throw new Error(`AssetVersion ${versionId} not found in tenant ${ctx.tenantId}`);
+      if (!version) {
+        // The version is gone, so this job can never succeed: an asset deleted while its ingest
+        // was still queued takes its versions with it. Marking it unrecoverable stops BullMQ from
+        // spending the retry policy on work that is already moot, and the operator sees one
+        // attempt rather than three failures for something that needs no attention.
+        throw new UnrecoverableError(
+          `AssetVersion ${versionId} no longer exists (tenant ${ctx.tenantId}) — the asset was removed while its ingest was queued`,
+        );
+      }
 
       // Idempotent: a retry after a crash mid-write must not re-add the content.
       if (version.ipfsCid && version.pinStatus === 'pinned') {
@@ -120,20 +134,34 @@ export function createIpfsPinProcessor(deps: IpfsPinDeps) {
 
       return { cid };
     } catch (error) {
-      const terminal = ctx.attempt >= ctx.maxAttempts;
-      await ctx.fail(error, terminal);
+      // A missing row from any write in this processor means the same thing as the lookup above:
+      // the version was deleted while its ingest was in flight. The pin itself may well have
+      // succeeded — the content is on IPFS, and an unreferenced pin is harmless because content
+      // is addressed by its hash — but there is nowhere left to record the CID. So this is an
+      // obsolete job, not a platform failure, and it is reported as one.
+      const failure = isRecordNotFound(error)
+        ? new UnrecoverableError(
+            `AssetVersion ${versionId} was deleted while its ingest was in flight (tenant ${ctx.tenantId})`,
+          )
+        : error;
+
+      // Terminal when the policy is spent *or* the error is unrecoverable — see
+      // isTerminalFailure, which also keeps the row out of a permanent "will retry".
+      const terminal = isTerminalFailure(failure, ctx);
+      await ctx.fail(failure, terminal);
 
       if (terminal) {
         // FR-8.5 — a version that cannot be pinned is visibly failed rather than silently
-        // pending, so the Creator can re-upload it.
+        // pending, so the Creator can re-upload it. A version that no longer exists has nothing
+        // to mark, which is why this update is allowed to miss.
         await withTenant(ctx.tenantId, (db) =>
           db.assetVersion.update({ where: { id: versionId }, data: { pinStatus: 'failed' } }),
         ).catch(() => undefined);
-        deps.logger.error({ err: error, versionId }, 'ipfs-pin failed permanently');
+        deps.logger.error({ err: failure, versionId }, 'ipfs-pin failed permanently');
       } else {
-        deps.logger.warn({ err: error, versionId }, 'ipfs-pin failed — will retry');
+        deps.logger.warn({ err: failure, versionId }, 'ipfs-pin failed — will retry');
       }
-      throw error;
+      throw failure;
     }
   };
 }

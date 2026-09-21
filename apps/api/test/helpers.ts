@@ -168,18 +168,35 @@ const TEST_ASSET_NAME_PREFIXES = [
  * Deletes the assets created by a test run. Related versions, review comments, decisions and
  * licences cascade away with them.
  *
+ * Jobs are deleted explicitly, because they do not cascade: `Job.entityId` is a loose varchar
+ * rather than a foreign key, so an asset's queued ingest outlives the asset. Left behind, the
+ * worker picks the job up, finds no such version, and records a failure — putting permanent red
+ * in the dashboard's queue telemetry for work that was simply moot.
+ *
  * Audit rows are intentionally left in place: `audit_logs` is append-only by database grant, and
  * the ledger should record that the work really happened.
  */
 export async function removeTestAssets(tenantId: string): Promise<number> {
-  const result = await withTenant(tenantId, (db) =>
-    db.asset.deleteMany({
+  return withTenant(tenantId, async (db) => {
+    const doomed = await db.asset.findMany({
       where: {
         OR: TEST_ASSET_NAME_PREFIXES.map((prefix) => ({ name: { startsWith: prefix } })),
       },
-    }),
-  );
-  return result.count;
+      select: { id: true, versions: { select: { id: true } } },
+    });
+    if (doomed.length === 0) return 0;
+
+    // The subjects a queued job may point at: the asset itself, or any of its versions.
+    const entityIds = doomed.flatMap((asset) => [
+      asset.id,
+      ...asset.versions.map((version) => version.id),
+    ]);
+
+    await db.job.deleteMany({ where: { entityId: { in: entityIds } } });
+
+    const removed = await db.asset.deleteMany({ where: { id: { in: doomed.map((a) => a.id) } } });
+    return removed.count;
+  });
 }
 
 /**

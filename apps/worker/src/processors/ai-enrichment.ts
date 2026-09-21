@@ -8,11 +8,17 @@
  * throwing. Only infrastructure errors (DB down, unknown version) fail the job.
  */
 import { recordAudit, withTenant } from '@void-space/db';
-import type { Job } from 'bullmq';
+import { UnrecoverableError, type Job } from 'bullmq';
 import type { Logger } from 'pino';
 
 import { selectEnricher, type EnrichmentInput, type Enricher } from '../lib/enricher';
-import { attemptOf, createJobContext, type JobPayload } from '../lib/job-tracking';
+import {
+  attemptOf,
+  createJobContext,
+  isRecordNotFound,
+  isTerminalFailure,
+  type JobPayload,
+} from '../lib/job-tracking';
 
 export interface AiEnrichmentDeps {
   readonly logger: Logger;
@@ -41,43 +47,59 @@ export function createAiEnrichmentProcessor(deps: AiEnrichmentDeps) {
       maxAttempts: job.opts.attempts ?? 1,
     });
 
-    const versionId = job.data.versionId;
-    if (!versionId) throw new Error('ai-enrichment job is missing versionId');
+    const versionId = job.data.versionId ?? null;
+
+    /**
+     * The asset the suggestion hangs off, once the lookup has resolved it.
+     *
+     * Declared before `markActive` so that nothing but the `try` sits between marking the job
+     * active and handling its failure — see the structural test in `test/processor-structure`.
+     */
+    let assetId: string | null = null;
 
     await ctx.markActive();
 
-    const context = await withTenant(tenantId, async (db) => {
-      const version = await db.assetVersion.findFirst({
-        where: { id: versionId },
-        include: { asset: { select: { id: true, name: true, category: true, tags: true } } },
-      });
-      if (!version) throw new Error(`AssetVersion ${versionId} not found in tenant ${tenantId}`);
-
-      const settings = await db.tenantSettings.findUnique({
-        where: { tenantId },
-        select: { defaultPolycountBudget: true },
-      });
-
-      return {
-        assetId: version.asset.id,
-        name: version.asset.name,
-        category: version.asset.category,
-        creatorTags: version.asset.tags,
-        format: version.format,
-        sizeBytes: Number(version.sizeBytes),
-        sourceTool: version.sourceTool,
-        mesh: {
-          polycount: version.polycount,
-          vertices: version.vertices,
-          materials: version.materials,
-          animations: version.animations,
-          textures: version.textures,
-        },
-        polycountBudget: settings?.defaultPolycountBudget ?? null,
-      };
-    });
-
     try {
+      if (!versionId) throw new UnrecoverableError('ai-enrichment job is missing versionId');
+
+      const context = await withTenant(tenantId, async (db) => {
+        const version = await db.assetVersion.findFirst({
+          where: { id: versionId },
+          include: { asset: { select: { id: true, name: true, category: true, tags: true } } },
+        });
+        if (!version) {
+          // Gone for good, so retrying cannot help: an asset deleted while its ingest was queued
+          // takes its versions with it.
+          throw new UnrecoverableError(
+            `AssetVersion ${versionId} no longer exists (tenant ${tenantId}) — the asset was removed while its ingest was queued`,
+          );
+        }
+
+        const settings = await db.tenantSettings.findUnique({
+          where: { tenantId },
+          select: { defaultPolycountBudget: true },
+        });
+
+        return {
+          assetId: version.asset.id,
+          name: version.asset.name,
+          category: version.asset.category,
+          creatorTags: version.asset.tags,
+          format: version.format,
+          sizeBytes: Number(version.sizeBytes),
+          sourceTool: version.sourceTool,
+          mesh: {
+            polycount: version.polycount,
+            vertices: version.vertices,
+            materials: version.materials,
+            animations: version.animations,
+            textures: version.textures,
+          },
+          polycountBudget: settings?.defaultPolycountBudget ?? null,
+        };
+      });
+      assetId = context.assetId;
+
       // §3.10 — attempt 2 is the stricter prompt.
       const outcome = await enricher.enrich({
         ...context,
@@ -138,18 +160,41 @@ export function createAiEnrichmentProcessor(deps: AiEnrichmentDeps) {
 
       return { tags: outcome.result.tags, confidence: outcome.result.confidence };
     } catch (error) {
-      const terminal = ctx.attempt >= ctx.maxAttempts;
-      await ctx.fail(error, terminal);
+      // A missing row anywhere in this processor means the asset was deleted while its ingest was
+      // in flight — the same obsolete-subject case as the lookup above, arriving later.
+      const failure = isRecordNotFound(error)
+        ? new UnrecoverableError(
+            `AssetVersion ${versionId} was deleted while its ingest was in flight (tenant ${tenantId})`,
+          )
+        : error;
+
+      // Terminal when the policy is spent *or* the error is unrecoverable — see
+      // isTerminalFailure, which also keeps the row out of a permanent "will retry".
+      const terminal = isTerminalFailure(failure, ctx);
+      await ctx.fail(failure, terminal);
 
       if (!terminal) {
         deps.logger.warn(
-          { err: error, versionId, attempt: ctx.attempt },
+          { err: failure, versionId, attempt: ctx.attempt },
           'enrichment failed — retrying with a stricter prompt',
         );
-        throw error;
+        throw failure;
       }
 
-      await escalateToHuman(deps, { tenantId, versionId, assetId: context.assetId, error, enricher });
+      // Escalation is the SRS's fallback for geometry the model cannot classify: it records a
+      // `needs_manual_review` suggestion *against the asset*. With the asset gone there is nothing
+      // to escalate against and no reviewer who could act, so the job ends here rather than
+      // failing on a foreign key. The attempt is still recorded as failed and terminal, which is
+      // what the dashboard needs to show.
+      if (assetId === null || versionId === null || isRecordNotFound(error)) {
+        deps.logger.error(
+          { err: failure, versionId },
+          'ai-enrichment ended — the asset no longer exists, so there is nothing to escalate',
+        );
+        throw failure;
+      }
+
+      await escalateToHuman(deps, { tenantId, versionId, assetId, error: failure, enricher });
       await ctx.succeed({ needsManualReview: true });
       return { needsManualReview: true };
     }

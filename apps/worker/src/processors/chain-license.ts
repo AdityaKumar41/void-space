@@ -19,7 +19,12 @@ import type { Logger } from 'pino';
 
 import { createChainClient, type ChainClient } from '../lib/chain';
 import { createIpfsClient, type IpfsClient } from '../lib/ipfs';
-import { attemptOf, createJobContext, type JobPayload } from '../lib/job-tracking';
+import {
+  attemptOf,
+  createJobContext,
+  isTerminalFailure,
+  type JobPayload,
+} from '../lib/job-tracking';
 import type { WorkerProducer } from '../lib/producer';
 
 export interface ChainLicenseDeps {
@@ -84,7 +89,9 @@ export function createChainLicenseProcessor(deps: ChainLicenseDeps) {
       await ctx.succeed(result);
       return result;
     } catch (error) {
-      const terminal = ctx.attempt >= ctx.maxAttempts;
+      // Terminal when the policy is spent *or* the error is unrecoverable — see
+      // isTerminalFailure, which also keeps the row out of a permanent "will retry".
+      const terminal = isTerminalFailure(error, ctx);
       await ctx.fail(error, terminal);
 
       if (terminal) {

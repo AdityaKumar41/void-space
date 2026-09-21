@@ -233,6 +233,10 @@ in the code. Same treatment as the Phase 2 data-model gap-fills.
    UI relays it out-of-band. Confirm whether mail delivery is in scope for this release.
 3. **Per-session revocation.** FR-2.3 makes sessions visible; it does not say whether a
    user may revoke one other session from the UI. Only revoke-all is implemented.
+4. **Job retention.** Redis keeps a bounded tail of completed jobs (§3.10), but the
+   Postgres mirror grows without limit. Obsolete jobs can be pruned safely (§6), and
+   expired jobs are the other candidate. Should the worker run a retention sweep, or is
+   an operator-run prune acceptable for this release?
 
 ## 5. Test traceability (Phase 3)
 
@@ -249,3 +253,60 @@ in the code. Same treatment as the Phase 2 data-model gap-fills.
 | FR-2.6 SIWE (real signatures) | `apps/api/test/siwe.test.ts` |
 | FR-1.2/1.3/1.5, FR-2.7, FR-13.1 | `apps/api/test/tenant-admin.test.ts` |
 | Cross-tenant isolation (NFR-SEC.5) | `packages/db/test/tenant-isolation.test.ts`, `tenant-admin.test.ts` |
+
+## 6. Job lifecycle: failure and obsolescence
+
+The `jobs` table mirrors queue state for the operator, so the rules that decide what it says matter
+as much as the work itself. Three of them were wrong until they were exercised by deleting an asset
+while its ingest was queued.
+
+### An obsolete subject is not a failure to retry
+
+`Job.entityId` is a loose `varchar`, not a foreign key, so an asset's queued work outlives the asset.
+When a processor then finds no version, the work is moot: retrying cannot help, because a deleted
+asset does not come back. Processors therefore raise BullMQ's `UnrecoverableError`, which stops the
+retry immediately. The row records one attempt with a message that says what happened:
+
+```
+ipfs_pin   failed  attempts=1/3  AssetVersion … no longer exists (tenant …) — the asset was
+                                 removed while its ingest was queued
+```
+
+Without this the queue spent all three attempts on work that could never succeed, and the dashboard
+showed three failures for something that needed no attention.
+
+### Terminal means terminal
+
+`isTerminalFailure` treats a failure as the last one when the retry policy is spent *or* the error
+is unrecoverable. Judging it by attempt count alone leaves the row reading "failed, will retry" for
+a job BullMQ has already discarded — a spinner that never resolves, hiding a real problem behind a
+fake one.
+
+### Bookkeeping must not break the work
+
+`ctx.fail` / `ctx.succeed` write the `jobs` row, which is an operator convenience; the pin, the
+transaction and the licence are the work. A missing row is therefore reported and dropped rather
+than thrown, so a completed pin cannot be turned into a failed job by a failure to describe it.
+
+### The `catch` must cover the whole body
+
+`test/processor-structure.test.ts` asserts that nothing sits between `ctx.markActive()` and the
+`try` that follows it. `ai-enrichment` had its version lookup in that gap, so any failure there
+escaped the handler entirely: the row stayed `active` with no error and no `finishedAt`, and — worse
+— the retry/escalation logic never ran. This is a positional property, which is why the guard reads
+the sources rather than exercising the happy path.
+
+### Pruning
+
+Postgres retains job history indefinitely, unlike the bounded Redis tail. Jobs whose subject no
+longer exists are safe to prune:
+
+```sql
+delete from jobs j
+ where j.entity_id is not null
+   and not exists (select 1 from assets a         where a.id::text = j.entity_id)
+   and not exists (select 1 from asset_versions v where v.id::text = j.entity_id);
+```
+
+A scheduled version of this is not implemented — see open question 4.
+
