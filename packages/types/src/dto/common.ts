@@ -1,0 +1,57 @@
+import { z } from 'zod';
+
+/** Pagination + list conventions shared by every collection endpoint. */
+export const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(24),
+  sort: z.enum(['createdAt', 'updatedAt', 'name']).default('createdAt'),
+  order: z.enum(['asc', 'desc']).default('desc'),
+});
+export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
+
+export interface Paginated<T> {
+  readonly items: T[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
+  readonly totalPages: number;
+}
+
+/** UUID path params are validated before they ever reach SQL. */
+export const uuidParamSchema = z.string().uuid();
+export const idParamsSchema = z.object({ id: uuidParamSchema });
+export type IdParams = z.infer<typeof idParamsSchema>;
+
+/** Standard error envelope returned by the API error handler. */
+export const apiErrorSchema = z.object({
+  statusCode: z.number().int(),
+  error: z.string(),
+  message: z.string(),
+  code: z.string().optional(),
+  /** Correlation id (pino request id) — surfaced for support (§3.2 observability). */
+  requestId: z.string().optional(),
+  details: z.unknown().optional(),
+});
+export type ApiError = z.infer<typeof apiErrorSchema>;
+
+export const healthResponseSchema = z.object({
+  status: z.enum(['ok', 'degraded']),
+  version: z.string(),
+  uptimeSeconds: z.number(),
+  dependencies: z.record(
+    z.object({ status: z.enum(['up', 'down', 'disabled']), detail: z.string().optional() }),
+  ),
+});
+export type HealthResponse = z.infer<typeof healthResponseSchema>;
+
+export const jobStatusResponseSchema = z.object({
+  id: z.string(),
+  queue: z.string(),
+  status: z.enum(['queued', 'active', 'completed', 'failed', 'delayed']),
+  attempts: z.number().int(),
+  result: z.unknown().nullable(),
+  error: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type JobStatusResponse = z.infer<typeof jobStatusResponseSchema>;

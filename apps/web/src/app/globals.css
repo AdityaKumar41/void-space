@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens consumed by @void-space/config/tailwind/preset.
+ * Light and dark values are provided so every component can be themed at
+ * runtime; `next-themes` toggles the `dark` class on <html>.
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 258 45% 8%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 258 45% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 258 45% 8%;
+
+    --primary: 268 75% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 258 25% 95%;
+    --secondary-foreground: 258 45% 12%;
+
+    --muted: 258 25% 95%;
+    --muted-foreground: 258 15% 42%;
+
+    --accent: 268 60% 95%;
+    --accent-foreground: 268 70% 28%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 258 20% 88%;
+    --input: 258 20% 88%;
+    --ring: 268 75% 52%;
+
+    /* Asset lifecycle statuses (§5.1, Figure 4) */
+    --status-draft: 258 12% 45%;
+    --status-pending: 38 92% 45%;
+    --status-review: 199 89% 42%;
+    --status-approved: 152 60% 36%;
+    --status-rejected: 0 72% 48%;
+    --status-revision: 25 90% 48%;
+    --status-published: 268 75% 52%;
+
+    --radius: 0.6rem;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', monospace;
+  }
+
+  .dark {
+    --background: 258 45% 6%;
+    --foreground: 258 20% 96%;
+
+    --card: 258 40% 9%;
+    --card-foreground: 258 20% 96%;
+
+    --popover: 258 40% 9%;
+    --popover-foreground: 258 20% 96%;
+
+    --primary: 268 85% 68%;
+    --primary-foreground: 258 45% 8%;
+
+    --secondary: 258 30% 16%;
+    --secondary-foreground: 258 20% 96%;
+
+    --muted: 258 30% 16%;
+    --muted-foreground: 258 15% 66%;
+
+    --accent: 268 40% 22%;
+    --accent-foreground: 268 30% 94%;
+
+    --destructive: 0 62% 52%;
+    --destructive-foreground: 258 20% 96%;
+
+    --border: 258 28% 20%;
+    --input: 258 28% 20%;
+    --ring: 268 85% 68%;
+
+    --status-draft: 258 12% 62%;
+    --status-pending: 38 92% 60%;
+    --status-review: 199 89% 60%;
+    --status-approved: 152 60% 52%;
+    --status-rejected: 0 72% 62%;
+    --status-revision: 25 90% 62%;
+    --status-published: 268 85% 68%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+
+  /* Content-addressed identifiers (CIDs, tx hashes) are monospaced and copyable. */
+  .hash {
+    @apply font-mono text-xs tracking-tight;
+  }
+}
