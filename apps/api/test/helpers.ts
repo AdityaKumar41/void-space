@@ -42,6 +42,13 @@ export async function createTestApp(): Promise<TestApp> {
   const env = loadEnv({ ...process.env, NODE_ENV: 'test' });
   const app = await buildApp(env);
 
+  // A route that throws a known AppError, so tests can assert the error envelope
+  // (a root-registered route, mirroring how every feature module is mounted).
+  app.get('/api/v1/__test/probe-errors', async () => {
+    const { ValidationError } = await import('../src/lib/errors');
+    throw new ValidationError('probe failure', { from: 'probe' });
+  });
+
   // A route that exists only in tests: it lets us assert the §3.6 permission
   // gate (403 paths) without depending on a Phase-4 business endpoint.
   app.get(

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { REVIEW_DECISIONS, commentRequiredFor } from '../assets';
-import { paginationQuerySchema } from './common';
+import { booleanishSchema, paginationQuerySchema } from './common';
 
 /**
  * FR-4.2: transition an asset to approved / rejected / revision with a required
@@ -13,8 +13,8 @@ export const reviewDecisionSchema = z
     /** Version the decision applies to; defaults to the asset's current version. */
     assetVersionId: z.string().uuid().optional(),
     /** FR-7.5: one-click accept of the AI-suggested tags/description. */
-    acceptAiTags: z.coerce.boolean().default(false),
-    acceptAiDescription: z.coerce.boolean().default(false),
+    acceptAiTags: booleanishSchema.default(false),
+    acceptAiDescription: booleanishSchema.default(false),
   })
   .superRefine((value, ctx) => {
     if (commentRequiredFor(value.decision) && !value.comment?.trim()) {

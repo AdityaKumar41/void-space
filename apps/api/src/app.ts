@@ -10,9 +10,10 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
-import type { HealthResponse } from '@void-space/types';
+import { MAX_ASSET_SIZE_BYTES, type HealthResponse } from '@void-space/types';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 
@@ -20,9 +21,11 @@ import { assertRlsEnforced, prisma } from '@void-space/db';
 
 import type { ApiEnv } from './env';
 import { isAppError } from './lib/errors';
+import { createJobProducer } from './lib/producer';
 import { authPlugin } from './plugins/auth';
 import { openApiPlugin } from './plugins/openapi';
 import { auditRoutes } from './modules/audit/routes';
+import { assetRoutes } from './modules/assets/routes';
 import { authRoutes } from './modules/auth/routes';
 import { googleRoutes } from './modules/auth/google-routes';
 import { siweRoutes } from './modules/auth/siwe-routes';
@@ -113,16 +116,25 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
 
   await app.register(authPlugin, { accessTtl: env.JWT_ACCESS_TTL });
 
+  // FR-3.1 — streamed multipart uploads with the 200 MB ceiling enforced at the parser
+  // as well as while writing, so an oversized body is cut before it reaches memory.
+  await app.register(multipart, {
+    limits: {
+      fileSize: MAX_ASSET_SIZE_BYTES,
+      files: 1,
+      fields: 25,
+      parts: 30,
+    },
+  });
+
   // Dev/test-only discovery surface; the prose contract lives in docs/.
   await app.register(openApiPlugin, env);
 
-  // --- feature modules (§6.4) ----------------------------------------------
-  await app.register(authRoutes, { prefix: '/api/v1/auth', env });
-  await app.register(googleRoutes, { prefix: '/api/v1/auth', env });
-  await app.register(siweRoutes, { prefix: '/api/v1/auth', env });
-  await app.register(userRoutes, { prefix: '/api/v1' });
-  await app.register(tenantRoutes, { prefix: '/api/v1' });
-  await app.register(auditRoutes, { prefix: '/api/v1' });
+  // One producer per process (it owns the Redis connection), shared by every module.
+  const producer = createJobProducer(env);
+  app.addHook('onClose', async () => {
+    await producer.close();
+  });
 
   // --- health (used by nginx/compose and by the web app) --------------------
   const startedAt = Date.now();
@@ -156,7 +168,13 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
     };
   });
 
-  // --- not-yet-implemented routes answer 404 with the same envelope ---------
+  // --- error handling --------------------------------------------------------
+  // These MUST be installed before the feature modules are registered. Fastify captures
+  // the error/not-found handler per encapsulation context at registration time, so a
+  // handler installed afterwards never applies to routes registered inside their own
+  // plugin: they would answer with Fastify's default `{statusCode, error, message}` body
+  // and lose the `code`, `details` and `requestId` that clients branch on.
+
   app.setNotFoundHandler((request, reply) => {
     reply.status(404).send(errorBody(request, 404, 'NOT_FOUND', 'Route not found', `${request.method} ${request.url} is not a known route`));
   });
@@ -216,6 +234,15 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
         errorBody(request, statusCode, code, statusCode >= 500 ? 'Internal server error' : error.message, undefined),
       );
   });
+
+  // --- feature modules (§6.4) ----------------------------------------------
+  await app.register(authRoutes, { prefix: '/api/v1/auth', env });
+  await app.register(googleRoutes, { prefix: '/api/v1/auth', env });
+  await app.register(siweRoutes, { prefix: '/api/v1/auth', env });
+  await app.register(userRoutes, { prefix: '/api/v1' });
+  await app.register(tenantRoutes, { prefix: '/api/v1' });
+  await app.register(auditRoutes, { prefix: '/api/v1' });
+  await app.register(assetRoutes, { prefix: '/api/v1', env, producer });
 
   return app;
 }

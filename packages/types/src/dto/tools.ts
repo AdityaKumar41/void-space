@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { booleanishSchema } from './common';
 
 /** FR-6.1: Sketchfab search filtered by license and polygon count. */
 export const sketchfabSearchSchema = z.object({
@@ -8,7 +9,7 @@ export const sketchfabSearchSchema = z.object({
     .default('cc0'),
   maxPolycount: z.coerce.number().int().positive().max(5_000_000).optional(),
   minPolycount: z.coerce.number().int().nonnegative().optional(),
-  downloadable: z.coerce.boolean().default(true),
+  downloadable: booleanishSchema.default(true),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(48).default(24),
 });
@@ -45,7 +46,7 @@ export const blenderOptimizeSchema = z.object({
   /** Target triangle budget; falls back to the tenant default (FR-14.3). */
   polycountBudget: z.coerce.number().int().positive().max(5_000_000).optional(),
   targetFormat: z.enum(['glb', 'gltf']).default('glb'),
-  generateLods: z.coerce.boolean().default(false),
+  generateLods: booleanishSchema.default(false),
 });
 export type BlenderOptimizeInput = z.infer<typeof blenderOptimizeSchema>;
 

@@ -1,5 +1,17 @@
 import { z } from 'zod';
 
+/**
+ * Boolean that survives both JSON and form encodings.
+ *
+ * `z.coerce.boolean()` uses `Boolean(value)`, so the *string* `"false"` — which is what a
+ * `multipart/form-data` field or a query string always carries — coerces to `true`. That
+ * silently inverted `submitForReview: false` into a submission during development. This
+ * schema parses the common textual spellings explicitly.
+ */
+export const booleanishSchema = z
+  .union([z.boolean(), z.enum(['true', 'false', '1', '0', 'yes', 'no'])])
+  .transform((value) => value === true || value === 'true' || value === '1' || value === 'yes');
+
 /** Pagination + list conventions shared by every collection endpoint. */
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

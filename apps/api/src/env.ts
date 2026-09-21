@@ -62,13 +62,27 @@ export const envSchema = z.object({
   SIWE_DOMAIN: z.string().default('localhost'),
   SIWE_URI: z.string().default('https://localhost'),
 
-  // --- contract address published by dev-up (§9.3) -------------------------
+  /** Contract address published by dev-up (§9.3) ------------------------- */
   CONTRACT_ADDRESS: z
     .string()
     .regex(/^0x[a-fA-F0-9]{40}$/)
     .optional()
     .or(z.literal('').transform(() => undefined)),
   CONTRACT_STATE_PATH: z.string().optional(),
+
+  // --- uploads (FR-3.1) ----------------------------------------------------
+  /**
+   * Where an in-flight upload is staged before the `ipfs-pin` worker streams it to
+   * IPFS. Kept out of the database for the file bytes themselves: Postgres holds the
+   * CID, never the binary (FR-8.1).
+   */
+  STAGING_DIR: z.string().default('.staging'),
+  /** Hard ceiling on total bytes the staging area may hold (NFR-SCAL.3). */
+  STAGING_MAX_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024 * 1024),
+
+  // --- AI enrichment (FR-7.x, optional) ------------------------------------
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5-20250929'),
+  ANTHROPIC_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;

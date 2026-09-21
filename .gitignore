@@ -42,3 +42,9 @@ packages/types/src/contracts/*.abi.json
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Upload staging area (FR-3.1): transient binaries awaiting the ipfs-pin worker.
+.staging/
+
+# agents skills
+.agents/*

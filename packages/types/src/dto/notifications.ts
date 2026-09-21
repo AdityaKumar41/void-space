@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import { paginationQuerySchema } from './common';
+import { booleanishSchema, paginationQuerySchema } from './common';
 
 /** FR-11.3: notification centre list + unread count for the UI header. */
 export const notificationListQuerySchema = paginationQuerySchema.extend({
-  unreadOnly: z.coerce.boolean().default(false),
+  unreadOnly: booleanishSchema.default(false),
 });
 export type NotificationListQuery = z.infer<typeof notificationListQuerySchema>;
 

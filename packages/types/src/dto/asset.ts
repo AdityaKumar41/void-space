@@ -6,7 +6,7 @@ import {
   type AssetStatus,
   type PinStatus,
 } from '../assets';
-import { paginationQuerySchema } from './common';
+import { booleanishSchema, paginationQuerySchema } from './common';
 
 /** FR-3.2: Name and Category are required; Tags and Source Tool are optional. */
 export const createAssetMetadataSchema = z.object({
@@ -15,7 +15,7 @@ export const createAssetMetadataSchema = z.object({
   tags: z.array(z.string().min(1).max(40)).max(25).default([]),
   sourceTool: z.enum(SOURCE_TOOLS).optional(),
   /** FR-3.3: 'draft' when saved without submission, 'pending' when submitted. */
-  submitForReview: z.coerce.boolean().default(true),
+  submitForReview: booleanishSchema.default(true),
   /** NFR-COMP.1: imported third-party assets keep their source license. */
   sourceLicense: z.string().max(120).optional(),
   sourceAttribution: z.string().max(500).optional(),
@@ -24,7 +24,7 @@ export const createAssetMetadataSchema = z.object({
 export type CreateAssetMetadataInput = z.infer<typeof createAssetMetadataSchema>;
 
 export const resubmitAssetSchema = z.object({
-  submitForReview: z.coerce.boolean().default(true),
+  submitForReview: booleanishSchema.default(true),
   /** Optional metadata refresh on resubmission; omitted fields are unchanged. */
   name: z.string().min(1).max(200).optional(),
   category: z.string().min(1).max(60).optional(),
@@ -41,7 +41,7 @@ export const assetListQuerySchema = paginationQuerySchema.extend({
   category: z.string().max(60).optional(),
   creatorId: z.string().uuid().optional(),
   /** Viewer-role and catalog views restrict to published assets. */
-  publishedOnly: z.coerce.boolean().default(false),
+  publishedOnly: booleanishSchema.default(false),
   format: z.enum(ALLOWED_ASSET_EXTENSIONS).optional(),
 });
 export type AssetListQuery = z.infer<typeof assetListQuerySchema>;

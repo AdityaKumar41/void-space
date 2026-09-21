@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { booleanishSchema } from './common';
 
 /**
  * FR-9.1/9.2: Publish is only permitted on an 'approved' asset. The client may
@@ -14,7 +15,7 @@ export const publishAssetSchema = z.object({
     .regex(/^0x[a-fA-F0-9]{40}$/)
     .optional(),
   /** Also push the licensed asset into EoN Reality after minting (FR-10.1). */
-  publishToXr: z.coerce.boolean().default(true),
+  publishToXr: booleanishSchema.default(true),
 });
 export type PublishAssetInput = z.infer<typeof publishAssetSchema>;
 
