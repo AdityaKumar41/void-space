@@ -131,7 +131,7 @@ Tenant isolation is enforced **twice** (defence in depth, §3.5, NFR-SEC.5):
 
 1. **Application layer** — a Fastify `preHandler` checks the caller's permission for the route
    against the §3.6 role matrix, and every repository call happens inside `withTenant(...)`.
-2. **Database layer** — PostgreSQL Row-Level Security policies on all 16 tenant-scoped tables
+2. **Database layer** — PostgreSQL Row-Level Security policies on all 17 tenant-scoped tables, plus a policy on `tenants` itself
    compare `tenant_id` with the transaction-local `app.current_tenant_id` setting. `FORCE ROW
    LEVEL SECURITY` means even the table owner is subject to the policy.
 
@@ -158,12 +158,13 @@ Additional guarantees worth knowing:
 ## Testing
 
 ```bash
-pnpm test                                     # everything: 178 tests across 11 turbo tasks
-pnpm --filter @void-space/api test            # 64 API tests: auth, RBAC, tenancy, assets, review
-pnpm --filter @void-space/worker test         # 22 worker tests: enrichment, chain, queue policies
-pnpm --filter @void-space/db test             # 29 tests: RLS/tenancy, audit, GLB fixture generation
+pnpm test                                     # everything: 224 tests (189 TypeScript + 35 Foundry)
+pnpm --filter @void-space/api test            # 57 API tests: auth, RBAC, tenancy, assets, review
+pnpm --filter @void-space/worker test         # 41 worker tests: enrichment, chain, queue policies
+pnpm --filter @void-space/db test             # 43 tests: RLS/tenancy, audit, GLB fixture generation
 pnpm --filter @void-space/contracts test      # 35 Foundry tests: minting, role gate, revocation, ERC-721
 pnpm --filter @void-space/types test          # 28 tests: the §3.6 RBAC matrix and the §5.1 lifecycle
+pnpm --filter @void-space/web test            # 20 tests: mesh statistics, formatting
 ```
 
 The data-layer suite is the security regression net: cross-tenant read/update/delete attempts,
@@ -316,9 +317,20 @@ active licence — a combination no workflow can produce.
 
 Documentation:
 
+* **[`docs/architecture-infographic.md`](docs/architecture-infographic.md)** — the architecture as an
+  infographic: 17 short sections, each one visual (ASCII diagrams and matrices that survive being
+  pasted into Slack, Confluence or a PDF). **Start here if you want the picture rather than the prose.**
+* **[`docs/architecture.md`](docs/architecture.md)** — the full platform architecture: the layered
+  system, the authorisation pipeline, row-level security, the asset lifecycle state machine, the
+  ingestion and licensing sequences, the blockchain subsystem and its Avalanche C-Chain migration
+  path, the job platform, the data model, deployment topology, requirement traceability and an
+  infographic atlas. Every diagram prints correctly under any Markdown → PDF converter;
+  `pnpm docs:pdf` renders it (Mermaid twins live in a screen-only appendix).
+* **[`docs/DEMO-CREDENTIALS.txt`](docs/DEMO-CREDENTIALS.txt)** — every demo login, its role, what that
+  role can do, the seeded content inventory, and the running chain details.
 * `docs/VS-SDD-2.0-api.md` — endpoint/error-code contract, gap-fills, open questions,
   and test traceability for Phase 3.
 * `docs/VS-SDD-2.0-data-model.md` — the entity model, the gap-fills this
   implementation had to add (and why), and deviations from the SRS text.
-* `https://localhost/api/v1/docs` — Swagger UI (non-production; 31 documented paths).
+* `https://localhost/api/v1/docs` — Swagger UI (non-production; 47 documented paths).
 

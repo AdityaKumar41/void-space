@@ -48,3 +48,7 @@ packages/types/src/contracts/*.abi.json
 
 # agents skills
 .agents/*
+
+screenshots/*
+
+docs/*
