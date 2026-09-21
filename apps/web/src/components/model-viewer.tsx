@@ -56,13 +56,17 @@ export function ModelViewer({ cid, format }: { cid: string | null; format: strin
     );
   }
 
-  if (format !== '.glb' && format !== '.gltf') {
+  // Stored format is the dotted asset extension ('.glb'), but tolerate '.GLB', 'glb' and
+  // surroundings: a case-sensitive comparison here silently removed the preview entirely.
+  const normalized = `.${format.toLowerCase().replace(/^\.+/, '')}`;
+  if (normalized !== '.glb' && normalized !== '.gltf') {
     return (
       <div className="flex h-full items-center justify-center p-6 text-center">
         <div>
-          <div className="vs-data">NO NATIVE PREVIEW FOR {format.toUpperCase()}</div>
+          <div className="vs-data">NO NATIVE PREVIEW FOR {format.replace(/^\./, '').toUpperCase()}</div>
           <div className="vs-label mt-2">
-            {format.toUpperCase()} renders after the Blender derivative produces a GLB (FR-6.3)
+            {format.replace(/^\./, '').toUpperCase()} renders after the Blender derivative produces a
+            GLB (FR-6.3)
           </div>
         </div>
       </div>
@@ -71,7 +75,7 @@ export function ModelViewer({ cid, format }: { cid: string | null; format: strin
 
   return (
     <div className="relative h-full w-full">
-      <ViewerBoundary label={format.toUpperCase()}>
+      <ViewerBoundary label={normalized.replace(/^\./, '').toUpperCase()}>
         <Canvas camera={{ position: [3, 2, 3], fov: 45 }} dpr={[1, 2]}>
           <color attach="background" args={['#0a0a0a']} />
           <ambientLight intensity={0.5} />

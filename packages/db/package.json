@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Prisma schema, migrations, Row-Level Security policies and seed data for VOID·SPACE (SRS §5).",
+  "description": "Prisma schema, migrations, Row-Level Security policies and seed data for VOID\u00b7SPACE (SRS \u00a75).",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -23,16 +23,18 @@
     "build": "prisma generate && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "demo:glb": "tsx src/glb-cli.ts"
   },
   "turbo": {
     "tasks": {
       "build": {
-        "outputs": ["generated/**"]
+        "outputs": [
+          "generated/**"
+        ]
       }
     }
   },
-
   "dependencies": {
     "@prisma/client": "^6.1.0",
     "@void-space/types": "workspace:*",

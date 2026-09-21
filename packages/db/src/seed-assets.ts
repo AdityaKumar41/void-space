@@ -3,6 +3,8 @@
  * from Figure 4, so review, licensing, IPFS metadata and audit views all have
  * realistic data to show.
  */
+import { Buffer } from 'node:buffer';
+
 import {
   JobQueue,
   JobStatus,
@@ -12,6 +14,8 @@ import {
   ReviewDecisionKind,
 } from '../generated/client';
 import { demoCid, demoId, demoTxHash } from './demo-ids';
+import { buildGlbFixture } from './glb-fixture';
+import { ipfsReachable, pinBuffer } from './ipfs-pin';
 import { withTenant } from './tenant';
 
 export interface DemoVersionSpec {
@@ -136,22 +140,35 @@ export async function seedAsset(
 
       for (const version of spec.versions) {
         const versionId = demoId(`assetversion:${tenantId}:${spec.key}:v${version.versionNumber}`);
+        // A .glb fixture is generated with exactly `polycount` triangles and pinned, so the
+        // gateway link resolves and the viewer really renders something.
+        const fixture = await buildFixture(spec, version);
+        const ipfsCid = fixture.cid;
         await db.assetVersion.upsert({
           where: { id: versionId },
-          update: { pinStatus: PinStatus.pinned },
+          // The fixture content is deterministic, so repairing these on reseed is a no-op for an
+          // already-correct row and fixes a stale one (e.g. seeded before fixtures were pinned).
+          update: {
+            pinStatus: PinStatus.pinned,
+            ipfsCid,
+            sizeBytes: BigInt(fixture.sizeBytes),
+            polycount: version.polycount,
+            format: version.format,
+            meshMetadata: { polycount: version.polycount, formats: [version.format] },
+          },
           create: {
             id: versionId,
             tenantId,
             assetId,
             versionNumber: version.versionNumber,
             format: version.format,
-            sizeBytes: BigInt(version.sizeBytes),
+            sizeBytes: BigInt(fixture.sizeBytes),
             polycount: version.polycount,
             vertices: version.polycount * 2,
             materials: 3,
             animations: 0,
             textures: 4,
-            ipfsCid: demoCid(`${spec.key}:v${version.versionNumber}`),
+            ipfsCid,
             pinStatus: PinStatus.pinned,
             sourceTool: spec.sourceTool ?? 'Blender',
             sourceLicense: version.sourceLicense ?? null,
@@ -380,7 +397,69 @@ export async function seedAsset(
 }
 // ------------------------------------------------------------------ fixtures
 
-const GLB = 'glb';
+/**
+ * Builds (and pins) the content one version points at.
+ *
+ * `.glb` versions get real geometry with exactly the recorded triangle count, so the viewer
+ * renders them and the polycount shown in the UI is true. Other formats get small placeholder
+ * bytes: they are not previewable in the browser, but pinning them still means every gateway
+ * link in the demo resolves.
+ */
+async function buildFixture(
+  spec: DemoAssetSpec,
+  version: DemoVersionSpec,
+): Promise<{ cid: string; sizeBytes: number }> {
+  const format = version.format.toLowerCase();
+  const content =
+    format === '.glb' || format === '.gltf'
+      ? buildGlbFixture(version.polycount)
+      : Buffer.from(`${spec.key} v${version.versionNumber} demo fixture (${version.format})\n`);
+
+  return pinFixture(spec, version, content);
+}
+
+/**
+ * Pins content, falling back to the placeholder CID when IPFS is not running.
+ *
+ * Reachability is probed once per seed run: reseeding without the infra profile should warn and
+ * carry on rather than fail part-way with tenants half-written.
+ */
+let ipfsAvailable: boolean | null = null;
+let warnedAboutIpfs = false;
+
+async function pinFixture(
+  spec: DemoAssetSpec,
+  version: DemoVersionSpec,
+  content: Buffer,
+): Promise<{ cid: string; sizeBytes: number }> {
+  const apiUrl = process.env.IPFS_API_URL ?? 'http://127.0.0.1:5001';
+
+  if (ipfsAvailable === null) {
+    ipfsAvailable = await ipfsReachable(apiUrl);
+  }
+
+  if (ipfsAvailable) {
+    try {
+      const pinned = await pinBuffer(apiUrl, content);
+      return { cid: pinned.cid, sizeBytes: pinned.bytes };
+    } catch (error) {
+      ipfsAvailable = false;
+      console.warn(`[seed] IPFS pin failed for ${spec.key}:`, (error as Error).message);
+    }
+  }
+
+  if (!warnedAboutIpfs) {
+    warnedAboutIpfs = true;
+    console.warn(
+      `[seed] IPFS is not reachable at ${apiUrl}; storing placeholder CIDs. ` +
+        'Start the stack with `pnpm dev:up` and reseed to pin real content.',
+    );
+  }
+
+  return { cid: demoCid(`${spec.key}:v${version.versionNumber}`), sizeBytes: version.sizeBytes };
+}
+
+const GLB = '.glb';
 
 /** Aurora: one asset in every lifecycle state, plus a revoked licence. */
 const AURORA_ASSETS: readonly DemoAssetSpec[] = [

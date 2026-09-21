@@ -157,10 +157,10 @@ Additional guarantees worth knowing:
 ## Testing
 
 ```bash
-pnpm test                                     # everything: 171 tests across 11 turbo tasks
+pnpm test                                     # everything: 178 tests across 11 turbo tasks
 pnpm --filter @void-space/api test            # 64 API tests: auth, RBAC, tenancy, assets, review
 pnpm --filter @void-space/worker test         # 22 worker tests: enrichment, chain, queue policies
-pnpm --filter @void-space/db test             # 22 tests against dockerized Postgres
+pnpm --filter @void-space/db test             # 29 tests: RLS/tenancy, audit, GLB fixture generation
 pnpm --filter @void-space/contracts test      # 35 Foundry tests: minting, role gate, revocation, ERC-721
 pnpm --filter @void-space/types test          # 28 tests: the §3.6 RBAC matrix and the §5.1 lifecycle
 ```
@@ -243,7 +243,11 @@ gateway read                 ─▶  /ipfs/<cid> 200, byte-identical, MISS then 
 ```
 
 Set `ANTHROPIC_API_KEY` in `.env` to swap the offline enricher for Claude; nothing else changes.
-Generate a valid model for demos with `node scripts/make-demo-glb.mjs /tmp/cube.glb`.
+
+Seeding generates and **pins** a GLB for every demo asset (valid geometry, exact triangle count),
+so the library renders out of the box; if IPFS is down the seed stores placeholder CIDs and
+says so rather than failing.
+Generate a valid model for demos with `pnpm --filter @void-space/db demo:glb /tmp/cube.glb 12000`.
 
 ### What Phase 3 delivers
 
