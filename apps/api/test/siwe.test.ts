@@ -14,7 +14,15 @@ import { createSiweMessage, parseSiweMessage } from 'viem/siwe';
 
 import { withTenant } from '@void-space/db';
 
-import { DEMO, cookieHeader, createTestApp, login, type TestApp } from './helpers';
+import {
+  DEMO,
+  DEMO_TENANT_IDS,
+  cookieHeader,
+  createTestApp,
+  login,
+  removeWalletOnlyTestUsers,
+  type TestApp,
+} from './helpers';
 
 let context: TestApp;
 
@@ -23,6 +31,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // SIWE sign-in provisions a passwordless account; leave the demo tenant as we found it.
+  await removeWalletOnlyTestUsers(DEMO_TENANT_IDS.aurora);
   await context?.close();
 });
 

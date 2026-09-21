@@ -6,7 +6,7 @@
  * shipping code path rather than a mock of it. The dockerized Postgres must be up
  * and seeded (`pnpm dev:up` / `pnpm db:seed`).
  */
-import { demoId, withTenant } from '@void-space/db';
+import { demoId, withPlatform, withTenant } from '@void-space/db';
 import type { FastifyInstance } from 'fastify';
 
 import { buildApp } from '../src/app';
@@ -180,4 +180,72 @@ export async function removeTestAssets(tenantId: string): Promise<number> {
     }),
   );
   return result.count;
+}
+
+/**
+ * Removes the passwordless accounts the SIWE suite creates.
+ *
+ * `Wallet.user` is `onDelete: SetNull` deliberately — a minted licence may reference the address,
+ * so the wallet outlives the account. That means deleting the user alone leaves the wallet behind,
+ * and the member list keeps showing "Wallet Only" entries after every test run. Cleanup therefore
+ * removes both.
+ */
+export async function removeWalletOnlyTestUsers(tenantId: string): Promise<number> {
+  return withTenant(tenantId, async (db) => {
+    const users = await db.user.findMany({
+      where: { email: { startsWith: 'wallet-only-' } },
+      select: { id: true },
+    });
+    if (users.length === 0) return 0;
+
+    const ids = users.map((user) => user.id);
+    await db.wallet.deleteMany({ where: { userId: { in: ids } } });
+    const removed = await db.user.deleteMany({ where: { id: { in: ids } } });
+    return removed.count;
+  });
+}
+
+/**
+ * Names the suites give the workspaces they create.
+ *
+ * Tenants carry no test marker, so cleanup matches these prefixes rather than hard-coding ids.
+ */
+const TEST_TENANT_NAME_PREFIXES = ['Test ', 'SSO Workspace ', 'No Cookie Inc', 'Wrong Token Inc'];
+
+/**
+ * Removes workspaces created by the acceptance suite, with everything that cascades from them.
+ *
+ * Tenant creation is a first-class feature, so the suites that exercise it were leaving a
+ * workspace (and its members) behind on every run — 111 of them had accumulated in the dev
+ * database, inflating the platform member count and cluttering the admin console.
+ *
+ * `audit_logs.tenant` is `onDelete: SetNull`, so the ledger survives: rows are detached, not
+ * deleted, which is the behaviour the append-only requirement wants anyway.
+ *
+ * Deletion happens *inside each tenant's own context* rather than through the platform role: the
+ * `tenants` policy admits a row matching the current tenant, so this path needs no extra
+ * privilege — the same fail-closed guarantee the rest of the system relies on.
+ */
+export async function removeTestTenants(): Promise<number> {
+  const candidates = await withPlatform((db) =>
+    db.tenant.findMany({
+      where: {
+        OR: TEST_TENANT_NAME_PREFIXES.map((prefix) => ({ name: { startsWith: prefix } })),
+      },
+      select: { id: true },
+    }),
+  );
+
+  let removed = 0;
+  for (const tenant of candidates) {
+    try {
+      await withTenant(tenant.id, (db) => db.tenant.delete({ where: { id: tenant.id } }));
+      removed += 1;
+    } catch {
+      // A workspace the suite created but could not finish cleaning (e.g. it suspended itself)
+      // must not turn a passing suite into a failing one.
+      continue;
+    }
+  }
+  return removed;
 }

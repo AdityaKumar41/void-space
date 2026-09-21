@@ -171,8 +171,10 @@ context leakage across pooled connections, an automated RLS schema audit, the pl
 privilege envelope, and database-level append-only enforcement of the audit log.
 
 The API suite drives the *real* application — same plugins, guards and database — through
-`app.inject()`, including multipart uploads and real EIP-4361 signatures. It cleans up the assets
-it creates (`removeTestAssets`), so running the tests does not pollute the demo workspace.
+`app.inject()`, including multipart uploads and real EIP-4361 signatures. Because it runs against
+the development database, it cleans up everything it creates: fixture assets, passwordless SIWE
+accounts (and their detached wallets) and the workspaces the tenancy suite registers. A run leaves
+3 workspaces and 9 members behind, exactly as it found them — verified, not assumed.
 
 ## Troubleshooting
 

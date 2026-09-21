@@ -9,7 +9,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { DEMO, cookieHeader, createTestApp, login, type TestApp } from './helpers';
+import {
+  DEMO,
+  cookieHeader,
+  createTestApp,
+  login,
+  removeTestTenants,
+  type TestApp,
+} from './helpers';
 
 let context: TestApp;
 let suffix: string;
@@ -20,6 +27,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // The suite creates real workspaces through the API; leave the dev database as we found it.
+  await removeTestTenants();
   await context?.close();
 });
 
