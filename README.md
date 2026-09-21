@@ -190,9 +190,25 @@ privilege envelope, and database-level append-only enforcement of the audit log.
 | 1 | `AssetLicenseRegistry.sol`, deploy flow, generated ABI | ✅ |
 | 2 | Prisma schema, RLS policies, tenant context, seed, isolation tests | ✅ |
 | 3 | API core: auth (password/Google/SIWE), RBAC, tenancy, audit | ✅ |
-| 4 | Assets, versions, streamed uploads, job infrastructure | ⏳ next |
-| 5 | Workers for all six queues | ⏳ |
-| 6–14 | IPFS lifecycle, review workflow, licensing/publishing, full UI, integrations, developer API, admin consoles, E2E | ⏳ |
+| 4 | Assets, versions, streamed uploads, job infrastructure | ✅ |
+| 5 | Workers: `ipfs-pin`, `ai-enrichment`, `notify` | ✅ |
+| 6 | Review workflow: queue, decisions, threaded comments | ⏳ next |
+| 7 | Publishing & licensing: mint, IPFS metadata, catalog, revoke | ⏳ |
+| 8 | Dashboard: login → shell → library/upload → detail + 3D preview → review → catalog | ⏳ |
+| 9–14 | Notifications UI, developer API, admin consoles, Blender/import tools, EoN publish, E2E | ⏳ |
+
+### The verified end-to-end journey (today)
+
+```
+creator uploads helmet.glb  ──▶  POST /api/v1/assets        201, status=pending
+        GLB JSON chunk parsed ─▶  polycount 2500 (no geometry loaded)
+        ipfs-pin worker       ──▶  CID bafkrei…, pinStatus=pinned, staging cleared
+        ai-enrichment worker  ──▶  tags + description + quality flags + confidence
+        audit trail           ──▶  asset.created → asset.submitted → ipfs.pinned → ai.enrichment_completed
+        gateway read          ──▶  /ipfs/<cid> 200, byte-identical, MISS then HIT
+```
+
+Set `ANTHROPIC_API_KEY` in `.env` to swap the offline enricher for Claude; nothing else changes.
 
 ### What Phase 3 delivers
 

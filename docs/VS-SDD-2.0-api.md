@@ -120,7 +120,28 @@ Guards beyond RBAC: only a SuperAdmin may grant/revoke `SuperAdmin`
 (`ROLE_ESCALATION_BLOCKED`); a workspace must always keep one active administrator
 (`LAST_ADMIN`); you cannot remove your own membership (`CANNOT_REMOVE_SELF`).
 
-### 2.4 Audit — `apps/api/src/modules/audit`
+### 2.4 Assets — `apps/api/src/modules/assets`
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| POST | `/assets` | 🔑 `asset:upload-own` | FR-3.1 streamed `multipart/form-data` upload: metadata fields first, file last. Returns the full asset detail |
+| GET | `/assets` | 🔑 `catalog:view` | FR-3.5 library: `q`, `status`/`statuses`, `tag`, `category`, `creatorId`, `format`, `publishedOnly`, paginated. A Creator is scoped to their own assets, a Viewer to published ones |
+| GET | `/assets/:id` | 🔑 `catalog:view` | FR-3.4 detail: versions, AI suggestion, decisions, comment tree, jobs, audit trail, capabilities |
+| PATCH | `/assets/:id` | 🔑 `asset:upload-own` | FR-3.2 edit metadata while the asset is still editable |
+| POST | `/assets/:id/versions` | 🔑 `asset:upload-own` | FR-3.4 new version (multipart); earlier versions stay immutable |
+| POST | `/assets/:id/submit` | 🔑 `asset:upload-own` | FR-3.3 move into the review queue and enqueue AI enrichment |
+| DELETE | `/assets/:id` | 🔑 `asset:delete-own-unpublished` | FR-3.6 delete unpublished work; refused for approved/published/licensed assets |
+
+Upload rules: extensions `.glb .gltf .obj .fbx .stl .blend`, ≤ 200 MB (FR-3.1), declared
+MIME must agree with the extension (NFR-SEC.3), and the category must be one the workspace
+allows (FR-14.3). Unpublished assets answer `404` rather than `403` to callers who may not
+see them, so the API cannot be used to enumerate another workspace's work.
+
+Asynchronous work enqueued by these routes: `ipfs-pin` (FR-8.1) and `ai-enrichment`
+(FR-7.x). Each job is mirrored into `jobs` and surfaced on the asset detail, so the UI polls
+one endpoint (FR-11.2).
+
+### 2.5 Audit — `apps/api/src/modules/audit`
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
@@ -129,7 +150,7 @@ Guards beyond RBAC: only a SuperAdmin may grant/revoke `SuperAdmin`
 Read-only by construction: `UPDATE`/`DELETE` on `audit_logs` are revoked from the
 runtime role at the database level (FR-13.3), so there is no write path to expose.
 
-### 2.5 Health
+### 2.6 Health — `/health`
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
