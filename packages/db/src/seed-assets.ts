@@ -125,16 +125,18 @@ export async function seedAsset(
 
       // The seed establishes a starting state; it must not rewind live progress.
       //
-      // `published` is reached by a decision, a publish call and a confirmed mint, and a licence
-      // row points at the version it covers. Forcing the spec's status back over it would leave
-      // the asset `approved` while an active on-chain licence exists for exactly that version —
-      // a combination no workflow can produce, and one the UI would then have to explain. So the
-      // status is only set when the asset has not already been published.
-      const existing = await db.asset.findFirst({
-        where: { id: assetId },
-        select: { status: true },
-      });
-      const nextStatus = existing?.status === AssetStatus.published ? AssetStatus.published : spec.status;
+      // An active licence is the platform's own definition of "live": it was minted by a decision,
+      // a publish call and a confirmed transaction, and it points at the version it covers. So an
+      // asset holding one is `published` — whether or not the spec says so — and an asset already
+      // `published` stays that way. Setting the spec's status over either would leave an `approved`
+      // asset holding a valid on-chain licence: a combination no workflow can produce, and one the
+      // API will not even let you fix, because publishing refuses an already-licensed asset.
+      const [existing, activeLicences] = await Promise.all([
+        db.asset.findFirst({ where: { id: assetId }, select: { status: true } }),
+        db.license.count({ where: { assetId, status: 'active' } }),
+      ]);
+      const isLive = existing?.status === AssetStatus.published || activeLicences > 0;
+      const nextStatus = isLive ? AssetStatus.published : spec.status;
 
       await db.asset.upsert({
         where: { id: assetId },
