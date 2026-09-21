@@ -156,6 +156,7 @@ const TEST_ASSET_NAME_PREFIXES = [
   'Test Helmet ',
   'Draft ',
   'Explicit false ',
+  'Licence gate ',
   'Malicious',
   'Mislabelled',
   'Wrong category',

@@ -18,7 +18,7 @@ import {
   removeTestAssets,
   type TestApp,
 } from './helpers';
-import { buildGlbFixture } from '@void-space/db';
+import { buildGlbFixture, withTenant } from '@void-space/db';
 
 let context: TestApp;
 
@@ -302,3 +302,72 @@ describe('form boolean parsing', () => {
     expect((body['asset'] as { status: string }).status).toBe('draft');
   });
 });
+
+/**
+ * FR-9.5/FR-9.6 — a takedown has to actually take the asset down.
+ *
+ * Revoking a licence does not move the asset out of `published`: §5.1 defines no transition out of
+ * that status, and the fact that it was published is worth keeping. So the licence is what gates
+ * the catalogue, and this asserts it — otherwise a revoked asset stays on the shelf, rendered with
+ * no licence at all because the card reads the *active* one.
+ *
+ * The licence rows are written directly rather than minted: the question here is the listing
+ * query, and driving a real mint would make this test depend on a running chain and the worker
+ * for something that is a `where` clause.
+ */
+describe('marketplace licence gate (FR-9.5)', () => {
+  it('lists a published asset only while its licence is active', async () => {
+    const creator = await login(context.app, DEMO.users.auroraCreator);
+    const cookie = cookieHeader(creator.cookies, 'vs_access');
+    const suffix = randomUUID().slice(0, 5);
+
+    const { body } = await upload(
+      cookie,
+      { name: `Licence gate ${suffix}`, category: 'Prop' },
+      glbFile('licence-gate.glb'),
+    );
+    const assetId = (body['asset'] as { id: string }).id;
+
+    // Put it on the shelf by hand: published, with a licence the contract would call valid.
+    await withTenant(DEMO_TENANT_IDS.aurora, async (db) => {
+      const asset = await db.asset.findFirstOrThrow({
+        where: { id: assetId },
+        select: { currentVersion: { select: { id: true } } },
+      });
+      await db.asset.update({ where: { id: assetId }, data: { status: 'published' } });
+      await db.license.create({
+        data: {
+          tenantId: DEMO_TENANT_IDS.aurora,
+          assetId,
+          assetVersionId: asset.currentVersion!.id,
+          tokenId: BigInt(`0x${suffix}`.slice(0, 12)),
+          contractAddress: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
+          licenseTermsHash: `0x${'a'.repeat(64)}`,
+          licenseType: 'CC-BY',
+          status: 'active',
+        },
+      });
+    });
+
+    const listed = async () => {
+      const response = await context.app.inject({
+        method: 'GET',
+        url: '/api/v1/assets?publishedOnly=true&pageSize=100',
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      const page = response.json() as { items: { id: string }[] };
+      return page.items.some((item) => item.id === assetId);
+    };
+
+    expect(await listed(), 'a published, licensed asset belongs in the catalogue').toBe(true);
+
+    // The takedown.
+    await withTenant(DEMO_TENANT_IDS.aurora, (db) =>
+      db.license.updateMany({ where: { assetId }, data: { status: 'revoked' } }),
+    );
+
+    expect(await listed(), 'a revoked licence must remove the asset from the catalogue').toBe(false);
+  });
+});
+

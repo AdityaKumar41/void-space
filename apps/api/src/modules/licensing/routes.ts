@@ -36,7 +36,7 @@ async function enqueue(
   producer: JobProducer,
   params: {
     readonly tenantId: string;
-    readonly queue: 'chain-license' | 'xr-publish';
+    readonly queue: 'chain-license' | 'xr-publish' | 'notify';
     readonly entityType: string;
     readonly entityId: string;
     readonly payload: Record<string, unknown>;
@@ -214,7 +214,9 @@ export async function licensingRoutes(
       const { id } = parseParams(idParams, request.params);
       const input = parseBody(revokeLicenseSchema, request.body);
 
-      await withTenant(principal.tenantId, async (db) => {
+      // The recipient is read inside the transaction and carried out of it, so the notification
+      // is enqueued once the revocation has actually committed.
+      const recipient = await withTenant(principal.tenantId, async (db) => {
         const license = await db.license.findFirst({
           where: { assetId: id, tenantId: principal.tenantId, status: 'active' },
           orderBy: { mintedAt: 'desc' },
@@ -245,27 +247,7 @@ export async function licensingRoutes(
           db,
         );
 
-        if (asset) {
-          await db.job.create({
-            data: {
-              id: randomUUID(),
-              tenantId: principal.tenantId,
-              queue: 'notify',
-              status: 'queued',
-              entityType: 'asset',
-              entityId: id,
-              payload: {
-                tenantId: principal.tenantId,
-                event: 'asset.revoked',
-                recipientIds: [asset.creatorId],
-                title: `Licence revoked for "${asset.name}"`,
-                body: input.reason,
-                metadata: { assetId: id },
-              },
-              maxAttempts: 2,
-            },
-          });
-        }
+        return asset;
       });
 
       // The on-chain revocation runs asynchronously; the DB flag is immediate so the UI and
@@ -278,6 +260,27 @@ export async function licensingRoutes(
         maxAttempts: 3,
         payload: { assetId: id, action: 'revoke', reason: input.reason },
       });
+
+      // Notifying the Creator goes through `enqueue`, like every other job in this file. Writing
+      // the `jobs` row directly and stopping there produced a row that read "queued" forever:
+      // no BullMQ job existed, so the worker never picked it up and the Creator was never told
+      // their licence had been pulled.
+      if (recipient) {
+        await enqueue(producer, {
+          tenantId: principal.tenantId,
+          queue: 'notify',
+          entityType: 'asset',
+          entityId: id,
+          maxAttempts: 2,
+          payload: {
+            event: 'asset.revoked',
+            recipientIds: [recipient.creatorId],
+            title: `Licence revoked for "${recipient.name}"`,
+            body: input.reason,
+            metadata: { assetId: id },
+          },
+        });
+      }
 
       return reply.status(202).send({
         assetId: id,

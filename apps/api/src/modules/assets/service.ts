@@ -453,7 +453,13 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
       const where: Prisma.AssetWhereInput = {
         tenantId: principal.tenantId,
         ...(statuses.length > 0 ? { status: { in: statuses } } : {}),
-        ...(publishedOnly ? { status: 'published' } : {}),
+        // FR-9.5/FR-9.6 — a listing means "published *and* licensed". Status alone is not enough:
+        // revoking a licence is a takedown, and a takedown that leaves the asset on the shelf has
+        // not happened. Without this an asset whose licence the contract reports as invalid stayed
+        // in the catalogue, rendered with no licence at all because the card reads the active one.
+        // The asset's own status stays `published` — §5.1 defines no transition out of it, and the
+        // history of having been published is worth keeping — so the licence is the gate here.
+        ...(publishedOnly ? { status: 'published', licenses: { some: { status: 'active' } } } : {}),
         ...(query.category ? { category: query.category } : {}),
         ...(query.tag ? { tags: { has: query.tag } } : {}),
         ...(query.creatorId ? { creatorId: query.creatorId } : {}),
