@@ -15,6 +15,8 @@ export const AUDIT_ACTIONS = [
   'auth.apikey_issued',
   'auth.password_changed',
   'auth.wallet_linked',
+  /** Implementation gap-fill: linking must be reversible from account settings (FR-2.6). */
+  'auth.wallet_unlinked',
   'tenant.created',
   'tenant.suspended',
   'tenant.reinstated',
@@ -22,6 +24,8 @@ export const AUDIT_ACTIONS = [
   'tenant.user_invited',
   'tenant.user_role_changed',
   'tenant.user_removed',
+  /** Added during implementation: FR-1.3 removal is reversible, so reactivation needs its own action. */
+  'tenant.user_reinstated',
   'tenant.switched',
   'asset.created',
   'asset.version_created',

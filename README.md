@@ -88,7 +88,7 @@ Demo credentials (created by `pnpm db:seed`, password `VoidSpace!2026`):
 |---|---|---|---|
 | nginx (edge) | `void-space-nginx-1` | 80, 443 | TLS termination, rate limit, IPFS gateway cache |
 | web | run natively by `pnpm dev` | 3000 | Reachable as `http://localhost:3000` |
-| api | run natively by `pnpm dev` | 4000 | `GET /api/v1/health` |
+| api | run natively by `pnpm dev` | 4000 | `GET /api/v1/health`, Swagger UI at `/api/v1/docs` |
 | worker | run natively by `pnpm dev` | — | BullMQ processors |
 | postgres | `…-postgres-1` | 5432 | dev only |
 | redis | `…-redis-1` | 6379 | dev only |
@@ -118,6 +118,7 @@ docker compose --profile blender up -d      # headless Blender runner (heavy ima
 | `pnpm db:studio` | Prisma Studio against the local database |
 | `pnpm contracts:test` | Foundry test suite for `AssetLicenseRegistry.sol` |
 | `pnpm contracts:abi` | Regenerate `packages/types/src/contracts/abi.generated.ts` from the compiled ABI |
+| `pnpm test` | Everything: Foundry contracts, shared contracts (RBAC/lifecycle/queues), db isolation, API integration, worker wiring |
 | `pnpm contracts:deploy` | Deploy (or redeploy) the contract to Anvil and publish its address |
 | `pnpm typecheck` | `tsc --noEmit` across every workspace package |
 | `pnpm test` | Vitest suites (data layer today; more layers as they land) |
@@ -188,11 +189,30 @@ privilege envelope, and database-level append-only enforcement of the audit log.
 | 0 | Monorepo, Docker stack, nginx edge, dev scripts, app skeletons | ✅ |
 | 1 | `AssetLicenseRegistry.sol`, deploy flow, generated ABI | ✅ |
 | 2 | Prisma schema, RLS policies, tenant context, seed, isolation tests | ✅ |
-| 3 | API core: auth (password/SSO/SIWE), RBAC, tenancy, audit | ⏳ next |
-| 4 | Assets, versions, streamed uploads, job infrastructure | ⏳ |
+| 3 | API core: auth (password/Google/SIWE), RBAC, tenancy, audit | ✅ |
+| 4 | Assets, versions, streamed uploads, job infrastructure | ⏳ next |
 | 5 | Workers for all six queues | ⏳ |
 | 6–14 | IPFS lifecycle, review workflow, licensing/publishing, full UI, integrations, developer API, admin consoles, E2E | ⏳ |
 
-See `docs/VS-SDD-2.0-data-model.md` for the entity model, the gap-fills this implementation had to
-add (and why), and the deviations from the SRS text.
+### What Phase 3 delivers
+
+* **Authentication** (§3.7): email/password with bcrypt, Google OAuth2 SSO (FR-2.2),
+  SIWE wallet linking and wallet sign-in (FR-2.6), rotating refresh tokens delivered
+  as httpOnly/Secure/SameSite=Lax cookies (FR-2.3), and API keys exchanged for
+  short-lived bearer tokens (FR-2.5).
+* **Authorization** (§3.6): the full permission matrix enforced by a Fastify
+  `preHandler`, with roles and permissions re-read from the database on every request
+  so role changes, suspensions and removals apply immediately (FR-2.7, FR-1.5).
+* **Tenancy** (FR-1.1–1.5): self-service signup, workspace switching, member
+  invitation/role management, workspace suspension, and upload defaults.
+* **Audit** (FR-13.1–13.3): append-only by database grant, queryable through
+  `GET /api/v1/audit` with filters and pagination.
+
+Documentation:
+
+* `docs/VS-SDD-2.0-api.md` — endpoint/error-code contract, gap-fills, open questions,
+  and test traceability for Phase 3.
+* `docs/VS-SDD-2.0-data-model.md` — the entity model, the gap-fills this
+  implementation had to add (and why), and deviations from the SRS text.
+* `https://localhost/api/v1/docs` — Swagger UI (non-production; 31 documented paths).
 

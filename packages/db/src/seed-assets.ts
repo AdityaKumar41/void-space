@@ -370,7 +370,6 @@ export async function seedAsset(
 // ------------------------------------------------------------------ fixtures
 
 const GLB = 'glb';
-const BLEND = 'blend';
 
 /** Aurora: one asset in every lifecycle state, plus a revoked licence. */
 const AURORA_ASSETS: readonly DemoAssetSpec[] = [

@@ -130,6 +130,7 @@ model Tenant {
   invites         Invite[]
   webhooks        Webhook[]
   jobs            Job[]
+  sessions        Session[]
   settings        TenantSettings?
 
   @@map("tenants")
@@ -174,6 +175,7 @@ model User {
   auditLogs        AuditLog[]
   wallets          Wallet[]
   invitesSent      Invite[]         @relation("InviteSender")
+  sessions         Session[]
 
   @@unique([tenantId, email])
   @@index([email])
@@ -467,15 +469,51 @@ model License {
   @@map("licenses")
 }
 
+/// FR-2.3/FR-2.7 — server-side session records backing rotating refresh tokens.
+///
+/// (Not enumerated in §5.1; required by FR-2.3 "rotating refresh token" and
+/// FR-2.7 "invalidate all refresh tokens for a user upon password change, role
+/// change, or tenant suspension" — a stateless JWT alone cannot be revoked.
+/// See docs/VS-SDD-2.0-data-model.md §1.2.)
+model Session {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  /// SHA-256 of the refresh token. The raw value exists only in the httpOnly
+  /// cookie, so a database leak does not yield usable sessions.
+  tokenHash     String    @unique @map("token_hash") @db.VarChar(255)
+  userAgent     String?   @map("user_agent") @db.VarChar(300)
+  ipAddress     String?   @map("ip_address") @db.VarChar(64)
+  expiresAt     DateTime  @map("expires_at")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedReason String?   @map("revoked_reason") @db.VarChar(120)
+  /// Rotation chain: the session this one replaced (reuse detection, §3.7).
+  replacedById  String?   @map("replaced_by_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+  lastUsedAt    DateTime? @map("last_used_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
 /// §5.1 APIKey — only a salted hash is persisted; the raw key is shown once
 /// at creation (NFR-SEC.7, FR-12.3).
+///
+/// The key itself carries the tenant id (`vs_<label>_<tenantHex>_<secret>`) so an
+/// incoming key can be resolved to its tenant *before* any query runs. Without
+/// that, key authentication would need a cross-tenant lookup — exactly the access
+/// §5.3 denies the platform role.
 model ApiKey {
   id         String    @id @default(uuid()) @db.Uuid
   tenantId   String    @map("tenant_id") @db.Uuid
   userId     String    @map("user_id") @db.Uuid
   label      String    @db.VarChar(80)
   /// Short public prefix used to identify a key in the UI and in logs.
-  prefix     String    @db.VarChar(16)
+  prefix     String    @db.VarChar(64)
   hashedKey  String    @unique @map("hashed_key") @db.VarChar(255)
   lastUsedAt DateTime? @map("last_used_at")
   expiresAt  DateTime? @map("expires_at")
@@ -485,6 +523,7 @@ model ApiKey {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([prefix])
   @@index([tenantId, revokedAt])
   @@map("api_keys")
 }

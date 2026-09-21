@@ -89,7 +89,8 @@ DECLARE
     'api_keys',
     'notifications',
     'audit_logs',
-    'jobs'
+    'jobs',
+    'sessions'
   ];
 BEGIN
   FOREACH target_table IN ARRAY tenant_tables LOOP

@@ -22,15 +22,18 @@ export const uuidParamSchema = z.string().uuid();
 export const idParamsSchema = z.object({ id: uuidParamSchema });
 export type IdParams = z.infer<typeof idParamsSchema>;
 
-/** Standard error envelope returned by the API error handler. */
+/** Standard error envelope returned by the API error handler (see apps/api/src/app.ts). */
 export const apiErrorSchema = z.object({
   statusCode: z.number().int(),
   error: z.string(),
+  /** Stable, machine-readable discriminator (e.g. INSUFFICIENT_PERMISSION). */
+  code: z.string(),
+  /** Safe to show to an end user; never an internal stack or SQL fragment. */
   message: z.string(),
-  code: z.string().optional(),
-  /** Correlation id (pino request id) — surfaced for support (§3.2 observability). */
-  requestId: z.string().optional(),
   details: z.unknown().optional(),
+  /** Correlation id (pino request id) — surfaced for support (§3.2 observability). */
+  requestId: z.string(),
+  timestamp: z.string(),
 });
 export type ApiError = z.infer<typeof apiErrorSchema>;
 

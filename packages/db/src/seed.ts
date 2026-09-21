@@ -231,7 +231,9 @@ function userKeyFor(role: RoleName): string {
  *
  * The raw key is printed once (NFR-SEC.7); only the salted scrypt hash is stored.
  * Re-running the seed keeps the existing key rather than silently rotating it,
- * because the raw value cannot be recovered from the hash.
+ * because the raw value cannot be recovered from the hash — unless the stored
+ * prefix shows the key predates the current format (which embeds the tenant id),
+ * in which case it is replaced so the printed demo key actually works.
  */
 async function seedApiKey(
   tenantId: string,
@@ -239,12 +241,19 @@ async function seedApiKey(
   label: string,
 ): Promise<{ label: string; key: string } | null> {
   const id = demoId(`apikey:${tenantId}:${label}`);
-  const existing = await withTenant(tenantId, (db) =>
-    db.apiKey.findUnique({ where: { id }, select: { id: true } }),
-  );
-  if (existing) return null;
+  const generated = generateApiKey(tenantId, 'demo');
 
-  const generated = generateApiKey('demo');
+  const existing = await withTenant(tenantId, (db) =>
+    db.apiKey.findUnique({ where: { id }, select: { id: true, prefix: true } }),
+  );
+
+  if (existing?.prefix === generated.prefix) return null;
+
+  if (existing) {
+    // Legacy/partial key from an older seed run: replace it.
+    await withTenant(tenantId, (db) => db.apiKey.delete({ where: { id } }));
+  }
+
   await withTenant(tenantId, (db) =>
     db.apiKey.create({
       data: {

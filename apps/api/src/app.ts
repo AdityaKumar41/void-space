@@ -9,13 +9,25 @@
  */
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import type { HealthResponse } from '@void-space/types';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { ZodError } from 'zod';
 
 import { assertRlsEnforced, prisma } from '@void-space/db';
 
 import type { ApiEnv } from './env';
+import { isAppError } from './lib/errors';
+import { authPlugin } from './plugins/auth';
+import { openApiPlugin } from './plugins/openapi';
+import { auditRoutes } from './modules/audit/routes';
+import { authRoutes } from './modules/auth/routes';
+import { googleRoutes } from './modules/auth/google-routes';
+import { siweRoutes } from './modules/auth/siwe-routes';
+import { tenantRoutes } from './modules/tenant/routes';
+import { userRoutes } from './modules/users/routes';
 
 const API_VERSION = '2.0.0';
 
@@ -53,18 +65,26 @@ async function checkAnvil(rpcUrl: string): Promise<DependencyCheck> {
 
 export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: {
-      level: env.LOG_LEVEL,
-      // Correlation ids per request (§3.2 observability, NFR-MAINT.1).
-      genReqId: (request) => {
-        const header = request.headers['x-request-id'];
-        return typeof header === 'string' && header.length > 0 ? header : crypto.randomUUID();
-      },
-      transport:
-        env.NODE_ENV === 'development'
-          ? { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname' } }
-          : undefined,
-    },
+    // Tests assert on responses, not logs; keeping the transport silent keeps the
+    // vitest output readable.
+    logger:
+      env.NODE_ENV === 'test'
+        ? false
+        : {
+            level: env.LOG_LEVEL,
+            // Correlation ids per request (§3.2 observability, NFR-MAINT.1).
+            genReqId: (request) => {
+              const header = request.headers['x-request-id'];
+              return typeof header === 'string' && header.length > 0 ? header : crypto.randomUUID();
+            },
+            transport:
+              env.NODE_ENV === 'development'
+                ? {
+                    target: 'pino-pretty',
+                    options: { translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname' },
+                  }
+                : undefined,
+          },
     trustProxy: true,
     disableRequestLogging: false,
   });
@@ -76,6 +96,33 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
+
+  // §3.1: the API is the only trusted boundary, so it rate-limits by default
+  // (NFR-SEC.6). Auth routes tighten this further per-route.
+  await app.register(rateLimit, {
+    max: 300,
+    timeWindow: '1 minute',
+    // Health checks come from nginx every few seconds.
+    allowList: (request) => request.url.startsWith('/api/v1/health'),
+  });
+
+  await app.register(jwt, {
+    secret: env.JWT_ACCESS_SECRET,
+    sign: { expiresIn: env.JWT_ACCESS_TTL },
+  });
+
+  await app.register(authPlugin, { accessTtl: env.JWT_ACCESS_TTL });
+
+  // Dev/test-only discovery surface; the prose contract lives in docs/.
+  await app.register(openApiPlugin, env);
+
+  // --- feature modules (§6.4) ----------------------------------------------
+  await app.register(authRoutes, { prefix: '/api/v1/auth', env });
+  await app.register(googleRoutes, { prefix: '/api/v1/auth', env });
+  await app.register(siweRoutes, { prefix: '/api/v1/auth', env });
+  await app.register(userRoutes, { prefix: '/api/v1' });
+  await app.register(tenantRoutes, { prefix: '/api/v1' });
+  await app.register(auditRoutes, { prefix: '/api/v1' });
 
   // --- health (used by nginx/compose and by the web app) --------------------
   const startedAt = Date.now();
@@ -109,28 +156,112 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
     };
   });
 
-  // --- not-yet-implemented routes answer 501, not 404 -----------------------
+  // --- not-yet-implemented routes answer 404 with the same envelope ---------
   app.setNotFoundHandler((request, reply) => {
-    reply.status(404).send({
-      statusCode: 404,
-      error: 'Not Found',
-      message: `${request.method} ${request.url} is not a known route`,
-      requestId: request.id,
-    });
+    reply.status(404).send(errorBody(request, 404, 'NOT_FOUND', 'Route not found', `${request.method} ${request.url} is not a known route`));
   });
 
+  /**
+   * One error envelope for every failure (FR-2.4): a stable machine-readable
+   * `code`, a user-safe `message`, optional structured `details`, and the
+   * correlation id. 5xx messages are never leaked to the caller.
+   */
   app.setErrorHandler((error, request, reply) => {
-    request.log.error({ err: error }, 'request failed');
+    if (isAppError(error)) {
+      if (error.statusCode >= 500) {
+        request.log.error({ err: error, code: error.code }, 'application error');
+      } else {
+        request.log.info({ code: error.code, statusCode: error.statusCode }, 'request rejected');
+      }
+      reply
+        .status(error.statusCode)
+        .send(
+          errorBody(
+            request,
+            error.statusCode,
+            error.code,
+            error.expose ? error.message : 'Internal server error',
+            error.details,
+          ),
+        );
+      return;
+    }
+
+    if (error instanceof ZodError) {
+      reply
+        .status(400)
+        .send(
+          errorBody(request, 400, 'VALIDATION_ERROR', 'Request validation failed', {
+            issues: error.issues.map((issue) => ({
+              path: issue.path.join('.'),
+              message: issue.message,
+            })),
+          }),
+        );
+      return;
+    }
+
+    // Fastify's own errors (body parse failures, rate limit, validation plugin).
     const statusCode = error.statusCode ?? 500;
-    reply.status(statusCode).send({
-      statusCode,
-      error: error.name ?? 'InternalServerError',
-      message: statusCode >= 500 ? 'Internal server error' : error.message,
-      requestId: request.id,
-    });
+    const code =
+      statusCode === 429 ? 'RATE_LIMITED' : statusCode < 500 ? (error.code ?? 'BAD_REQUEST') : 'INTERNAL_ERROR';
+
+    if (statusCode >= 500) {
+      request.log.error({ err: error }, 'unhandled error');
+    }
+
+    reply
+      .status(statusCode)
+      .send(
+        errorBody(request, statusCode, code, statusCode >= 500 ? 'Internal server error' : error.message, undefined),
+      );
   });
 
   return app;
+}
+
+/** Builds the single error shape every non-2xx response uses (see ApiErrorBody). */
+function errorBody(
+  request: { id: string },
+  statusCode: number,
+  code: string,
+  message: string,
+  details?: unknown,
+): Record<string, unknown> {
+  return {
+    statusCode,
+    error: statusName(statusCode),
+    code,
+    message,
+    ...(details === undefined ? {} : { details }),
+    requestId: String(request.id),
+    timestamp: new Date().toISOString(),
+  };
+}
+
+function statusName(statusCode: number): string {
+  switch (statusCode) {
+    case 400:
+      return 'Bad Request';
+    case 401:
+      return 'Unauthorized';
+    case 403:
+      return 'Forbidden';
+    case 404:
+      return 'Not Found';
+    case 409:
+      return 'Conflict';
+    case 413:
+      return 'Payload Too Large';
+    case 422:
+      return 'Unprocessable Entity';
+    case 429:
+      return 'Too Many Requests';
+    case 503:
+      return 'Service Unavailable';
+    default:
+      return statusCode >= 500 ? 'Internal Server Error' : 'Error';
+  }
 }
 
 /**

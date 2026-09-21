@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ROLES } from '../roles';
+import { ROLES, type Permission, type Role } from '../roles';
 
 /** FR-2.1: email/password credentials; bcrypt cost ≥ 12 server-side (NFR-SEC.1). */
 export const passwordSchema = z
@@ -57,20 +57,47 @@ export const changePasswordSchema = z.object({
 });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
+/** FR-2.6 invitation acceptance: the invitee sets their name and password. */
+export const acceptInviteSchema = z.object({
+  token: z.string().min(20),
+  fullName: z.string().min(2).max(120),
+  password: passwordSchema,
+});
+export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
+
+/** Successful sign-in payload returned alongside the auth cookies (FR-2.3). */
+export interface AuthResponse {
+  readonly user: SessionUser;
+  readonly accessTokenExpiresIn: number;
+}
+
+/** Sign-in that needs the user to pick a workspace first (FR-1.4, FR-2.2). */
+export interface TenantSelectionResponse {
+  readonly requiresTenantSelection: true;
+  readonly tenants: readonly { id: string; name: string; slug: string }[];
+}
+
 /** The authenticated principal derived from the access token (§3.7). */
 export interface AuthPrincipal {
   readonly userId: string;
   readonly tenantId: string;
-  /** Roles held in the *active* tenant. */
-  readonly roles: z.infer<typeof roleListSchema>;
-  readonly permissions: readonly string[];
+  /** Roles held in the *active* tenant, re-read from the database on every request. */
+  readonly roles: readonly Role[];
+  readonly permissions: readonly Permission[];
   /** 'jwt' for cookie sessions, 'apikey' for machine-to-machine tokens (FR-2.5). */
   readonly authMethod: 'jwt' | 'apikey';
   readonly apiKeyId?: string;
   readonly isSuperAdmin: boolean;
+  /** Viewer-role tokens are restricted to idempotent reads (§3.6). */
   readonly readOnly: boolean;
+  /** Convenience fields for audit labels and UI headers. */
+  readonly email: string;
+  readonly fullName: string;
+  readonly tenantName: string;
+  readonly tenantSlug: string;
 }
 
+/** Everything the browser needs to render the shell after sign-in (§6.1). */
 export interface SessionUser {
   readonly id: string;
   readonly email: string;

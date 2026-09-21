@@ -39,13 +39,28 @@ export const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(16),
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('7d'),
+  /**
+   * FR-2.3 requires Secure cookies; that is the default. A developer who chooses
+   * to browse the plain-http origin locally can set COOKIE_SECURE=false.
+   */
+  COOKIE_SECURE: z
+    .string()
+    .optional()
+    .transform((value) => value !== 'false' && value !== '0'),
 
   // --- optional integrations (absent => graceful degradation, NFR-REL.1) ---
   ANTHROPIC_API_KEY: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
+  /**
+   * Optional blocks 2.6 / EIP-4361 parameters. When SIWE is enabled the signed
+   * message's domain and uri must match these, so a message minted for another
+   * origin can never be replayed here.
+   */
   SIWE_ENABLED: booleanish,
+  SIWE_DOMAIN: z.string().default('localhost'),
+  SIWE_URI: z.string().default('https://localhost'),
 
   // --- contract address published by dev-up (§9.3) -------------------------
   CONTRACT_ADDRESS: z

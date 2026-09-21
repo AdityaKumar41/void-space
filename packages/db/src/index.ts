@@ -34,6 +34,18 @@ export {
   type AuditLogRow,
 } from './audit';
 
+export {
+  generateApiKey,
+  hashApiKey,
+  parseApiKey,
+  verifyApiKey,
+  API_KEY_PREFIX,
+  type GeneratedApiKey,
+  type ParsedApiKey,
+} from './apikey';
+
+export { hashPassword, verifyPassword, bcryptCostOf, BCRYPT_COST } from './password';
+
 export { loadRootEnv, migrateDatabaseUrl, REPO_ROOT } from './env';
 
 // Prisma enums/types so consumers never import from the generated path directly.
