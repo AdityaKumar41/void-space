@@ -20,8 +20,10 @@ import type { MeshMetadata } from '@void-space/types';
 
 import { REPO_ROOT } from './env';
 import { buildGlbFixture } from './glb-fixture';
+import { buildShapeGlb, isShapeName, type ShapeName } from './glb-shapes';
 import { metadataFromGlbBuffer } from './glb-read';
 import { ipfsReachable, pinBuffer } from './ipfs-pin';
+import { syncPublicCatalogEntry } from './public-catalog';
 import { withTenant } from './tenant';
 
 export interface DemoVersionSpec {
@@ -43,17 +45,13 @@ export interface DemoVersionSpec {
 }
 
 export type DemoAssetStatus =
-  | 'draft'
-  | 'pending'
-  | 'needs_manual_review'
-  | 'approved'
-  | 'rejected'
-  | 'revision'
-  | 'published';
+  'draft' | 'pending' | 'needs_manual_review' | 'approved' | 'rejected' | 'revision' | 'published';
 
 export interface DemoAssetSpec {
   readonly key: string;
   readonly name: string;
+  /** FR-3.2 — the summary the marketplace and catalog render for this asset. */
+  readonly description: string;
   readonly category: string;
   readonly tags: readonly string[];
   readonly status: DemoAssetStatus;
@@ -61,6 +59,14 @@ export interface DemoAssetSpec {
   readonly versions: readonly DemoVersionSpec[];
   readonly currentVersionNumber: number;
   readonly sourceTool?: string;
+  /**
+   * The parametric shape this asset's generated fixture is built from.
+   *
+   * Without it every generated asset was the same sphere, so a catalogue of twelve different
+   * industrial assets rendered as twelve identical yellow balls. An asset with a bundled
+   * `modelFile` ignores this — the real file is the content.
+   */
+  readonly shape?: ShapeName;
   readonly ai?: {
     readonly tags: readonly string[];
     readonly description: string;
@@ -95,7 +101,6 @@ export interface DemoAssetSpec {
  * below this range, and the two sources stay distinguishable in the registry.
  */
 export interface AssetSeedResult {
-
   readonly assets: number;
   readonly auditEntries: number;
 }
@@ -142,6 +147,7 @@ export async function seedAsset(
         where: { id: assetId },
         update: {
           name: spec.name,
+          description: spec.description,
           category: spec.category,
           tags: [...spec.tags],
           status: nextStatus,
@@ -151,6 +157,7 @@ export async function seedAsset(
           tenantId,
           creatorId,
           name: spec.name,
+          description: spec.description,
           category: spec.category,
           tags: [...spec.tags],
           status: spec.status,
@@ -279,6 +286,14 @@ export async function seedAsset(
       // record the platform exists to make verifiable. `pnpm demo:publish` drives the real flow:
       // approve -> publish -> the chain-license worker mints -> the row is written from the receipt.
 
+      // §6.1 — keep the marketplace honest when re-seeding an existing database. An asset that is
+      // already published *and* holds an active licence gets its projection refreshed; one that is
+      // not published has any stale projection removed, so the seed cannot leave a listing behind
+      // for something that is no longer live. The first publish writes it too (worker path).
+      const projected = await syncPublicCatalogEntry(db, { tenantId, assetId });
+      // Deleted through the same transaction that made it stale, so the seed is atomic per asset.
+      if (!projected) await db.publicCatalogEntry.deleteMany({ where: { assetId } });
+
       // §3.10 — durable job mirror, including one deliberately failed job so the
       // job-status UI has a failure to render.
       for (const [index, job] of (spec.jobs ?? []).entries()) {
@@ -329,7 +344,9 @@ export async function seedAsset(
             action: entry.action,
             entityType: 'asset',
             entityId: assetId,
-            beforeState: entry.after ? ({ status: 'pending' } as Prisma.InputJsonValue) : Prisma.JsonNull,
+            beforeState: entry.after
+              ? ({ status: 'pending' } as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
             afterState: entry.after ? (entry.after as Prisma.InputJsonValue) : Prisma.JsonNull,
             txHash: entry.txHash ?? null,
             blockNumber: entry.txHash ? 42n : null,
@@ -438,6 +455,22 @@ function readBundledModel(fileName: string): Buffer {
     );
   }
 }
+/**
+ * Builds a generated `.glb` for an asset: the named shape when the spec has one, otherwise the
+ * exact-triangle-count sphere fixture.
+ *
+ * The shape recipes are authored at real-world scale, so their triangle counts follow from the
+ * geometry rather than from the declared budget. That is the point: the seed stores what the file
+ * *measures* (see `measuredColumns`), so the polycount shown in the interface is the artefact's own
+ * number rather than a figure invented to fill a column.
+ */
+function buildGeneratedGlb(spec: DemoAssetSpec, version: DemoVersionSpec): Buffer {
+  const shape = spec.shape;
+  if (!shape || !isShapeName(shape)) return buildGlbFixture(version.polycount);
+  return buildShapeGlb(shape);
+}
+
+
 
 /**
  * Resolves (and pins) the content one version points at.
@@ -454,10 +487,12 @@ async function buildFixture(
   const format = version.format.toLowerCase();
   const isGlb = format === '.glb' || format === '.gltf';
 
+  // A bundled model is the real thing; otherwise a named shape is built parametrically so the
+  // catalogue shows the object it claims to, falling back to the exact-count sphere fixture.
   const content = version.modelFile
     ? readBundledModel(version.modelFile)
     : isGlb
-      ? buildGlbFixture(version.polycount)
+      ? buildGeneratedGlb(spec, version)
       : Buffer.from(`${spec.key} v${version.versionNumber} demo fixture (${version.format})\n`);
 
   const metadata = (isGlb ? metadataFromGlbBuffer(content) : null) ?? EMPTY_METADATA;
@@ -513,6 +548,10 @@ const GLB = '.glb';
 const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   {
     key: 'draft-conveyor-belt',
+    shape: 'conveyor',
+    description:
+      'A modular conveyor belt run with side guards and adjustable legs, for line-layout planning and ' +
+      'operator-sightline checks.',
     name: 'Conveyor Belt Section A',
     category: 'Machinery',
     tags: ['conveyor', 'industrial', 'lowpoly'],
@@ -525,6 +564,10 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   },
   {
     key: 'pending-excavator',
+    shape: 'excavator',
+    description:
+      'A tracked hydraulic excavator with an articulated boom, bucket and enclosed cab, modelled at ' +
+      'working scale for plant-induction scenes.',
     name: 'Hydraulic Excavator 320',
     category: 'Machinery',
     tags: ['excavator', 'heavy-equipment', 'vehicle'],
@@ -548,6 +591,10 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   },
   {
     key: 'manual-review-harness',
+    shape: 'harness',
+    description:
+      'A full-body fall-arrest harness with leg, shoulder and chest straps and a dorsal D-ring, listed ' +
+      'with its certified working load.',
     name: 'Full-Body Safety Harness',
     category: 'Safety Equipment',
     tags: ['harness', 'ppe', 'fall-protection'],
@@ -575,6 +622,9 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   },
   {
     key: 'approved-crane',
+    shape: 'crane',
+    description:
+      'A tower crane mast, jib and counter-jib assembly for lift planning and site-access studies.',
     name: 'Tower Crane Assembly',
     category: 'Machinery',
     tags: ['crane', 'lifting', 'worksite'],
@@ -615,6 +665,9 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   },
   {
     key: 'revision-scaffold',
+    shape: 'scaffold',
+    description:
+      'A modular scaffolding bay with standards, ledgers, transoms and a boarded working platform.',
     name: 'Modular Scaffolding Kit',
     category: 'Environment',
     tags: ['scaffolding', 'modular', 'worksite'],
@@ -640,7 +693,10 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
       {
         body: 'Requesting a revision: upright meshes 3 and 7 have no UV layer.',
         authorRole: 'Assessor',
-        reply: { body: 'Thanks — fixing the UVs and re-uploading as version 2 today.', authorRole: 'Creator' },
+        reply: {
+          body: 'Thanks — fixing the UVs and re-uploading as version 2 today.',
+          authorRole: 'Creator',
+        },
       },
     ],
     jobs: [
@@ -650,6 +706,10 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   },
   {
     key: 'rejected-signage',
+    shape: 'sign',
+    description:
+      'A set of emergency exit signs: illuminated door plates and directional markers. Rejected for ' +
+      'using superseded pictograms.',
     name: 'Emergency Exit Signage Set',
     category: 'Prop',
     tags: ['signage', 'emergency', 'exit'],
@@ -673,6 +733,10 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   },
   {
     key: 'published-drill',
+    shape: 'drill',
+    description:
+      'A cordless impact drill with keyless chuck, battery pack and trigger, supplied as a handheld ' +
+      'prop.',
     name: 'Cordless Impact Drill',
     category: 'Tooling',
     tags: ['drill', 'power-tool', 'handheld'],
@@ -698,6 +762,10 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   },
   {
     key: 'published-imported-cone',
+    shape: 'cone',
+    description:
+      'A flexible traffic cone with a reflective collar, imported from a public-domain source and ' +
+      're-licensed here for training use.',
     name: 'Traffic Cone (imported)',
     category: 'Prop',
     tags: ['traffic-cone', 'cc0', 'imported', 'worksite'],
@@ -731,6 +799,9 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   // click and the mint happens for real.
   {
     key: 'model-heart',
+    description:
+      'A photogrammetry scan of a human heart with textured myocardium, visible great vessels and ' +
+      'high-frequency surface detail, for cardiology teaching modules.',
     name: 'Anatomical Heart (scanned)',
     category: 'Anatomy',
     tags: ['anatomy', 'cardiology', 'heart', 'scan', 'education'],
@@ -768,6 +839,9 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
   },
   {
     key: 'model-whale-skeleton',
+    description:
+      'A museum-mounted blue whale skeleton with individual vertebrae, ribs and flippers, scanned at ' +
+      'exhibition scale for anatomy study and gallery previews.',
     name: 'Blue Whale Skeleton',
     category: 'Anatomy',
     tags: ['anatomy', 'skeleton', 'whale', 'museum', 'education'],
@@ -808,6 +882,10 @@ const AURORA_ASSETS: readonly DemoAssetSpec[] = [
 const NORTHWIND_ASSETS: readonly DemoAssetSpec[] = [
   {
     key: 'nw-pending-ladder',
+    shape: 'ladder',
+    description:
+      'A three-section extension ladder with rung detail, locking pawls and rubber feet, awaiting ' +
+      'review.',
     name: 'Extension Ladder 3-Section',
     category: 'Safety Equipment',
     tags: ['ladder', 'access', 'work-at-height'],
@@ -831,6 +909,10 @@ const NORTHWIND_ASSETS: readonly DemoAssetSpec[] = [
   },
   {
     key: 'nw-published-anchor',
+    shape: 'anchor',
+    description:
+      'A cast fall-arrest anchor point with a welded D-ring, for roof-edge and plant-room ' +
+      'installations.',
     name: 'Fall-Arrest Anchor Point',
     category: 'Safety Equipment',
     tags: ['anchor-point', 'fall-arrest', 'roof'],
@@ -867,5 +949,3 @@ export async function seedTenantAssets(
   }
   return totals;
 }
-
-

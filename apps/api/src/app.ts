@@ -29,6 +29,7 @@ import { assetRoutes } from './modules/assets/routes';
 import { dashboardRoutes } from './modules/dashboard/routes';
 import { licensingRoutes } from './modules/licensing/routes';
 import { notificationRoutes } from './modules/notifications/routes';
+import { publicRoutes } from './modules/public/routes';
 import { reviewRoutes } from './modules/review/routes';
 import { authRoutes } from './modules/auth/routes';
 import { googleRoutes } from './modules/auth/google-routes';
@@ -251,6 +252,9 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   await app.register(licensingRoutes, { prefix: '/api/v1', env, producer });
   await app.register(notificationRoutes, { prefix: '/api/v1' });
   await app.register(dashboardRoutes, { prefix: '/api/v1' });
+  // §6.1 Public Catalog — the only unauthenticated surface, and the only one reading the
+  // cross-tenant projection rather than tenant-scoped tables.
+  await app.register(publicRoutes, { prefix: '/api/v1' });
 
   return app;
 }

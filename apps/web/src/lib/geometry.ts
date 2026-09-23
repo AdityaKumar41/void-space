@@ -161,3 +161,168 @@ export const TOLERANCE_RATIO = 0.02;
 export function formatCount(value: number): string {
   return Math.round(value).toLocaleString('en-US');
 }
+
+/* -------------------------------------------------------------------------------------------
+ * Scene inventory
+ *
+ * `measureScene` answers "how big is this?". A 3D artist asking whether a file is fit to license
+ * asks more than that: how many materials will I have to manage, are the textures embedded, is it
+ * rigged, do I have to author lighting. Those are all countable from the object graph, so they are
+ * counted here rather than guessed at in the viewer.
+ * ----------------------------------------------------------------------------------------- */
+
+/** One material as it will be presented in the studio's inventory panel. */
+export interface MaterialSummary {
+  readonly name: string;
+  /** `#rrggbb`, or null when the material carries no colour (e.g. an untextured physical sheet). */
+  readonly color: string | null;
+  /** The three.js class, shortened for display: `MeshStandardMaterial` → `Standard`. */
+  readonly kind: string;
+  readonly metalness: number | null;
+  readonly roughness: number | null;
+  /** True when the material resolves any texture map at all. */
+  readonly textured: boolean;
+  /** True when the material is double-sided, which usually means thin geometry. */
+  readonly doubleSided: boolean;
+}
+
+export interface SceneSummary {
+  readonly materials: MaterialSummary[];
+  /** Distinct texture maps referenced across every material. */
+  readonly textures: number;
+  /** Bones in the skeleton, so a rigged file is obvious before it is licensed. */
+  readonly bones: number;
+  readonly skinnedMeshes: number;
+  /** Non-mesh, non-bone objects that only carry a transform — usually a messy export. */
+  readonly emptyNodes: number;
+}
+
+export const EMPTY_SUMMARY: SceneSummary = {
+  materials: [],
+  textures: 0,
+  bones: 0,
+  skinnedMeshes: 0,
+  emptyNodes: 0,
+};
+
+/** Shrinks a three.js material class name to the part a person recognises. */
+export function shortMaterialKind(type: string): string {
+  return type.replace(/^Mesh/, '').replace(/Material$/, '') || type;
+}
+
+/** Structural slice of a material this module reads. */
+interface InspectableMaterial {
+  type?: string;
+  name?: string;
+  color?: { getHexString?: () => string };
+  metalness?: number;
+  roughness?: number;
+  side?: number;
+  transparent?: boolean;
+  map?: unknown;
+  normalMap?: unknown;
+  roughnessMap?: unknown;
+  metalnessMap?: unknown;
+  aoMap?: unknown;
+  emissiveMap?: unknown;
+  alphaMap?: unknown;
+  [key: string]: unknown;
+}
+
+/**
+ * Buckets every material, counts distinct textures, and finds rigging.
+ *
+ * Materials are deduplicated by identity: a GLB that instances one material across forty meshes
+ * should report one material, not forty. Textures are counted by identity too, and only from the
+ * map slots that actually carry image data, so a shadow-receiving `aoMap` on a plain colour is not
+ * miscounted as a texture.
+ */
+export function summariseScene(root: Traversable): SceneSummary {
+  const materials = new Map<InspectableMaterial, MaterialSummary>();
+  const textures = new Set<unknown>();
+  let bones = 0;
+  let skinnedMeshes = 0;
+  let emptyNodes = 0;
+
+  const TEXTURE_SLOTS = [
+    'map',
+    'normalMap',
+    'roughnessMap',
+    'metalnessMap',
+    'aoMap',
+    'emissiveMap',
+    'alphaMap',
+  ] as const;
+
+  root.traverse((object) => {
+    const node = object as {
+      isMesh?: boolean;
+      isSkinnedMesh?: boolean;
+      isBone?: boolean;
+      isLight?: boolean;
+      isCamera?: boolean;
+      isPoints?: boolean;
+      isLine?: boolean;
+      children?: unknown[];
+      material?: InspectableMaterial | InspectableMaterial[];
+      skeleton?: { bones?: unknown[] };
+    };
+
+    if (node.isBone) {
+      bones += 1;
+      return;
+    }
+
+    if (node.isMesh) {
+      if (node.isSkinnedMesh) skinnedMeshes += 1;
+
+      const list = Array.isArray(node.material)
+        ? node.material
+        : node.material
+          ? [node.material]
+          : [];
+
+      for (const material of list) {
+        for (const slot of TEXTURE_SLOTS) {
+          const texture = material[slot];
+          if (texture) textures.add(texture);
+        }
+
+        if (materials.has(material)) continue;
+
+        materials.set(material, {
+          name: material.name && material.name.length > 0 ? material.name : '',
+          color: material.color?.getHexString ? `#${material.color.getHexString()}` : null,
+          kind: shortMaterialKind(material.type ?? 'Material'),
+          metalness: typeof material.metalness === 'number' ? material.metalness : null,
+          roughness: typeof material.roughness === 'number' ? material.roughness : null,
+          textured: TEXTURE_SLOTS.some((slot) => Boolean(material[slot])),
+          doubleSided: material.side === 2,
+        });
+      }
+      return;
+    }
+
+    // A node with a transform but nothing to draw is dead weight in an export. Counting it is a
+    // cheap way to show an artist that a file needs cleaning before it ships.
+    if (
+      node.children &&
+      node.children.length === 0 &&
+      !node.isLight &&
+      !node.isCamera &&
+      !node.isPoints &&
+      !node.isLine &&
+      !node.isBone
+    ) {
+      emptyNodes += 1;
+    }
+  });
+
+  return {
+    materials: [...materials.values()],
+    textures: textures.size,
+    bones,
+    skinnedMeshes,
+    emptyNodes,
+  };
+}

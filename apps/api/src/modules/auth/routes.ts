@@ -39,7 +39,12 @@ import {
 } from '../../lib/cookies';
 import { parseDurationSeconds } from '../../lib/duration';
 import { parseBody, requestContext } from '../../lib/http';
-import { buildAuthService, type AuthenticatedResult, type TenantSelectionRequired } from './service';
+import {
+  buildAuthService,
+  loadMemberships,
+  type AuthenticatedResult,
+  type TenantSelectionRequired,
+} from './service';
 
 /**
  * FR-2.1 — per-route limits on top of the global one, to blunt credential stuffing.
@@ -183,12 +188,21 @@ export async function authRoutes(
     const principal = request.principal;
     if (!principal) return reply.status(401).send({ code: 'UNAUTHENTICATED' });
 
+    // The workspace list is read on every call rather than carried in the token: a membership added
+    // or removed elsewhere must show up without waiting for the access token to expire (FR-1.4).
+    const memberships = await loadMemberships(principal.email);
+
     const session: SessionUser = {
       id: principal.userId,
       email: principal.email,
       fullName: principal.fullName,
       activeTenantId: principal.tenantId,
-      tenants: [],
+      tenants: memberships.map((membership) => ({
+        id: membership.tenantId,
+        name: membership.tenantName,
+        slug: membership.tenantSlug,
+        roles: membership.roles,
+      })),
       roles: [...principal.roles],
       permissions: [...principal.permissions],
     };

@@ -12,7 +12,7 @@
  * The asset only becomes `published` at step 4, which is the point: nothing is advertised as
  * live until a transaction receipt exists.
  */
-import { recordAudit, withTenant } from '@void-space/db';
+import { recordAudit, removePublicCatalogEntry, syncPublicCatalogEntry, withTenant } from '@void-space/db';
 import { licenseMetadataDocumentSchema, type LicenseMetadataDocument } from '@void-space/types';
 import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
@@ -378,6 +378,10 @@ async function markPublished(
       db,
     );
 
+    // §6.1 — the marketplace is an anonymous read model, so the projection is written here, at the
+    // only moment an asset can genuinely be listed: after a receipt exists. A takedown deletes it.
+    await syncPublicCatalogEntry(db, { tenantId, assetId: payload.assetId });
+
     if (payload.publishToXr !== false) {
       const xrPayload = {
         tenantId,
@@ -463,6 +467,10 @@ async function revoke(
   await withTenant(tenantId, (db) =>
     db.license.update({ where: { id: license.id }, data: { revokedTxHash: result.txHash } }),
   );
+
+  // §6.1/FR-9.5 — a takedown removes the asset from the marketplace. The token is not burned and
+  // the licence row keeps its history; only the public listing goes away.
+  await removePublicCatalogEntry(assetId);
 
   return { tokenId: license.tokenId.toString(), txHash: result.txHash, revoked: true };
 }

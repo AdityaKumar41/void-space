@@ -219,7 +219,7 @@ export function AssetQuickLook({
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2 border-t pt-4" style={{ borderColor: 'var(--vs-line)' }}>
-              <Link href={`/assets/${asset.id}`} className="vs-btn vs-btn-primary">
+              <Link href={`/console/assets/${asset.id}`} className="vs-btn vs-btn-primary">
                 OPEN FULL RECORD
               </Link>
               {asset.xrModuleUrl ? (

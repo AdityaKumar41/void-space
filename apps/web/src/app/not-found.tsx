@@ -23,13 +23,13 @@ export default function NotFound() {
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Link href="/" className="vs-btn vs-btn-primary">
-              BACK TO OVERVIEW
+              BROWSE THE CATALOGUE
             </Link>
-            <Link href="/library" className="vs-btn">
+            <Link href="/console" className="vs-btn">
+              CONSOLE OVERVIEW
+            </Link>
+            <Link href="/console/library" className="vs-btn vs-btn-quiet">
               ASSET LIBRARY
-            </Link>
-            <Link href="/catalog" className="vs-btn vs-btn-quiet">
-              MARKETPLACE
             </Link>
           </div>
         </div>

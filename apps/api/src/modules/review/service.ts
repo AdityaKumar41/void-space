@@ -219,6 +219,7 @@ export function createReviewService(deps: ReviewServiceDeps): ReviewService {
         return {
           id: asset.id,
           name: asset.name,
+          description: asset.description,
           category: asset.category,
           tags: asset.tags,
           status: asset.status,
@@ -419,6 +420,15 @@ export function createReviewService(deps: ReviewServiceDeps): ReviewService {
 
         if (input.acceptAiTags) {
           await db.asset.update({ where: { id: assetId }, data: { tags: acceptedTags } });
+        }
+
+        // FR-7.5 — accepting the description must actually reach the asset, otherwise the catalog
+        // and marketplace have nothing to render and the acceptance is only a note on the suggestion.
+        if (input.acceptAiDescription && suggestion.suggestedDescription) {
+          await db.asset.update({
+            where: { id: assetId },
+            data: { description: suggestion.suggestedDescription.slice(0, 4000) },
+          });
         }
       }
 

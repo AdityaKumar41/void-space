@@ -176,8 +176,14 @@ services:
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-access-secret-change-me}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-only-refresh-secret-change-me}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Must match the worker exactly: the API stages an upload, the worker picks that file up and
+      # pins it. Two different roots (or one container without the volume) means the pin worker
+      # never sees the bytes it was told to pin.
+      STAGING_DIR: /var/lib/void-space/uploads/staging
+      STAGING_MAX_BYTES: ${STAGING_MAX_BYTES:-5368709120}
     volumes:
       - contractsdata:/shared:ro
+      - uploads:/var/lib/void-space/uploads
     restart: unless-stopped
 
   worker:
@@ -203,6 +209,7 @@ services:
       PLATFORM_SIGNER_SEED: ${PLATFORM_SIGNER_SEED}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      STAGING_DIR: /var/lib/void-space/uploads/staging
     volumes:
       - contractsdata:/shared:ro
       - uploads:/var/lib/void-space/uploads
@@ -220,6 +227,10 @@ services:
       # Server-side calls only; the browser talks to nginx (§3.1).
       API_INTERNAL_URL: http://api:4000
       NEXT_PUBLIC_API_BASE_URL: /api/v1
+      # The `/ipfs/[cid]` proxy route streams from Kubo. Through the edge, nginx serves and caches
+      # this path itself; this is what makes a model preview work when the app is opened directly on
+      # its own port instead.
+      IPFS_GATEWAY_URL: http://ipfs:8080
     restart: unless-stopped
 
   # --------------------------------------------- headless Blender (FR-6.3)

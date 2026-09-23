@@ -205,6 +205,7 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
     return {
       id: asset.id,
       name: asset.name,
+      description: asset.description,
       category: asset.category,
       tags: asset.tags,
       status: asset.status,
@@ -346,8 +347,10 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
           tenantId: principal.tenantId,
           creatorId: principal.userId,
           name: metadata.name,
+          description: metadata.description ?? null,
           category: metadata.category,
           tags: metadata.tags,
+          metadata: (metadata.metadata ?? undefined) as never,
           status: targetStatus,
         },
       });
@@ -690,8 +693,10 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
         where: { id: assetId },
         data: {
           ...(input.name ? { name: input.name } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.category ? { category: input.category } : {}),
           ...(input.tags ? { tags: input.tags } : {}),
+          ...(input.metadata ? { metadata: input.metadata as never } : {}),
         },
       });
 

@@ -11,8 +11,19 @@ import { booleanishSchema, paginationQuerySchema } from './common';
 /** FR-3.2: Name and Category are required; Tags and Source Tool are optional. */
 export const createAssetMetadataSchema = z.object({
   name: z.string().min(1).max(200),
+  /**
+   * FR-3.2 — a short human summary. Optional at upload (the AI enricher proposes one), but the
+   * marketplace and catalog render whatever ends up here, so it is capped to keep a card sane.
+   */
+  description: z.string().max(4000).optional(),
   category: z.string().min(1).max(60),
   tags: z.array(z.string().min(1).max(40)).max(25).default([]),
+  /**
+   * FR-3.2/FR-14.3 — tenant-defined structured attributes (e.g. `{ "scale": "1:1", "lod": 2 }`).
+   * Stored as JSON and validated against the tenant's `requiredMetadataFields` on submit, so a
+   * workspace can demand fields the schema was never told about.
+   */
+  metadata: z.record(z.unknown()).optional(),
   sourceTool: z.enum(SOURCE_TOOLS).optional(),
   /** FR-3.3: 'draft' when saved without submission, 'pending' when submitted. */
   submitForReview: booleanishSchema.default(true),
@@ -112,6 +123,8 @@ export interface LicenseSummary {
 export interface AssetSummary {
   readonly id: string;
   readonly name: string;
+  /** FR-3.2 — null until written at upload or promoted from an accepted AI suggestion. */
+  readonly description: string | null;
   readonly category: string;
   readonly tags: readonly string[];
   readonly status: AssetStatus;
@@ -176,4 +189,85 @@ export interface MeshMetadata {
   readonly animations: number | null;
   readonly textures: number | null;
   readonly boundingBox: { min: [number, number, number]; max: [number, number, number] } | null;
+}
+
+/**
+ * §6.1 "Public Catalog" — the anonymous marketplace contract.
+ *
+ * Mirrors `PublicCatalogItem` in @void-space/db but is declared separately on purpose: the
+ * marketplace payload is an allow-list of fields, and sharing one interface with the tenant-side
+ * asset view is exactly how a private field becomes public by accident.
+ */
+export interface PublicCatalogItem {
+  readonly assetId: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly category: string;
+  readonly tags: readonly string[];
+  /** Attribution visible to anonymous visitors — the workspace display name only. */
+  readonly tenantName: string;
+  readonly format: string;
+  /** Bytes as a string: `BigInt` does not survive JSON. */
+  readonly sizeBytes: string;
+  readonly polycount: number | null;
+  readonly vertices: number | null;
+  readonly materials: number | null;
+  readonly textures: number | null;
+  readonly animations: number | null;
+  /** FR-8.1 — content address, fetchable through `GET /ipfs/<cid>` on the edge. */
+  readonly ipfsCid: string;
+  readonly licenseType: string;
+  readonly licenseTerms: string | null;
+  readonly tokenId: string | null;
+  readonly contractAddress: string | null;
+  readonly txHash: string | null;
+  readonly licenseMetadataCid: string | null;
+  readonly xrManifestRef: string | null;
+  /** NFR-COMP.1 — a third-party source licence stays visible to buyers. */
+  readonly sourceLicense: string | null;
+  readonly sourceAttribution: string | null;
+  readonly sourceUrl: string | null;
+  readonly publishedAt: string;
+}
+
+export interface PublicCatalogPage {
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
+  readonly sort?: PublicCatalogSort;
+  readonly items: readonly PublicCatalogItem[];
+}
+
+/**
+ * The orders the catalogue accepts, shared by the API validator, the storefront and the console.
+ *
+ * Declared once, here, as a value: `PublicCatalogSort` is derived from it, the API's `z.enum` uses it
+ * directly, and the storefront renders its options from it. A closed set rather than a free-text
+ * field because the value reaches Prisma's `orderBy` — accepting arbitrary column names would turn a
+ * public endpoint into a schema probe.
+ */
+export const PUBLIC_CATALOG_SORTS = [
+  'newest',
+  'oldest',
+  'triangles-desc',
+  'size-desc',
+  'name',
+] as const;
+
+export type PublicCatalogSort = (typeof PUBLIC_CATALOG_SORTS)[number];
+
+export interface PublicCatalogFacets {
+  readonly total: number;
+  readonly categories: readonly { value: string; count: number }[];
+  readonly licenseTypes: readonly { value: string; count: number }[];
+  readonly tags: readonly { value: string; count: number }[];
+  readonly polygons: number;
+  readonly bytes: string;
+}
+
+export interface PublicCatalogStats {
+  readonly published: number;
+  readonly polygons: number;
+  readonly bytes: string;
+  readonly categories: number;
 }

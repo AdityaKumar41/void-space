@@ -70,6 +70,16 @@ pnpm dev              # api + worker + web in watch mode
 Then open **https://localhost** (self-signed dev certificate — `pnpm certs` regenerates it; if you
 have `mkcert`, the certificate is trusted automatically).
 
+> **Browse via `https://localhost` only — do not use `http://localhost:3000`.**
+> The browser reaches the API at the relative path `/api/v1` (SRS §3.1), which only resolves
+> through the nginx edge. The Next dev server on `:3000` serves no `/api/v1` routes, so it
+> answers those calls with its HTML 404 page and sign-in fails with
+> `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`.
+
+> **The login form is pre-filled with `creator@aurora.dev`** — that account is Creator
+> (uploads only, reduced nav). For every console page, including Review Queue, Audit and
+> Administration, sign in as **`admin@aurora.dev`** instead.
+
 Demo credentials (created by `pnpm db:seed`, password `VoidSpace!2026`):
 
 | Email | Role | Tenant |
@@ -88,7 +98,7 @@ Demo credentials (created by `pnpm db:seed`, password `VoidSpace!2026`):
 | Service | Container | Host port | Notes |
 |---|---|---|---|
 | nginx (edge) | `void-space-nginx-1` | 80, 443 | TLS termination, rate limit, IPFS gateway cache |
-| web | run natively by `pnpm dev` | 3000 | Reachable as `http://localhost:3000` |
+| web | run natively by `pnpm dev` | 3000 | Next dev server. Browse via `https://localhost`, never `:3000` — see the note above. |
 | api | run natively by `pnpm dev` | 4000 | `GET /api/v1/health`, Swagger UI at `/api/v1/docs` |
 | worker | run natively by `pnpm dev` | — | BullMQ processors |
 | postgres | `…-postgres-1` | 5432 | dev only |

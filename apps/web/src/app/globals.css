@@ -1,51 +1,179 @@
 /*
- * VOID·SPACE — Tactical Telemetry design system.
+ * VOID·SPACE — design system.
  *
- * Direction: "Industrial Brutalist / Tactical Telemetry" (see .agents/skills/industrial-brutalist-ui).
- * Rules taken literally: dark CRT substrate only, monospace micro-typography in uppercase,
- * zero border-radius, no gradients/shadows/translucency, one hazard-red accent, and a
- * visible 1px grid built from `gap` + contrasting backgrounds rather than borders.
+ * Direction: "Ethereal Glass" for a 3D asset marketplace. Deep OLED ground, two very low-opacity
+ * radial light sources so the page has depth instead of being flat black, glass only on the layers
+ * that float above content (headers, dialogs, toolbars), and a single violet accent kept for the
+ * things that deserve attention: the primary action, the active nav item, a live licence.
  *
- * A 3D asset platform is a data instrument: the layout is engineered, not decorated.
+ * The previous system was a "tactical telemetry" terminal — monospace everywhere, zero radius, no
+ * shadows, all-caps micro-labels. It was coherent, but it read as an instrument panel, which is the
+ * wrong impression for a marketplace whose whole point is that 3D objects look good. This keeps the
+ * data density and the honesty of the states, and changes the presentation.
+ *
+ * Class names are unchanged on purpose: screens that have not been restructured yet inherit the new
+ * language and stay consistent rather than half-old, half-new.
  */
+
+/*
+ * Typography is self-hosted.
+ *
+ * Plus Jakarta Sans for interface and display, JetBrains Mono for identifiers and figures. The
+ * files live in apps/web/public/fonts and are served from our own origin: a marketplace that
+ * renders nothing until fonts.googleapis.com answers is broken on a locked-down network — and
+ * the container build cannot reach Google at all.
+ */
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/fonts/plus-jakarta-sans-800.woff2') format('woff2');
+}
+
+/*
+ * Instrument Serif — catalogue headings only.
+ *
+ * A serif at display size is what separates a *catalogue* from a dashboard. It also does a job the
+ * sans cannot: at 56px it holds a long asset name on one line without shouting, so the model stays
+ * the loudest thing on the page. Not used below 20px, and never for UI text.
+ */
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif-regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif-italic.woff2') format('woff2');
+}
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * TOKENS — "Foundry" direction.
+ *
+ * The previous palette was violet-on-OLED with translucent-white surfaces and a radial glow behind
+ * the hero. It is the most-produced look on the web and it made a catalogue of scanned objects read
+ * as a SaaS dashboard: nothing on the page looked like it had been *made*. This one is the opposite
+ * by construction.
+ *
+ * Three rules hold it together:
+ *
+ *  1. **Solid, not translucent.** Panels are opaque greys. Depth comes from one 1px line and one
+ *     honest shadow, so an elevated surface reads as a physical layer rather than a fog.
+ *  2. **Colour is information.** The interface itself is monochrome — graphite ground, paper text.
+ *     Saturated colour appears only where it carries meaning: a lifecycle state, a live licence, a
+ *     failed decode. A verified on-chain record is the product's whole claim, so it gets a hue and
+ *     nothing decorative competes with it.
+ *  3. **Paper primary, ink on top.** The strongest action is the least coloured button on the page.
+ */
 :root {
-  /* Substrate: deactivated CRT, never pure black. */
-  --vs-bg: #0a0a0a;
-  --vs-surface: #121212;
-  --vs-surface-2: #171717;
-  --vs-line: #2a2a2a;
-  --vs-line-strong: #3d3d3d;
+  /* --- ground: graphite, layered so elevation is legible without glow -------------------- */
+  --vs-bg: #08080a;
+  --vs-surface: #101013;
+  --vs-surface-2: #16161a;
+  --vs-surface-3: #1d1d22;
+  --vs-line: #232329;
+  --vs-line-strong: #34343d;
 
-  /* Phosphor text ramp. */
-  --vs-fg: #eaeaea;
-  --vs-fg-dim: #9a9a9a;
-  --vs-fg-faint: #6b6b6b;
+  /* --- text ramp ------------------------------------------------------------------------ */
+  --vs-fg: #f3f3f5;
+  --vs-fg-dim: #9d9daa;
+  --vs-fg-faint: #6c6c7a;
 
-  /* The only accent. Hazard red. */
-  --vs-accent: #e61919;
-  --vs-accent-warm: #ff2a2a;
+  /* --- interactive accent: cobalt. Links, focus, selected state. Never decorative. -------- */
+  --vs-accent: #6ea8fe;
+  --vs-accent-warm: #9dc4ff;
+  /* Text that sits on the paper (primary) button. */
+  --vs-accent-ink: #0a0a0c;
 
-  /* Terminal green: reserved for a single status readout (job queue health). */
-  --vs-signal: #4af626;
+  /* Verification / live. Reserved for the provenance claim: a valid licence, a pinned CID. */
+  --vs-signal: #3ddc97;
+  /* --- the second signal, used by the 3D studio for axes and measurement ---------------- */
+  --vs-axis-x: #ff6b6b;
+  --vs-axis-y: #6ee7a8;
+  --vs-axis-z: #6ea8fe;
 
-  /* Lifecycle status encoding — deliberately few, high-contrast, no pastels. */
-  --vs-draft: #6b6b6b;
-  --vs-pending: #d9a400;
-  --vs-review: #e61919;
-  --vs-approved: #2f8f4e;
-  --vs-published: #4af626;
-  --vs-rejected: #e61919;
-  --vs-revision: #d9a400;
-}
+  /* Lifecycle status encodings (SRS §5.1), tuned for a dark ground. */
+  --vs-draft: #8b8b99;
+  --vs-pending: #e8b13f;
+  --vs-review: #f08a6c;
+  --vs-approved: #3ddc97;
+  --vs-published: #6ef0b4;
+  --vs-rejected: #f0655f;
+  --vs-revision: #e8b13f;
 
-* {
-  /* Absolute rejection of border-radius: all corners are 90 degrees. */
-  border-radius: 0 !important;
+  /* --- type ----------------------------------------------------------------------------- */
+  --vs-font-sans:
+    'Plus Jakarta Sans', 'Segoe UI', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --vs-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* An editorial serif for catalogue headings. Self-hosted like the rest (see the @font-face notes). */
+  --vs-font-display: 'Instrument Serif', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+
+  /* --- geometry: tighter than before. Big pill radii read as "template". ---------------- */
+  --vs-radius-sm: 6px;
+  --vs-radius: 10px;
+  --vs-radius-lg: 14px;
+
+  /* Neutral elevation. No coloured bloom: that is what made the old build look generated. */
+  --vs-shadow: 0 1px 2px rgba(0, 0, 0, 0.6), 0 8px 24px -12px rgba(0, 0, 0, 0.8);
+  --vs-shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.65), 0 32px 64px -24px rgba(0, 0, 0, 0.9);
+
+  --vs-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* --- spacing rhythm: one scale, so vertical space is a decision and not a guess -------- */
+  --vs-gutter: clamp(16px, 3.2vw, 40px);
+  --vs-max: 1440px;
 }
 
 html,
@@ -55,254 +183,92 @@ body {
 }
 
 body {
-  font-family: var(--vs-font-mono);
-  font-size: 13px;
-  line-height: 1.4;
-  letter-spacing: 0.02em;
+  font-family: var(--vs-font-sans);
+  font-size: 14px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-:root {
-  --vs-font-mono: 'JetBrains Mono', 'IBM Plex Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
-  --vs-font-display: 'Archivo Black', 'Inter', system-ui, 'Helvetica Neue', sans-serif;
-}
+/* --- Background depth: two radial glows + film grain ------------------------------- */
 
-/* --- CRT substrate: scanlines + low-amplitude noise ----------------------- */
-body::before {
-  content: '';
+.vs-atmosphere {
   position: fixed;
   inset: 0;
+  z-index: 0;
   pointer-events: none;
-  z-index: 9999;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.16) 2px,
-    rgba(0, 0, 0, 0.16) 4px
-  );
-  mix-blend-mode: multiply;
+  background:
+    radial-gradient(680px 420px at 12% -8%, rgba(139, 108, 246, 0.16), transparent 70%),
+    radial-gradient(560px 380px at 92% 6%, rgba(53, 200, 216, 0.1), transparent 72%),
+    radial-gradient(900px 600px at 50% 120%, rgba(139, 108, 246, 0.08), transparent 70%);
 }
 
-body::after {
-  content: '';
+/* Grain lives on a fixed pseudo-element, never on a scrolling container. */
+.vs-grain {
   position: fixed;
   inset: 0;
+  z-index: 1;
   pointer-events: none;
-  z-index: 9998;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 ::selection {
   background: var(--vs-accent);
-  color: #0a0a0a;
+  color: var(--vs-accent-ink);
 }
 
-/* --- Typography ----------------------------------------------------------- */
+/* --- Typography ----------------------------------------------------------------------- */
+
 .vs-display {
   font-family: var(--vs-font-display);
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: -0.04em;
-  line-height: 0.9;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  line-height: 1.05;
 }
 
 .vs-macro {
   font-family: var(--vs-font-display);
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: -0.05em;
-  line-height: 0.85;
-  font-size: clamp(2.5rem, 6vw, 5.5rem);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 0.92;
+  font-size: clamp(2.75rem, 7vw, 6rem);
 }
 
+/* The one label style: small, spaced, quiet. Used above values, never for prose. */
 .vs-label {
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--vs-fg-faint);
 }
 
+/* Identifiers, counts, hashes. Tabular so columns of numbers line up. */
 .vs-data {
   font-family: var(--vs-font-mono);
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--vs-fg-dim);
 }
 
 .vs-num {
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  font-feature-settings: 'tnum';
 }
 
-/* --- Structure ----------------------------------------------------------- */
-/* Razor-thin dividers without border declarations: parent and child backgrounds
-   differ, and the 1px gap between grid tracks becomes the line. */
-.vs-grid-lines {
-  display: grid;
-  gap: 1px;
-  background: var(--vs-line);
-}
-
-.vs-grid-lines > * {
-  background: var(--vs-surface);
-}
-
-.vs-panel {
-  background: var(--vs-surface);
-  border: 1px solid var(--vs-line);
-}
-
-.vs-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--vs-line-strong);
-  background: var(--vs-surface-2);
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+.vs-prose {
+  max-width: 68ch;
+  line-height: 1.65;
+  font-size: 13.5px;
   color: var(--vs-fg-dim);
+  text-wrap: pretty;
 }
 
-.vs-rule {
-  height: 1px;
-  background: var(--vs-line);
-}
-
-/* Warning stripes: used only on genuinely destructive affordances. */
-.vs-hazard {
-  background-image: repeating-linear-gradient(
-    45deg,
-    var(--vs-accent) 0 8px,
-    transparent 8px 16px
-  );
-}
-
-/* --- Controls ------------------------------------------------------------ */
-.vs-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  border: 1px solid var(--vs-line-strong);
-  background: var(--vs-surface-2);
+.vs-prose strong {
   color: var(--vs-fg);
-  font-family: var(--vs-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: none;
-}
-
-.vs-btn:hover:not(:disabled) {
-  background: var(--vs-fg);
-  color: var(--vs-bg);
-}
-
-.vs-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.vs-btn-primary {
-  background: var(--vs-accent);
-  border-color: var(--vs-accent);
-  color: #0a0a0a;
-  font-weight: 700;
-}
-
-.vs-btn-primary:hover:not(:disabled) {
-  background: var(--vs-accent-warm);
-  color: #0a0a0a;
-}
-
-.vs-input,
-.vs-select,
-.vs-textarea {
-  width: 100%;
-  padding: 9px 11px;
-  border: 1px solid var(--vs-line-strong);
-  background: #0d0d0d;
-  color: var(--vs-fg);
-  font-family: var(--vs-font-mono);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-}
-
-.vs-input:focus,
-.vs-select:focus,
-.vs-textarea:focus {
-  outline: none;
-  border-color: var(--vs-accent);
-}
-
-.vs-input::placeholder,
-.vs-textarea::placeholder {
-  color: var(--vs-fg-faint);
-  text-transform: none;
-}
-
-.vs-nav-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
-  border-left: 2px solid transparent;
-  color: var(--vs-fg-dim);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.vs-nav-link:hover {
-  background: var(--vs-surface-2);
-  color: var(--vs-fg);
-}
-
-.vs-nav-link[data-active='true'] {
-  border-left-color: var(--vs-accent);
-  background: var(--vs-surface-2);
-  color: var(--vs-fg);
-}
-
-.vs-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.vs-table th {
-  text-align: left;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--vs-line-strong);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--vs-fg-faint);
-  font-weight: 500;
-}
-
-.vs-table td {
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--vs-line);
-  vertical-align: middle;
-}
-
-.vs-table tbody tr:hover {
-  background: var(--vs-surface-2);
-}
-
-.vs-link {
-  color: var(--vs-fg);
-  text-decoration: underline;
-  text-decoration-color: var(--vs-accent);
-  text-underline-offset: 3px;
+  font-weight: 600;
 }
 
 .vs-accent {
@@ -313,7 +279,20 @@ body::after {
   color: var(--vs-signal);
 }
 
-/* Blinking cursor for the "live" telemetry readouts. */
+.vs-link {
+  color: var(--vs-fg);
+  text-decoration: none;
+  border-bottom: 1px solid var(--vs-accent);
+  padding-bottom: 1px;
+  transition:
+    color 160ms var(--vs-ease),
+    border-color 160ms var(--vs-ease);
+}
+
+.vs-link:hover {
+  color: var(--vs-accent-warm);
+}
+
 .vs-cursor::after {
   content: '▌';
   animation: vs-blink 1.1s steps(2, start) infinite;
@@ -326,49 +305,111 @@ body::after {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .vs-cursor::after {
-    animation: none;
-  }
+/* --- Surfaces ------------------------------------------------------------------------- */
+
+/*
+ * The Double-Bezel: an outer shell that carries the hairline and the elevation, and an inner core
+ * that holds content. It reads as one solid object rather than a bordered div, which is the
+ * difference between "a card" and "a panel that was designed".
+ */
+.vs-panel {
+  position: relative;
+  border-radius: var(--vs-radius-lg);
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-line);
+  box-shadow: var(--vs-shadow);
+  overflow: hidden;
 }
 
-/* Scrollbars in the same register as the substrate. */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+/* A brighter hairline on the top edge, as if lit from above. */
+.vs-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  pointer-events: none;
 }
 
-::-webkit-scrollbar-track {
-  background: var(--vs-bg);
+.vs-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--vs-line);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--vs-fg);
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--vs-line-strong);
+.vs-panel-head .vs-data {
+  color: var(--vs-fg-faint);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--vs-fg-faint);
+/* Glass: only for layers that float above content (headers, overlays, toolbars). */
+.vs-glass {
+  background: rgba(10, 10, 14, 0.72);
+  backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--vs-line-strong);
+  box-shadow: var(--vs-shadow-lg);
 }
 
-/* ==========================================================================
- * Interaction polish
- *
- * The brutalist rules reject decoration, but they must not reject feedback: a control that gives
- * no sign of being clickable, hovered, focused or busy is a usability defect, not a style choice.
- * Everything here is still square, 1px and unshadowed.
- * ========================================================================== */
+/* --- Buttons -------------------------------------------------------------------------- */
 
-/* Keyboard users get a visible ring; mouse users do not. */
-:focus-visible {
-  outline: 2px solid var(--vs-accent);
-  outline-offset: 2px;
+.vs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--vs-line-strong);
+  background: var(--vs-surface-2);
+  color: var(--vs-fg);
+  font-family: var(--vs-font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    transform 180ms var(--vs-ease),
+    background 180ms var(--vs-ease),
+    border-color 180ms var(--vs-ease),
+    color 180ms var(--vs-ease),
+    box-shadow 180ms var(--vs-ease);
 }
 
+.vs-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+/* Press physics: the control moves toward the surface rather than just changing colour. */
 .vs-btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(0) scale(0.985);
 }
 
-/* Quiet: a real action that should not compete with the primary one. */
+.vs-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.vs-btn-primary {
+  background: linear-gradient(180deg, var(--vs-accent-warm), var(--vs-accent));
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--vs-accent-ink);
+  box-shadow: 0 10px 26px -14px rgba(139, 108, 246, 0.9);
+}
+
+.vs-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #b19bff, var(--vs-accent-warm));
+  color: var(--vs-accent-ink);
+}
+
 .vs-btn-quiet {
   background: transparent;
   border-color: var(--vs-line-strong);
@@ -380,91 +421,263 @@ body::after {
   color: var(--vs-fg);
 }
 
-/* Ghost: an overlay control sitting on top of imagery or a 3D canvas. */
 .vs-btn-ghost {
-  padding: 5px 9px;
-  font-size: 10px;
-  background: rgba(10, 10, 10, 0.72);
+  padding: 6px 11px;
+  font-size: 11.5px;
+  background: rgba(8, 8, 12, 0.66);
   border-color: var(--vs-line-strong);
   color: var(--vs-fg-dim);
-  backdrop-filter: blur(2px);
-}
-
-.vs-btn-ghost:hover:not(:disabled) {
-  background: var(--vs-fg);
-  color: var(--vs-bg);
+  backdrop-filter: blur(14px);
 }
 
 .vs-btn-ghost[aria-pressed='true'] {
   border-color: var(--vs-accent);
-  color: var(--vs-accent);
+  color: var(--vs-accent-warm);
 }
 
-.vs-btn-ghost[aria-pressed='true']:hover {
-  background: var(--vs-accent);
-  color: var(--vs-bg);
+/* --- Inputs --------------------------------------------------------------------------- */
+
+.vs-input,
+.vs-select,
+.vs-textarea {
+  width: 100%;
+  padding: 10px 13px;
+  border-radius: var(--vs-radius-sm);
+  border: 1px solid var(--vs-line-strong);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--vs-fg);
+  font-family: var(--vs-font-sans);
+  font-size: 13px;
+  transition:
+    border-color 160ms var(--vs-ease),
+    box-shadow 160ms var(--vs-ease);
 }
 
-/* Skip link: hidden until focused, then it lands in the top-left as a real control. */
+.vs-input:focus,
+.vs-select:focus,
+.vs-textarea:focus {
+  outline: none;
+  border-color: var(--vs-accent);
+  box-shadow: 0 0 0 4px rgba(139, 108, 246, 0.16);
+}
+
+.vs-input::placeholder,
+.vs-textarea::placeholder {
+  color: var(--vs-fg-faint);
+}
+
+.vs-select option {
+  background: #0b0b10;
+  color: var(--vs-fg);
+}
+
+/* --- Navigation ----------------------------------------------------------------------- */
+
+.vs-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  color: var(--vs-fg-dim);
+  font-size: 12.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    color 160ms var(--vs-ease),
+    background 160ms var(--vs-ease);
+}
+
+.vs-nav-link:hover {
+  background: var(--vs-surface-2);
+  color: var(--vs-fg);
+}
+
+.vs-nav-link[data-active='true'] {
+  background: rgba(139, 108, 246, 0.16);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(139, 108, 246, 0.35);
+}
+
+/* --- Tables --------------------------------------------------------------------------- */
+
+.vs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.vs-table th {
+  text-align: left;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--vs-line-strong);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vs-fg-faint);
+}
+
+.vs-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--vs-line);
+  vertical-align: middle;
+}
+
+.vs-table tbody tr {
+  transition: background 140ms var(--vs-ease);
+}
+
+.vs-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+/*
+ * A stat strip: a grid of equal cells separated by hairlines drawn from the 1px gap showing the
+ * surface colour behind. This is *layout*, not decoration — it is what the counters on Overview,
+ * Review, Admin and the asset console sit in.
+ *
+ * The name matters here. It used to be called `vs-grid-lines`, which reads like a decorative mesh,
+ * and a later pass that was removing generated-looking ornament (glow, grain, fake telemetry
+ * texture) reasonably-but-wrongly read it that way and disabled it with `display: none !important`.
+ * Three dashboards silently lost their figures while still returning HTTP 200 and logging no error.
+ * The name is now unmistakable, and the ornament that really was ornament stays disabled below.
+ */
+.vs-stat-strip {
+  display: grid;
+  gap: 1px;
+  background: var(--vs-line);
+}
+
+.vs-stat-strip > * {
+  background: var(--vs-bg);
+}
+
 .vs-skip-link {
   position: fixed;
   top: -100px;
-  left: 8px;
+  left: 16px;
   z-index: 10000;
-  padding: 10px 14px;
+  padding: 10px 16px;
+  border-radius: 999px;
   background: var(--vs-accent);
-  color: var(--vs-bg);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  color: var(--vs-accent-ink);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .vs-skip-link:focus {
-  top: 8px;
+  top: 16px;
 }
 
-/* --- Marketplace cards ---------------------------------------------------- */
+:focus-visible {
+  outline: 2px solid var(--vs-accent);
+  outline-offset: 2px;
+}
+
+/* --- Marketplace cards ---------------------------------------------------------------- */
 
 .vs-card {
+  position: relative;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--vs-line-strong);
-  background: var(--vs-surface);
-  transition: border-color 120ms linear, background 120ms linear;
+  border-radius: var(--vs-radius-lg);
+  border: 1px solid var(--vs-line);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  box-shadow: var(--vs-shadow);
+  overflow: hidden;
+  transition:
+    transform 260ms var(--vs-ease),
+    border-color 260ms var(--vs-ease),
+    box-shadow 260ms var(--vs-ease);
 }
 
 .vs-card:hover {
-  border-color: var(--vs-fg-faint);
-  background: var(--vs-surface-2);
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: var(--vs-shadow-lg);
 }
 
-/* The preview well: fixed aspect so a grid of cards stays a grid. */
+/* The preview well. Aspect ratio keeps a grid of cards a grid regardless of model shape. */
 .vs-card-well {
   position: relative;
   aspect-ratio: 4 / 3;
-  border-bottom: 1px solid var(--vs-line);
-  background: #0b0b0c;
   overflow: hidden;
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgba(139, 108, 246, 0.18), transparent 60%),
+    linear-gradient(180deg, #0a0a10, #07070a);
+  border-bottom: 1px solid var(--vs-line);
+}
+
+/* Fine grid, so the well reads as a 3D stage rather than an empty box. */
+.vs-card-well::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(120% 90% at 50% 40%, #000 25%, transparent 75%);
+  pointer-events: none;
 }
 
 .vs-card-badges {
   position: absolute;
-  inset: 8px 8px auto 8px;
+  inset: 12px 12px auto 12px;
+  z-index: 2;
   display: flex;
   justify-content: space-between;
+  gap: 8px;
+}
+
+/* Chips: the small state tokens used across cards, tables and headers. */
+.vs-chip {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  pointer-events: none;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vs-line-strong);
+  background: rgba(8, 8, 12, 0.7);
+  backdrop-filter: blur(10px);
+  font-family: var(--vs-font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--vs-fg-dim);
+  white-space: nowrap;
 }
 
-.vs-card-badges > * {
-  background: rgba(10, 10, 10, 0.78);
+.vs-chip-accent {
+  border-color: rgba(139, 108, 246, 0.5);
+  color: var(--vs-accent-warm);
 }
 
-/* --- Feedback: busy, loading, empty --------------------------------------- */
+.vs-chip-live {
+  border-color: rgba(70, 214, 139, 0.45);
+  color: var(--vs-signal);
+}
+
+.vs-chip-danger {
+  border-color: rgba(239, 95, 95, 0.5);
+  color: var(--vs-rejected);
+}
+
+/* A one-line caption under a card title. */
+.vs-card-meta {
+  font-family: var(--vs-font-mono);
+  font-size: 11px;
+  color: var(--vs-fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Feedback: busy, loading, empty ---------------------------------------------------- */
 
 .vs-loader {
   width: 26px;
   height: 26px;
+  border-radius: 999px;
   border: 2px solid var(--vs-line-strong);
   border-top-color: var(--vs-accent);
   animation: vs-spin 0.9s linear infinite;
@@ -477,14 +690,15 @@ body::after {
 }
 
 .vs-skeleton {
+  border-radius: var(--vs-radius-sm);
   background: linear-gradient(
     90deg,
-    var(--vs-surface-2) 0%,
-    var(--vs-line) 50%,
-    var(--vs-surface-2) 100%
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.04) 100%
   );
   background-size: 200% 100%;
-  animation: vs-sweep 1.3s linear infinite;
+  animation: vs-sweep 1.4s var(--vs-ease) infinite;
 }
 
 @keyframes vs-sweep {
@@ -493,26 +707,22 @@ body::after {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .vs-loader,
-  .vs-skeleton {
-    animation: none;
-  }
-}
-
-/* --- Toasts --------------------------------------------------------------- */
+/* --- Toasts --------------------------------------------------------------------------- */
 
 .vs-toast {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  min-width: 260px;
+  gap: 12px;
+  min-width: 280px;
   max-width: 420px;
-  padding: 11px 13px;
+  padding: 13px 15px;
+  border-radius: var(--vs-radius);
+  background: rgba(14, 14, 20, 0.86);
+  backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid var(--vs-line-strong);
-  border-left-width: 3px;
-  background: var(--vs-surface-2);
-  animation: vs-toast-in 140ms ease-out;
+  border-left: 3px solid var(--vs-fg-faint);
+  box-shadow: var(--vs-shadow-lg);
+  animation: vs-rise 260ms var(--vs-ease);
 }
 
 .vs-toast[data-tone='ok'] {
@@ -520,59 +730,2350 @@ body::after {
 }
 
 .vs-toast[data-tone='error'] {
-  border-left-color: var(--vs-accent);
+  border-left-color: var(--vs-rejected);
 }
 
-.vs-toast[data-tone='info'] {
-  border-left-color: var(--vs-fg-faint);
-}
-
-@keyframes vs-toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .vs-toast {
-    animation: none;
-  }
-}
-
-/* --- Tabs ----------------------------------------------------------------- */
+/* --- Tabs ----------------------------------------------------------------------------- */
 
 .vs-tab {
-  padding: 9px 14px;
-  border-bottom: 2px solid transparent;
-  color: var(--vs-fg-dim);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  position: relative;
+  padding: 10px 4px;
+  margin-right: 22px;
+  border: 0;
   background: transparent;
+  color: var(--vs-fg-faint);
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
+  transition: color 160ms var(--vs-ease);
 }
 
 .vs-tab:hover {
   color: var(--vs-fg);
-  background: var(--vs-surface-2);
 }
 
 .vs-tab[aria-selected='true'] {
-  border-bottom-color: var(--vs-accent);
   color: var(--vs-fg);
 }
 
-/* --- Prose inside panels -------------------------------------------------- */
+.vs-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--vs-accent);
+}
 
-.vs-prose {
-  max-width: 68ch;
-  line-height: 1.6;
+/* --- Motion --------------------------------------------------------------------------- */
+
+/* Elements never appear statically; each view lifts in once. Transform + opacity only. */
+@keyframes vs-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.vs-enter {
+  animation: vs-rise 520ms var(--vs-ease) both;
+}
+
+.vs-enter-1 {
+  animation-delay: 60ms;
+}
+
+.vs-enter-2 {
+  animation-delay: 120ms;
+}
+
+.vs-enter-3 {
+  animation-delay: 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vs-enter,
+  .vs-loader,
+  .vs-skeleton,
+  .vs-toast,
+  .vs-cursor::after {
+    animation: none;
+  }
+
+  .vs-card:hover,
+  .vs-btn:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Scrollbars in the same register as the substrate. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+/* =======================================================================================
+ * Marketplace — the consumer surface (§6.1 "Public Catalog")
+ *
+ * Deliberately a different register from the console. The console is an instrument: mono labels,
+ * 1px frames, everything on a grid. A buyer arriving from a link is not reading telemetry, so this
+ * surface uses the display face for titles, drops the monospace to identifiers and figures only,
+ * and gives the model itself the room — because the model is the product.
+ * ======================================================================================= */
+
+/* --- Frames --------------------------------------------------------------------------- */
+
+.mk-page {
+  position: relative;
+  z-index: 10;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.mk-shell {
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding-inline: 20px;
+}
+
+@media (min-width: 768px) {
+  .mk-shell {
+    padding-inline: 32px;
+  }
+}
+
+.mk-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  backdrop-filter: blur(18px) saturate(140%);
+  background: rgba(7, 7, 10, 0.72);
+  border-bottom: 1px solid var(--vs-line);
+}
+
+.mk-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 62px;
+}
+
+.mk-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--vs-line);
+  padding-block: 28px 40px;
+}
+
+/* --- Type ----------------------------------------------------------------------------- */
+
+.mk-h1 {
+  font-family: var(--vs-font-display);
+  font-size: clamp(2.4rem, 6vw, 4.4rem);
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.mk-h2 {
+  font-family: var(--vs-font-display);
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+.mk-lead {
+  font-size: clamp(0.95rem, 1.4vw, 1.08rem);
+  line-height: 1.62;
+  color: var(--vs-fg-dim);
+  max-width: 62ch;
+  text-wrap: pretty;
+}
+
+/* Identifiers and measured figures. Never used for prose. */
+.mk-id {
+  font-family: var(--vs-font-mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vs-fg-faint);
+  letter-spacing: 0.01em;
+}
+
+.mk-eyebrow {
+  font-family: var(--vs-font-display);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vs-accent-warm);
+}
+
+/* --- Hero ---------------------------------------------------------------------------- */
+
+.mk-hero {
+  position: relative;
+  padding-block: clamp(44px, 7vw, 88px) clamp(28px, 4vw, 48px);
+}
+
+/* A single soft light source, consistent with the card wells. */
+.mk-hero::before {
+  content: '';
+  position: absolute;
+  inset: -20% 10% auto 10%;
+  height: 420px;
+  background: radial-gradient(60% 100% at 50% 0%, rgba(139, 108, 246, 0.2), transparent 70%);
+  filter: blur(30px);
+  pointer-events: none;
+}
+
+.mk-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+}
+
+.mk-stat-value {
+  font-family: var(--vs-font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-stat-label {
+  font-size: 11.5px;
+  color: var(--vs-fg-faint);
+}
+
+/* --- Search -------------------------------------------------------------------------- */
+
+.mk-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  height: 52px;
+  border-radius: 999px;
+  border: 1px solid var(--vs-line-strong);
+  background: rgba(12, 12, 16, 0.86);
+  box-shadow: var(--vs-shadow);
+  transition:
+    border-color 200ms var(--vs-ease),
+    box-shadow 200ms var(--vs-ease);
+}
+
+.mk-search:focus-within {
+  border-color: rgba(139, 108, 246, 0.55);
+  box-shadow:
+    0 0 0 4px rgba(139, 108, 246, 0.12),
+    var(--vs-shadow);
+}
+
+.mk-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--vs-fg);
+  font-family: inherit;
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.mk-search input::placeholder {
+  color: var(--vs-fg-faint);
+}
+
+/* --- Filter rail ---------------------------------------------------------------------- */
+
+.mk-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  position: sticky;
+  top: 86px;
+  align-self: start;
+}
+
+.mk-rail-group > .mk-eyebrow {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.mk-rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.mk-rail-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  color: var(--vs-fg-dim);
+  text-align: left;
+  transition:
+    background 160ms var(--vs-ease),
+    color 160ms var(--vs-ease);
+  cursor: pointer;
+}
+
+.mk-rail-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--vs-fg);
+}
+
+.mk-rail-item[data-active='true'] {
+  background: rgba(139, 108, 246, 0.16);
+  color: var(--vs-fg);
+  font-weight: 600;
+}
+
+.mk-rail-count {
+  font-family: var(--vs-font-mono);
+  font-size: 11px;
+  color: var(--vs-fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Tag cloud ------------------------------------------------------------------------ */
+
+.mk-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mk-tag {
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--vs-line);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+  color: var(--vs-fg-dim);
+  cursor: pointer;
+  transition:
+    border-color 160ms var(--vs-ease),
+    color 160ms var(--vs-ease),
+    background 160ms var(--vs-ease);
+}
+
+.mk-tag:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  color: var(--vs-fg);
+}
+
+.mk-tag[data-active='true'] {
+  border-color: rgba(139, 108, 246, 0.6);
+  background: rgba(139, 108, 246, 0.16);
+  color: var(--vs-fg);
+}
+
+/* --- Card grid ------------------------------------------------------------------------ */
+
+.mk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 292px), 1fr));
+  gap: 20px;
+}
+
+.mk-card-media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgba(139, 108, 246, 0.16), transparent 62%),
+    linear-gradient(180deg, #0b0b12, #08080b);
+}
+
+.mk-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 520ms var(--vs-ease);
+}
+
+.mk-card:hover .mk-card-media img {
+  transform: scale(1.045);
+}
+
+/* Fine grid so an unrendered well still reads as a 3D stage rather than an empty box. */
+.mk-card-grid-lines {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(120% 90% at 50% 42%, #000 20%, transparent 74%);
+  pointer-events: none;
+}
+
+.mk-card-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  background: linear-gradient(180deg, rgba(6, 6, 9, 0) 40%, rgba(6, 6, 9, 0.72));
+  transition: opacity 260ms var(--vs-ease);
+}
+
+.mk-card:hover .mk-card-overlay {
+  opacity: 1;
+}
+
+.mk-card-body {
+  padding: 14px 16px 16px;
+}
+
+.mk-card-title {
+  font-family: var(--vs-font-display);
+  font-size: 15.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.28;
+  color: var(--vs-fg);
+}
+
+.mk-card-sub {
+  margin-top: 3px;
   font-size: 12.5px;
+  color: var(--vs-fg-faint);
+}
+
+.mk-card-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--vs-line);
+}
+
+.mk-figure {
+  font-family: var(--vs-font-mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--vs-fg-dim);
 }
 
-.vs-prose strong {
+.mk-figure span {
+  color: var(--vs-fg-faint);
+}
+
+/* --- Model detail --------------------------------------------------------------------- */
+
+.mk-stage {
+  position: relative;
+  border-radius: var(--vs-radius-lg);
+  border: 1px solid var(--vs-line);
+  background: linear-gradient(180deg, #0b0b12, #07070a);
+  box-shadow: var(--vs-shadow-lg);
+  overflow: hidden;
+}
+
+/* Tall enough to be the subject of the page at every width. */
+.mk-stage-canvas {
+  position: relative;
+  aspect-ratio: 16 / 11;
+  min-height: 340px;
+}
+
+.mk-stage-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--vs-line);
+  background: rgba(8, 8, 11, 0.6);
+}
+
+.mk-panel {
+  border-radius: var(--vs-radius-lg);
+  border: 1px solid var(--vs-line);
+  background: rgba(255, 255, 255, 0.022);
+  box-shadow: var(--vs-shadow);
+  overflow: hidden;
+}
+
+.mk-panel-head {
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--vs-line);
+  font-family: var(--vs-font-display);
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--vs-fg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mk-panel-body {
+  padding: 16px 18px;
+}
+
+/* Label/value rows. The only place monospace appears on this page: identifiers. */
+.mk-spec-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--vs-line);
+  font-size: 13px;
+}
+
+.mk-spec-row:last-child {
+  border-bottom: 0;
+}
+
+.mk-spec-key {
+  color: var(--vs-fg-faint);
+  white-space: nowrap;
+}
+
+.mk-spec-value {
+  text-align: right;
+  min-width: 0;
+  color: var(--vs-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Long identifiers must not widen the panel. */
+.mk-break {
+  font-family: var(--vs-font-mono);
+  font-size: 11.5px;
+  word-break: break-all;
+  color: var(--vs-fg-dim);
+}
+
+.mk-verify {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--vs-signal);
+}
+
+.mk-dot-live {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--vs-signal);
+  box-shadow: 0 0 0 0 rgba(70, 214, 139, 0.55);
+  animation: mk-pulse 2.4s var(--vs-ease) infinite;
+}
+
+@keyframes mk-pulse {
+  70% {
+    box-shadow: 0 0 0 7px rgba(70, 214, 139, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(70, 214, 139, 0);
+  }
+}
+
+/* An editorial pull-quote for the licence terms — the one paragraph a buyer must actually read. */
+.mk-terms {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--vs-fg-dim);
+  border-left: 2px solid rgba(139, 108, 246, 0.5);
+  padding-left: 14px;
+  text-wrap: pretty;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-card:hover .mk-card-media img,
+  .vs-card:hover {
+    transform: none;
+  }
+  .mk-dot-live {
+    animation: none;
+  }
+}
+
+/* ================================================================================================
+   Hero showcase — a live model above the fold (FR-5.2)
+
+   The storefront's claim is that these are real 3D files. A still frame cannot show that, so the
+   hero renders one: it is the first thing a visitor can test for themselves. The copy keeps its
+   own column so the headline never sits on top of a canvas that is still decoding.
+   ================================================================================================ */
+.mk-hero-split {
+  display: grid;
+  gap: clamp(28px, 4vw, 56px);
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .mk-hero-split {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  }
+}
+
+.mk-hero-copy {
+  min-width: 0;
+}
+
+/* A fixed, generous height: the showcase must not resize the page as models of different scales
+   load, and a hero that jumps while you read it is worse than one that is slightly too tall. */
+.mk-hero-stage .mk-stage-canvas {
+  aspect-ratio: auto;
+  height: clamp(320px, 42vh, 460px);
+  min-height: 0;
+}
+
+.mk-hero-stage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--vs-line);
+  background: rgba(8, 8, 11, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.mk-hero-stage-name {
+  display: block;
+  font-weight: 650;
+  font-size: 0.95rem;
+  color: var(--vs-fg);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-hero-stage-name:hover {
+  color: var(--vs-accent-warm);
+}
+
+/* Showcase selector: one dot per previewable model, only ever as many as fit a glance. */
+.mk-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--vs-line-strong);
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.mk-dot:hover {
+  border-color: var(--vs-fg-dim);
+}
+
+.mk-dot[data-active='true'] {
+  background: var(--vs-accent);
+  border-color: var(--vs-accent);
+  transform: scale(1.25);
+}
+
+.mk-dot:focus-visible {
+  outline: 2px solid var(--vs-accent-warm);
+  outline-offset: 2px;
+}
+
+/* What stands in for a canvas when there is nothing to draw. */
+.mk-stage-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+  color: var(--vs-fg-dim);
+}
+
+/* Sort control. Reuses the input chrome so the toolbar reads as one row rather than three widgets. */
+.mk-sort {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--vs-radius-sm);
+  border: 1px solid var(--vs-line);
+  background: var(--vs-surface);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.mk-sort:hover {
+  border-color: var(--vs-line-strong);
+  background: var(--vs-surface-2);
+}
+
+.mk-sort select {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--vs-fg);
+  font-size: 12.5px;
+  font-weight: 550;
+  padding: 9px 30px 9px 12px;
+  cursor: pointer;
+  border-radius: var(--vs-radius-sm);
+}
+
+.mk-sort select:focus-visible {
+  outline: 2px solid var(--vs-accent-warm);
+  outline-offset: 1px;
+}
+
+.mk-sort select option {
+  background: #0e0e14;
+  color: var(--vs-fg);
+}
+
+/* Chevron, drawn rather than bundled: one glyph is not worth an icon dependency. */
+.mk-sort::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -5px;
+  border-right: 1.5px solid var(--vs-fg-faint);
+  border-bottom: 1.5px solid var(--vs-fg-faint);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+/* Visible to assistive technology, not to the eye. */
+.mk-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================================================================
+ * FOUNDRY LAYER
+ *
+ * Appended deliberately rather than edited in place: the console still uses the class names above,
+ * and every rule here either overrides one of them or adds a new one. Equal specificity means
+ * later wins, so this block is the single source of truth for how the product looks, while the
+ * structure of the older screens keeps working.
+ * ========================================================================================== */
+
+/*
+ * Ornament removed.
+ *
+ * `vs-atmosphere` (two large radial gradients), `vs-grain` (a noise overlay) and the `vs-cursor`
+ * blink are the visual signature of a generated page — glow plus fake telemetry texture. They are
+ * neutralised here rather than deleted so the JSX that references them does not need touching, and
+ * the text inside `.vs-cursor` stays readable.
+ *
+ * This list previously also contained `vs-grid-lines`, which was a mistake: despite the name, that
+ * class was layout (a grid of stat cells) rather than ornament, and disabling it hid the counters on
+ * three dashboards. It has been renamed `vs-stat-strip`, which is not on this list and never should
+ * be. Before adding a class here, check where it is used.
+ */
+.vs-atmosphere,
+.vs-grain,
+.vs-cursor::after {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------ typography ------------ */
+
+/*
+ * `vs-label` appears 77 times and was 10px uppercase mono with wide tracking. Small caps at 10px is
+ * decoration on top of text: it costs legibility and buys nothing. It is now a quiet caption.
+ */
+.vs-label {
+  font-family: var(--vs-font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--vs-fg-faint);
+}
+
+/* `vs-data` stays mono — it labels identifiers and figures, where monospace is doing real work. */
+.vs-data {
+  font-family: var(--vs-font-mono);
+  font-size: 11.5px;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--vs-fg-dim);
+  text-transform: none;
+}
+
+/* Display type: the serif, with tracking that tightens as it grows. */
+.vs-display,
+.mk-display {
+  font-family: var(--vs-font-display);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+  color: var(--vs-fg);
+}
+
+/* The one all-caps style that survives: a section eyebrow. Used sparingly, never as a default. */
+.vs-eyebrow {
+  font-family: var(--vs-font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vs-fg-faint);
+}
+
+/* ------------------------------------------------------------------ buttons --------------- */
+
+.vs-btn {
+  font-family: var(--vs-font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  border-radius: var(--vs-radius-sm);
+  border: 1px solid var(--vs-line-strong);
+  background: var(--vs-surface-2);
+  color: var(--vs-fg);
+  padding: 8px 13px;
+  line-height: 1.25;
+  transition:
+    background-color 140ms var(--vs-ease),
+    border-color 140ms var(--vs-ease),
+    color 140ms var(--vs-ease),
+    transform 140ms var(--vs-ease);
+}
+
+.vs-btn:hover:not(:disabled) {
+  background: var(--vs-surface-3);
+  border-color: #43434e;
+}
+
+.vs-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.vs-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+/*
+ * The primary action is paper, not colour. It is the highest-contrast surface on the page and it
+ * does not compete with the semantic hues that tell the operator what state the asset is in.
+ */
+.vs-btn-primary {
+  background: var(--vs-fg);
+  border-color: var(--vs-fg);
+  color: var(--vs-accent-ink);
+}
+
+.vs-btn-primary:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.vs-btn-ghost,
+.vs-btn-quiet {
+  background: transparent;
+  border-color: var(--vs-line);
+  color: var(--vs-fg-dim);
+}
+
+.vs-btn-ghost:hover:not(:disabled),
+.vs-btn-quiet:hover:not(:disabled) {
+  background: var(--vs-surface-2);
+  border-color: var(--vs-line-strong);
+  color: var(--vs-fg);
+}
+
+/* A ghost button that is currently "on" reads as pressed, not merely hovered. */
+.vs-btn-ghost[aria-pressed='true'] {
+  background: var(--vs-surface-3);
+  border-color: #4b4b57;
+  color: var(--vs-fg);
+}
+
+.vs-link {
+  color: var(--vs-accent);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.vs-link:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ surfaces -------------- */
+
+.vs-panel,
+.vs-card {
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius);
+  box-shadow: none;
+}
+
+.vs-glass {
+  background: var(--vs-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--vs-line);
+}
+
+.vs-panel-head {
+  background: transparent;
+  border-bottom: 1px solid var(--vs-line);
+  padding: 12px 16px;
+}
+
+.vs-panel-head .vs-data {
+  color: var(--vs-fg-faint);
+  font-family: var(--vs-font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/*
+ * `vs-card-well` holds thumbnails and model canvases. A studio drop is a flat neutral with a soft
+ * top light — the same trick a photographer uses so the object separates from its background.
+ */
+.vs-card-well,
+.mk-card-media,
+.mk-stage-canvas,
+.studio-viewport {
+  background: radial-gradient(120% 90% at 50% 0%, #1e1e24 0%, #131317 52%, #0c0c0f 100%);
+}
+
+.vs-chip {
+  border-radius: 999px;
+  border: 1px solid var(--vs-line-strong);
+  background: var(--vs-surface-2);
+  color: var(--vs-fg-dim);
+  font-family: var(--vs-font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 3px 10px;
+}
+
+.vs-chip-accent {
+  border-color: #3a5c8f;
+  background: #17253a;
+  color: var(--vs-accent-warm);
+}
+
+.vs-chip-live {
+  border-color: #26624a;
+  background: #0f2a20;
+  color: var(--vs-signal);
+}
+
+.vs-chip-danger {
+  border-color: #6b3230;
+  background: #2c1615;
+  color: var(--vs-rejected);
+}
+
+/* ------------------------------------------------------------------ forms ----------------- */
+
+.vs-input,
+.vs-select,
+.vs-textarea {
+  background: var(--vs-surface-2);
+  border: 1px solid var(--vs-line-strong);
+  border-radius: var(--vs-radius-sm);
+  color: var(--vs-fg);
+  font-family: var(--vs-font-sans);
+  font-size: 13.5px;
+  padding: 9px 11px;
+}
+
+.vs-input::placeholder,
+.vs-textarea::placeholder {
+  color: var(--vs-fg-faint);
+}
+
+.vs-input:focus,
+.vs-select:focus,
+.vs-textarea:focus {
+  outline: none;
+  border-color: var(--vs-accent);
+  box-shadow: 0 0 0 3px rgba(110, 168, 254, 0.22);
+}
+
+/* ------------------------------------------------------------------ tables ---------------- */
+
+.vs-table thead th {
+  background: var(--vs-surface);
+  border-bottom: 1px solid var(--vs-line-strong);
+  color: var(--vs-fg-faint);
+  font-family: var(--vs-font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 10px 14px;
+}
+
+.vs-table tbody td {
+  border-bottom: 1px solid var(--vs-line);
+  padding: 11px 14px;
+  font-size: 13px;
+}
+
+.vs-table tbody tr:hover td {
+  background: var(--vs-surface-2);
+}
+
+/* ============================================================================================
+ * MARKETPLACE
+ *
+ * A catalogue page has one job: make the objects look worth licensing, and make the licence facts
+ * easy to check. So the page is a wide neutral field, the model is large, and every piece of chrome
+ * that is not the object or a fact about it is quiet.
+ * ========================================================================================== */
+
+.mk-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--vs-bg);
+}
+
+.mk-shell {
+  width: 100%;
+  max-width: var(--vs-max);
+  margin-inline: auto;
+  padding-inline: var(--vs-gutter);
+}
+
+/* --- header: solid and sticky. A translucent header over a 3D canvas is unreadable. ------- */
+
+.mk-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(8, 8, 10, 0.86);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid var(--vs-line);
+}
+
+.mk-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 60px;
+}
+
+.mk-brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  font-family: var(--vs-font-sans);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--vs-fg);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mk-brand span {
+  font-family: var(--vs-font-display);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--vs-fg-dim);
+  letter-spacing: 0;
+}
+
+.mk-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.mk-nav a {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--vs-fg-dim);
+  text-decoration: none;
+  padding: 7px 11px;
+  border-radius: var(--vs-radius-sm);
+  transition:
+    color 140ms var(--vs-ease),
+    background-color 140ms var(--vs-ease);
+}
+
+.mk-nav a:hover {
+  color: var(--vs-fg);
+  background: var(--vs-surface-2);
+}
+
+.mk-nav a[aria-current='page'] {
+  color: var(--vs-fg);
+  background: var(--vs-surface-3);
+}
+
+/* --- hero ---------------------------------------------------------------------------------- */
+
+.mk-hero {
+  padding-top: 56px;
+  padding-bottom: 48px;
+  border-bottom: 1px solid var(--vs-line);
+}
+
+.mk-hero-split {
+  display: grid;
+  gap: 40px;
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .mk-hero-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.06fr);
+    gap: 56px;
+  }
+}
+
+.mk-h1 {
+  font-family: var(--vs-font-display);
+  font-weight: 400;
+  font-size: clamp(38px, 5.4vw, 68px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  color: var(--vs-fg);
+  text-wrap: balance;
+}
+
+.mk-h1 em {
+  font-style: italic;
+  color: var(--vs-accent-warm);
+}
+
+.mk-h2 {
+  font-family: var(--vs-font-display);
+  font-weight: 400;
+  font-size: clamp(26px, 3.1vw, 40px);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  color: var(--vs-fg);
+}
+
+.mk-lead {
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: var(--vs-fg-dim);
+  max-width: 58ch;
+}
+
+/* A row of catalogue totals, set like a colophon rather than a KPI strip. */
+.mk-figures-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px 40px;
+  margin-top: 34px;
+  padding-top: 24px;
+  border-top: 1px solid var(--vs-line);
+}
+
+.mk-figures-strip dt {
+  font-size: 12px;
+  color: var(--vs-fg-faint);
+  margin-bottom: 5px;
+}
+
+.mk-figures-strip dd {
+  font-family: var(--vs-font-display);
+  font-size: 27px;
+  color: var(--vs-fg);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+/* --- footer -------------------------------------------------------------------------------- */
+
+.mk-footer {
+  margin-top: auto;
+  border-top: 1px solid var(--vs-line);
+  background: #0a0a0c;
+}
+
+.mk-footer a {
+  color: var(--vs-fg-faint);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.mk-footer a:hover {
+  color: var(--vs-fg);
+}
+
+/* --- filter bar ---------------------------------------------------------------------------- */
+
+.mk-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-block: 18px;
+  border-bottom: 1px solid var(--vs-line);
+}
+
+.mk-search {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.mk-search input {
+  width: 100%;
+  background: var(--vs-surface-2);
+  border: 1px solid var(--vs-line-strong);
+  border-radius: var(--vs-radius-sm);
+  padding: 9px 12px 9px 34px;
+  font-size: 13.5px;
+  color: var(--vs-fg);
+}
+
+.mk-search input:focus {
+  outline: none;
+  border-color: var(--vs-accent);
+  box-shadow: 0 0 0 3px rgba(110, 168, 254, 0.22);
+}
+
+/* The magnifier is drawn with a border, so the field needs no icon dependency. */
+.mk-search::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -7px;
+  border: 1.5px solid var(--vs-fg-faint);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.mk-search::after {
+  content: '';
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  width: 5px;
+  height: 1.5px;
+  margin-top: 3px;
+  background: var(--vs-fg-faint);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+
+.mk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mk-chip {
+  border: 1px solid var(--vs-line-strong);
+  background: transparent;
+  color: var(--vs-fg-dim);
+  border-radius: 999px;
+  padding: 6px 13px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 140ms var(--vs-ease);
+}
+
+.mk-chip:hover {
+  border-color: #4b4b57;
+  color: var(--vs-fg);
+}
+
+.mk-chip[aria-pressed='true'] {
+  background: var(--vs-fg);
+  border-color: var(--vs-fg);
+  color: var(--vs-accent-ink);
+  font-weight: 600;
+}
+
+.mk-sort {
+  background: var(--vs-surface-2);
+  border: 1px solid var(--vs-line-strong);
+  border-radius: var(--vs-radius-sm);
+  color: var(--vs-fg);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.mk-count {
+  font-size: 12.5px;
+  color: var(--vs-fg-faint);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* --- result grid --------------------------------------------------------------------------- */
+
+.mk-grid {
+  display: grid;
+  gap: 26px 22px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.mk-break {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vs-line);
+}
+
+/* --- card ---------------------------------------------------------------------------------- */
+
+.mk-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius);
+  overflow: hidden;
+  transition:
+    border-color 160ms var(--vs-ease),
+    transform 160ms var(--vs-ease),
+    box-shadow 160ms var(--vs-ease);
+}
+
+.mk-card:hover {
+  border-color: var(--vs-line-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--vs-shadow);
+}
+
+.mk-card-media {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-bottom: 1px solid var(--vs-line);
+}
+
+.mk-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 420ms var(--vs-ease);
+}
+
+.mk-card:hover .mk-card-media img {
+  transform: scale(1.035);
+}
+
+/* The fallback for an asset with no rendered thumbnail: a drawn silhouette, not a glyph. */
+.mk-card-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--vs-fg-faint);
+  font-family: var(--vs-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.mk-card-overlay {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0));
+  opacity: 0;
+  transition: opacity 180ms var(--vs-ease);
+}
+
+.mk-card:hover .mk-card-overlay,
+.mk-card:focus-within .mk-card-overlay {
+  opacity: 1;
+}
+
+.mk-card-overlay span {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.mk-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 14px 14px;
+}
+
+.mk-card-title {
+  font-family: var(--vs-font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--vs-fg);
+  line-height: 1.3;
+}
+
+.mk-card-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mk-card-title a:hover {
+  color: var(--vs-accent-warm);
+}
+
+.mk-card-sub {
+  font-size: 12.5px;
+  color: var(--vs-fg-faint);
+}
+
+.mk-card-figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--vs-line);
+}
+
+.mk-figure {
+  font-family: var(--vs-font-mono);
+  font-size: 11.5px;
+  color: var(--vs-fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.mk-figure b {
+  color: var(--vs-fg-faint);
+  font-weight: 400;
+}
+
+.mk-card-license {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* --- panels, specs, stats ------------------------------------------------------------------ */
+
+.mk-panel {
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius);
+  overflow: hidden;
+}
+
+.mk-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--vs-line);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vs-fg);
+}
+
+.mk-panel-body {
+  padding: 15px;
+}
+
+.mk-spec-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--vs-line);
+  align-items: baseline;
+}
+
+.mk-spec-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.mk-spec-key {
+  font-size: 12.5px;
+  color: var(--vs-fg-faint);
+}
+
+.mk-spec-value {
+  font-size: 13px;
+  color: var(--vs-fg);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mk-spec-value .vs-data {
+  color: var(--vs-fg-dim);
+  font-size: 12px;
+}
+
+.mk-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 1px;
+  background: var(--vs-line);
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius);
+  overflow: hidden;
+}
+
+.mk-stat {
+  background: var(--vs-surface);
+  padding: 13px 15px;
+}
+
+.mk-stat-label {
+  font-size: 11.5px;
+  color: var(--vs-fg-faint);
+  margin-bottom: 6px;
+}
+
+.mk-stat-value {
+  font-family: var(--vs-font-mono);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vs-fg);
+  letter-spacing: -0.01em;
+}
+
+/* --- tags ---------------------------------------------------------------------------------- */
+
+.mk-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.mk-tag {
+  border: 1px solid var(--vs-line-strong);
+  background: var(--vs-surface-2);
+  color: var(--vs-fg-dim);
+  border-radius: var(--vs-radius-sm);
+  padding: 4px 10px;
+  font-size: 12px;
+  text-decoration: none;
+  transition: all 140ms var(--vs-ease);
+}
+
+.mk-tag:hover {
+  border-color: var(--vs-accent);
+  color: var(--vs-fg);
+}
+
+/* --- verification ------------------------------------------------------------------------- */
+
+.mk-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.mk-verify-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--vs-fg-dim);
+}
+
+.mk-verify-row b {
   color: var(--vs-fg);
   font-weight: 600;
+}
+
+/* A check mark drawn with a rotated border — no icon font, no SVG payload. */
+.mk-tick {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 1px solid #26624a;
+  background: #0f2a20;
+  position: relative;
+}
+
+.mk-tick::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 3.5px;
+  width: 5px;
+  height: 2px;
+  border-left: 1.5px solid var(--vs-signal);
+  border-bottom: 1.5px solid var(--vs-signal);
+  transform: rotate(-45deg);
+}
+
+.mk-terms {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--vs-fg-dim);
+  white-space: pre-wrap;
+}
+
+.mk-id {
+  font-family: var(--vs-font-mono);
+  font-size: 11.5px;
+  color: var(--vs-fg-faint);
+  letter-spacing: -0.01em;
+}
+
+.mk-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--vs-fg-faint);
+}
+
+/* --- stages -------------------------------------------------------------------------------- */
+
+.mk-stage {
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius-lg);
+  overflow: hidden;
+  background: var(--vs-surface);
+}
+
+.mk-stage-canvas {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  min-height: 340px;
+}
+
+.mk-stage-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--vs-fg-faint);
+  font-size: 13px;
+}
+
+.mk-stage-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--vs-line);
+  background: var(--vs-surface-2);
+}
+
+.mk-hero-stage {
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius-lg);
+  overflow: hidden;
+  background: var(--vs-surface);
+  box-shadow: var(--vs-shadow-lg);
+}
+
+.mk-hero-stage-name {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 16px;
+  border-top: 1px solid var(--vs-line);
+  background: var(--vs-surface-2);
+}
+
+/* --- rail ---------------------------------------------------------------------------------- */
+
+.mk-rail {
+  position: sticky;
+  top: 84px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.mk-rail-card {
+  background: var(--vs-surface);
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius);
+  padding: 16px;
+}
+
+/* --- steps --------------------------------------------------------------------------------- */
+
+.mk-steps {
+  display: grid;
+  gap: 28px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.mk-step-index {
+  font-family: var(--vs-font-display);
+  font-size: 34px;
+  color: var(--vs-line-strong);
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+/* --- mini cards (related models) ----------------------------------------------------------- */
+
+.mk-mini {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px;
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius-sm);
+  text-decoration: none;
+  transition: border-color 140ms var(--vs-ease);
+}
+
+.mk-mini:hover {
+  border-color: var(--vs-line-strong);
+}
+
+.mk-mini img,
+.mk-mini-empty {
+  width: 52px;
+  height: 52px;
+  border-radius: 5px;
+  object-fit: cover;
+  flex: none;
+  background: var(--vs-surface-3);
+}
+
+.mk-mini-empty {
+  display: grid;
+  place-items: center;
+  color: var(--vs-fg-faint);
+}
+
+.mk-mini-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vs-fg);
+  line-height: 1.3;
+}
+
+.mk-mini-sub {
+  font-size: 11.5px;
+  color: var(--vs-fg-faint);
+  margin-top: 3px;
+}
+
+.mk-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vs-fg-faint);
+  display: inline-block;
+}
+
+.mk-dot-live {
+  background: var(--vs-signal);
+  box-shadow: 0 0 0 3px rgba(61, 220, 151, 0.15);
+}
+
+/* ============================================================================================
+ * 3D STUDIO
+ *
+ * The viewer is the product, so its chrome is dense, monospaced where it counts, and out of the
+ * way. Every control here answers a question a 3D artist actually asks of a file they are about to
+ * license: is the topology clean, do the normals face the right way, are the UVs unfolded, what are
+ * the real dimensions, how many materials and textures are in it, and does it animate.
+ * ========================================================================================== */
+
+.studio {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0c0c0f;
+}
+
+.studio-viewport {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+
+.studio-viewport canvas {
+  display: block;
+  outline: none;
+}
+
+/* --- top toolbar: segmented controls, left aligned ---------------------------------------- */
+
+.studio-top {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.studio-top > * {
+  pointer-events: auto;
+}
+
+.studio-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--vs-line-strong);
+  border-radius: 8px;
+  background: rgba(16, 16, 19, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.studio-top .studio-spacer {
+  margin-left: auto;
+}
+
+.studio-btn {
+  border: 0;
+  background: transparent;
+  color: var(--vs-fg-faint);
+  font-family: var(--vs-font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 120ms var(--vs-ease),
+    color 120ms var(--vs-ease);
+}
+
+.studio-btn:hover {
+  color: var(--vs-fg);
+  background: var(--vs-surface-3);
+}
+
+.studio-btn[aria-pressed='true'] {
+  color: var(--vs-accent-ink);
+  background: var(--vs-fg);
+  font-weight: 600;
+}
+
+.studio-btn:focus-visible {
+  outline: 2px solid var(--vs-accent);
+  outline-offset: 1px;
+}
+
+/* A label that names a group without shouting. */
+.studio-group-label {
+  font-family: var(--vs-font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--vs-fg-faint);
+  padding: 0 5px 0 7px;
+  border-right: 1px solid var(--vs-line);
+  margin-right: 3px;
+  line-height: 1.6;
+}
+
+/* --- bottom strip: identity + integrity ---------------------------------------------------- */
+
+.studio-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 9px 13px;
+  background: linear-gradient(to top, rgba(8, 8, 10, 0.94), rgba(8, 8, 10, 0.35) 70%, transparent);
+}
+
+.studio-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  font-family: var(--vs-font-mono);
+  font-size: 11.5px;
+  color: var(--vs-fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.studio-meta a {
+  color: var(--vs-fg-faint);
+  text-decoration: none;
+}
+
+.studio-meta a:hover {
+  color: var(--vs-fg);
+}
+
+.studio-ok {
+  color: var(--vs-signal);
+}
+
+.studio-warn {
+  color: var(--vs-rejected);
+}
+
+/* --- hint --------------------------------------------------------------------------------- */
+
+.studio-hint {
+  position: absolute;
+  bottom: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  pointer-events: none;
+  font-size: 12px;
+  color: var(--vs-fg-faint);
+  background: rgba(8, 8, 10, 0.8);
+  border: 1px solid var(--vs-line);
+  border-radius: 999px;
+  padding: 5px 13px;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .studio-hint {
+    display: none;
+  }
+}
+
+/* --- stats panel -------------------------------------------------------------------------- */
+
+.studio-panel {
+  position: absolute;
+  top: 56px;
+  right: 10px;
+  z-index: 13;
+  width: 268px;
+  max-height: calc(100% - 108px);
+  overflow-y: auto;
+  border: 1px solid var(--vs-line-strong);
+  border-radius: 10px;
+  background: rgba(16, 16, 19, 0.96);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: var(--vs-shadow-lg);
+}
+
+.studio-panel-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--vs-line);
+  background: rgba(16, 16, 19, 0.98);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vs-fg);
+}
+
+.studio-panel-body {
+  padding: 4px 12px 12px;
+}
+
+.studio-section {
+  padding-top: 11px;
+}
+
+.studio-section + .studio-section {
+  border-top: 1px solid var(--vs-line);
+}
+
+.studio-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--vs-fg-faint);
+}
+
+.studio-row b {
+  font-family: var(--vs-font-mono);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--vs-fg);
+  letter-spacing: -0.01em;
+}
+
+.studio-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  flex: none;
+  display: inline-block;
+  vertical-align: -1px;
+  margin-right: 6px;
+}
+
+.studio-mat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 12px;
+  color: var(--vs-fg-dim);
+}
+
+.studio-mat span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studio-mat em {
+  font-style: normal;
+  font-family: var(--vs-font-mono);
+  font-size: 11px;
+  color: var(--vs-fg-faint);
+  flex: none;
+}
+
+/* --- animation transport ------------------------------------------------------------------- */
+
+.studio-transport {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 40px;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 11px;
+  border: 1px solid var(--vs-line-strong);
+  border-radius: 9px;
+  background: rgba(16, 16, 19, 0.94);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+
+.studio-transport input[type='range'] {
+  flex: 1;
+  min-width: 80px;
+  accent-color: var(--vs-accent);
+  height: 3px;
+}
+
+.studio-transport select {
+  background: var(--vs-surface-2);
+  border: 1px solid var(--vs-line-strong);
+  border-radius: 5px;
+  color: var(--vs-fg);
+  font-size: 12px;
+  padding: 4px 6px;
+  max-width: 168px;
+}
+
+.studio-clip-time {
+  font-family: var(--vs-font-mono);
+  font-size: 11px;
+  color: var(--vs-fg-faint);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* --- loading + fault ---------------------------------------------------------------------- */
+
+.studio-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(8, 8, 10, 0.72);
+}
+
+.studio-loading-track {
+  width: 168px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--vs-line-strong);
+  overflow: hidden;
+}
+
+.studio-loading-track i {
+  display: block;
+  height: 100%;
+  background: var(--vs-accent);
+  transition: width 180ms linear;
+}
+
+.studio-fault {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  overflow-y: auto;
+}
+
+.studio-fault-inner {
+  max-width: 430px;
+}
+
+.studio-fault code {
+  display: block;
+  margin-top: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius-sm);
+  background: var(--vs-surface-2);
+  font-family: var(--vs-font-mono);
+  font-size: 11px;
+  color: var(--vs-fg-dim);
+  overflow-wrap: anywhere;
+}
+
+/* --- fullscreen --------------------------------------------------------------------------- */
+
+.studio:fullscreen {
+  border-radius: 0;
+  background: #0a0a0c;
+}
+
+/* Below 860px the toolbar would collide with the panel: hide the panel instead of stacking. */
+@media (max-width: 860px) {
+  .studio-panel {
+    display: none;
+  }
+}
+
+/* The hero canvas gets more room than a listing stage: it carries the fold on its own. */
+.mk-stage-canvas-hero {
+  aspect-ratio: auto;
+  height: clamp(400px, 54vh, 620px);
+  min-height: 0;
+}
+
+/*
+ * The studio fills whatever stage it is dropped into. Scoped to `.studio` rather than any child
+ * div: the hero already supplies its own frame, and a blanket rule would stretch unrelated
+ * children of the same box.
+ */
+.mk-stage-canvas > .studio {
+  height: 100%;
+}
+
+/* Hero framing lives on `.mk-hero-stage`, so the inner stage contributes no second border. */
+.mk-stage-bare {
+  height: 100%;
+}
+
+/* ------------------------------------------------------------------------------------------------
+   Studio controls, v2 — a real inspection tool.
+
+   The control bar now carries every professional viewing mode, so it grew from 15 to 23 buttons. Three
+   changes keep that from reading as clutter: the keyboard shortcut is printed on every button (so the
+   tool teaches itself instead of hiding behind tooltips), group labels are lowercase and quiet, and a
+   hairline divider separates the projection toggle from the viewpoints it modifies.
+   ------------------------------------------------------------------------------------------------ */
+
+/* The shortcut chip. Deliberately low-contrast: it is a mnemonic, not a label. */
+.studio-btn kbd {
+  margin-left: 5px;
+  padding: 1px 3px;
+  border: 1px solid var(--vs-line-strong);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--vs-fg-faint);
+  font-family: var(--vs-font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+/* On the active control the chip inverts with the button, or it disappears into the fill. */
+.studio-btn[aria-pressed='true'] kbd {
+  border-color: rgba(0, 0, 0, 0.22);
+  background: rgba(0, 0, 0, 0.12);
+  color: inherit;
+  opacity: 0.75;
+}
+
+.studio-btn:disabled kbd {
+  opacity: 0.4;
+}
+
+/* Separates a modifier (projection) from the set it modifies (viewpoints). */
+.studio-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: var(--vs-line-strong);
+}
+
+/* Tiny preview of the current backdrop, so cycling it is not a blind click. */
+.studio-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 6px;
+  border: 1px solid var(--vs-line-strong);
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+
+.studio-swatch[data-backdrop='stage'] {
+  background: linear-gradient(160deg, #3a3a44, #14141a);
+}
+
+.studio-swatch[data-backdrop='night'] {
+  background: #08080a;
+}
+
+.studio-swatch[data-backdrop='paper'] {
+  background: linear-gradient(160deg, #fbfbfd, #c9c9d0);
+}
+
+.studio-hint-sep {
+  display: inline-block;
+  width: 1px;
+  height: 10px;
+  margin: 0 9px;
+  background: currentColor;
+  opacity: 0.35;
+  vertical-align: -1px;
+}
+
+.studio-hint strong {
+  color: var(--vs-fg);
+  font-weight: 600;
+}
+
+/* Tighter buttons: 23 of them have to fit two rows on a laptop, not four. */
+.studio-btn {
+  padding: 4px 7px;
+  font-size: 11.5px;
+}
+
+.studio-group-label {
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  font-style: italic;
+}
+
+/* ============================================================================================
+ * Readability pass over the 3D studio chrome
+ * --------------------------------------------------------------------------------------------
+ * The group labels ("surface", "camera", "overlays") were rendering in `--vs-fg-faint` at 10.5px,
+ * which measures about 2.6:1 against the toolbar — below the 4.5:1 that body text needs, and these
+ * are not decorative: they are the only thing telling a reader which cluster of buttons changes
+ * shading versus which changes the camera. There are two competing rule sets for this element in
+ * this file, so the fix is stated once, last, and with the reasoning attached.
+ */
+.studio-group-label {
+  color: var(--vs-fg-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+/* The keyboard chips on the buttons are secondary information, but they were faded to the point of
+   being unreadable. They still sit behind the labels, just legibly. */
+.studio-btn kbd {
+  color: var(--vs-fg-dim);
+}
+
+.studio-btn[aria-pressed='true'] kbd {
+  color: var(--vs-fg);
+}
+
+/* --------------------------------------------------------------------------------------------
+ * Hero showcase tiles: the switcher renders inside a fixed grid now, so the tile only has to clip
+ * gracefully rather than shrink below its artwork.
+ */
+.mk-mini {
+  overflow: hidden;
+}
+
+.mk-mini > span:last-child {
+  min-width: 0;
 }

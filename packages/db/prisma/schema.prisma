@@ -282,8 +282,14 @@ model Asset {
   tenantId         String      @map("tenant_id") @db.Uuid
   creatorId        String      @map("creator_id") @db.Uuid
   name             String      @db.VarChar(200)
+  /// FR-3.2/FR-7.5 — the human-facing summary. Written on upload, or promoted from an
+  /// accepted AI suggestion during review (see `AISuggestion.acceptedDescription`).
+  description      String?     @db.VarChar(4000)
   category         String      @db.VarChar(60)
   tags             String[]    @default([])
+  /// FR-3.2/FR-14.3 — free-form structured attributes. Validated against the tenant's
+  /// `requiredMetadataFields` on submit; stored as JSON so a tenant can extend it without a migration.
+  metadata         Json?
   status           AssetStatus @default(draft)
   currentVersionId String?     @map("current_version_id") @db.Uuid
   /// FR-10.3 — EoN Reality module URL / manifest reference after XR publish.
@@ -501,6 +507,73 @@ model Session {
   @@index([tenantId, userId, revokedAt])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+/// §6.1 "Public Catalog" — the anonymous read model behind the marketplace.
+///
+/// **Why a projection rather than a policy.** The marketplace must list published assets across
+/// *every* workspace, but §5.3 deliberately denies the platform role read access to tenant tables.
+/// Three ways to bridge that, and why this is the one:
+///
+///   1. Grant the platform role SELECT on `assets` — destroys the §5.3 boundary outright.
+///   2. Add a permissive RLS policy allowing `status = 'published'` — permissive policies are
+///      OR-ed, so inside a tenant context it would leak *other* tenants' published rows too.
+///      A restrictive policy keyed to a dedicated role would work, but then every joined table
+///      (`asset_versions`, `licenses`, `tenants`) needs the same treatment in lockstep.
+///   3. Write an explicit projection row at publish time (this).
+///
+/// The projection is the honest option: the public surface becomes an allow-list of columns that
+/// someone had to name deliberately, it needs no new privileges, and a takedown *deletes* the row —
+/// which is exactly the SRS's "the asset leaves the marketplace, the token stays on chain".
+///
+/// It carries no tenant RLS by design: these rows are public. `tenant_id` records provenance for
+/// operators; `tenant_name` is the snapshot shown to visitors.
+model PublicCatalogEntry {
+  id                 String    @id @default(uuid()) @db.Uuid
+  /// The public identifier in URLs (`/models/<assetId>`). Not a separate slug: names collide,
+  /// and a stable opaque id means a rename never breaks a shared link.
+  assetId            String    @unique @map("asset_id") @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  /// Snapshot at publish time, so the marketplace does not depend on tenant-table reads.
+  tenantName         String    @map("tenant_name") @db.VarChar(120)
+
+  name               String    @db.VarChar(200)
+  description        String?   @db.VarChar(4000)
+  category           String    @db.VarChar(60)
+  tags               String[]  @default([])
+
+  format             String    @db.VarChar(10)
+  sizeBytes          BigInt    @map("size_bytes")
+  polycount          Int?
+  vertices           Int?
+  materials          Int?
+  textures           Int?
+  animations         Int?
+  /// FR-8.1 — content address of the published version; also keys the rendered thumbnail.
+  ipfsCid            String    @map("ipfs_cid") @db.VarChar(120)
+
+  licenseType        String    @map("license_type") @db.VarChar(40)
+  licenseTerms       String?   @map("license_terms")
+  tokenId            BigInt?   @map("token_id")
+  contractAddress    String?   @map("contract_address") @db.VarChar(42)
+  txHash             String?   @map("tx_hash") @db.VarChar(66)
+  /// §3.9.2 — the ipfs:// licence document, so a visitor can verify without an account.
+  licenseMetadataCid String?   @map("license_metadata_cid") @db.VarChar(120)
+  xrManifestRef      String?   @map("xr_manifest_ref") @db.VarChar(255)
+
+  /// NFR-COMP.1 — imported third-party assets must keep their original licence visible.
+  sourceLicense      String?   @map("source_license") @db.VarChar(120)
+  sourceAttribution  String?   @map("source_attribution") @db.VarChar(500)
+  sourceUrl          String?   @map("source_url") @db.VarChar(1000)
+
+  publishedAt        DateTime  @map("published_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([publishedAt])
+  @@index([category, publishedAt])
+  @@index([tenantId])
+  @@map("public_catalog_entries")
 }
 
 /// §5.1 APIKey — only a salted hash is persisted; the raw key is shown once

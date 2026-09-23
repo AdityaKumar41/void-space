@@ -94,7 +94,7 @@ export interface InviteAcceptInput {
 }
 
 /** One membership row for a person, resolved by email across tenants. */
-interface PersonMembership {
+export interface PersonMembership {
   readonly userId: string;
   readonly tenantId: string;
   readonly tenantName: string;
@@ -162,8 +162,15 @@ export function slugify(value: string): string {
     .slice(0, 60);
 }
 
-/** Reads every tenant membership for an email address (platform role, audited use). */
-async function loadMemberships(email: string): Promise<PersonMembership[]> {
+/**
+ * Reads every tenant membership for an email address.
+ *
+ * This is the one query that legitimately needs the platform role: an identity is keyed by email
+ * but scoped by tenant, so discovering which workspaces a person belongs to must happen before any
+ * tenant context exists. Exported because `GET /auth/me` needs the same list — the workspace
+ * switcher (FR-1.4) has to survive a page reload, and it cannot do that from memory.
+ */
+export async function loadMemberships(email: string): Promise<PersonMembership[]> {
   const rows = await withPlatform((db) =>
     db.user.findMany({
       where: { email },

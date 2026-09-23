@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "demo:glb": "tsx src/glb-cli.ts"
+    "demo:glb": "tsx src/glb-cli.ts",
+    "sync-catalog": "tsx src/sync-catalog-cli.ts"
   },
   "turbo": {
     "tasks": {

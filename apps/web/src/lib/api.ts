@@ -35,6 +35,8 @@ interface RequestOptions {
   readonly baseUrl?: string;
   readonly cookieHeader?: string;
   readonly suppressErrorLog?: boolean;
+  /** Internal: prevents an infinite refresh→retry→refresh loop. */
+  readonly skipRefresh?: boolean;
 }
 
 async function parse<T>(response: Response, path: string): Promise<T> {
@@ -52,14 +54,77 @@ async function parse<T>(response: Response, path: string): Promise<T> {
 }
 
 /**
+ * Exchange the rotating refresh cookie for a fresh access cookie (FR-2.3).
+ *
+ * The access token lives ≤15 minutes by mandate, so *something* has to perform this exchange or
+ * every session would end fifteen minutes after sign-in. It is client-only by design: only a
+ * browser can persist the rotated httpOnly cookie that comes back.
+ *
+ * Single-flight: several queries can 401 together on a cold load, and they must share one
+ * exchange. Multiple concurrent rotations of the same token would trip the server's reuse
+ * detection (§3.7) and revoke the whole session family.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
+export function refreshSession(): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    try {
+      const response = await fetch(`${API_PUBLIC_BASE}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { accept: 'application/json' },
+        cache: 'no-store',
+      });
+      return response.ok;
+    } catch {
+      return false;
+    } finally {
+      // Cleared in a microtask so concurrent callers awaiting this promise all observe the result.
+      void Promise.resolve().then(() => {
+        refreshInFlight = null;
+      });
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+/** Paths where a 401 is the answer rather than a cue to refresh. */
+const NO_REFRESH_PATHS = ['/auth/refresh', '/auth/login', '/auth/register', '/auth/invite'];
+
+/**
  * Calls the API. `credentials: 'include'` is what makes cookie auth work from the browser;
  * from a server component the cookie header is forwarded explicitly instead.
+ *
+ * On 401 the call is retried once behind a silent refresh, so an expired access token is a
+ * non-event: the user keeps working and only a genuinely dead session reaches the sign-in screen.
  */
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await send(path, options);
+
+  const canRefresh =
+    response.status === 401 &&
+    !options.skipRefresh &&
+    !options.cookieHeader &&
+    typeof window !== 'undefined' &&
+    !NO_REFRESH_PATHS.some((prefix) => path.startsWith(prefix));
+
+  if (canRefresh && (await refreshSession())) {
+    return parse<T>(await send(path, options), path);
+  }
+
+  return parse<T>(response, path);
+}
+
+/** Issues one request; kept separate so `apiFetch` can retry it verbatim after a refresh. */
+async function send(path: string, options: RequestOptions): Promise<Response> {
   const base = options.baseUrl ?? API_PUBLIC_BASE;
   const url = path.startsWith('http') ? path : `${base}${path}`;
 
-  const response = await fetch(url, {
+  return fetch(url, {
     method: options.method ?? 'GET',
     headers: {
       accept: 'application/json',
@@ -70,8 +135,6 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     cache: 'no-store',
     ...(options.cookieHeader ? {} : { credentials: 'include' as RequestCredentials }),
   });
-
-  return parse<T>(response, path);
 }
 
 /** Uploads multipart form data (asset binaries, FR-3.1) with progress reporting. */

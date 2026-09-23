@@ -3,45 +3,25 @@
 /**
  * Session context (SRS §6.1).
  *
- * The UI shell needs the caller's workspace, roles and permissions on every page, and the
- * API is the only authority for them (`GET /auth/me`). Roles and permissions are re-read
- * server-side on every request, so the client never caches them beyond the query's stale
- * window — a demotion shows up as a 403 and a re-render, not as a stale menu.
+ * The UI shell needs the caller's workspace, roles and permissions on every page, and the API is the
+ * only authority for them (`GET /auth/me`). Roles and permissions are re-read server-side on every
+ * request, so the client never caches them beyond the query's stale window — a demotion shows up as
+ * a 403 and a re-render, not as a stale menu.
+ *
+ * `initialSession` arrives from the console layout, which has already validated the session on the
+ * server. Seeding the query with it means the first paint is complete: no spinner, no second
+ * round-trip, and no window in which the shell knows less than the server did.
  */
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect } from 'react';
+
 import type { Permission, Role } from '@void-space/types';
 
-import { apiFetch } from './api';
+import { apiFetch, refreshSession } from './api';
+import type { Membership, SessionTenant, SessionView } from './session-types';
 
-export interface SessionTenant {
-  readonly id: string;
-  readonly name: string;
-  readonly slug: string;
-}
-
-export interface SessionView {
-  readonly user: {
-    readonly id: string;
-    readonly email: string;
-    readonly fullName: string;
-    readonly activeTenantId: string;
-    readonly roles: readonly Role[];
-    readonly permissions: readonly Permission[];
-  };
-  readonly tenant: SessionTenant;
-  readonly authMethod: 'jwt' | 'apikey';
-  readonly readOnly: boolean;
-}
-
-/** Multi-workspace members see a switcher (FR-1.4); the API is the source of the list. */
-export interface Membership {
-  readonly id: string;
-  readonly name: string;
-  readonly slug: string;
-  readonly roles: readonly Role[];
-}
+export type { Membership, SessionTenant, SessionView };
 
 interface LoginResult {
   readonly user?: {
@@ -66,34 +46,65 @@ interface SessionContextValue {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-/** Memberships are fetched from the workspace list returned by the login/switch payload. */
-let cachedMemberships: readonly Membership[] = [];
+/**
+ * Memberships are read straight from `/auth/me` (FR-1.4) — they used to live only in module memory,
+ * which meant the workspace switcher emptied itself on every page reload. The module variable now
+ * covers just the seconds between a switch and the refetch that confirms it.
+ */
+let optimisticMemberships: readonly Membership[] | null = null;
 
-export function SessionProvider({ children }: { children: React.ReactNode }) {
+export function SessionProvider({
+  children,
+  initialSession,
+}: {
+  children: React.ReactNode;
+  initialSession?: SessionView | null;
+}) {
   const router = useRouter();
 
   const query = useQuery<SessionView>({
     queryKey: ['session'],
     queryFn: () => apiFetch<SessionView>('/auth/me'),
     retry: false,
+    ...(initialSession ? { initialData: initialSession } : {}),
   });
 
-  // An unauthenticated visitor is sent to the sign-in screen rather than shown a broken shell.
+  /**
+   * An unauthenticated visitor is sent to the sign-in screen rather than shown a broken shell.
+   *
+   * This is the *expired token* path only — a visitor with no cookie never reaches this component,
+   * because the server layout has already redirected them. Retrying once through the refresh cookie
+   * first is what keeps a fifteen-minute access token from ending the session (FR-2.3); if the
+   * refresh also fails, the session really is over.
+   */
   useEffect(() => {
     const status = (query.error as { status?: number } | null)?.status;
-    if (status === 401) router.replace('/login');
-  }, [query.error, router]);
+    if (status !== 401) return;
+
+    let cancelled = false;
+    void refreshSession().then((refreshed) => {
+      if (cancelled) return;
+      if (refreshed) void query.refetch();
+      else router.replace('/login?next=%2Fconsole');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [query, router]);
+
+  const memberships = optimisticMemberships ?? query.data?.user.tenants ?? [];
 
   const value: SessionContextValue = {
     session: query.data,
-    memberships: cachedMemberships,
+    memberships,
     isLoading: query.isLoading,
     error: query.error,
     can: (permission) => query.data?.user.permissions.includes(permission) ?? false,
     hasRole: (role) => query.data?.user.roles.includes(role) ?? false,
     async signOut() {
-      await apiFetch('/auth/logout', { method: 'POST' });
-      cachedMemberships = [];
+      await apiFetch('/auth/logout', { method: 'POST', skipRefresh: true });
+      optimisticMemberships = null;
       router.replace('/login');
     },
     async switchTenant(tenantId) {
@@ -101,8 +112,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         method: 'POST',
         body: { tenantId },
       });
-      if (result.user?.tenants) cachedMemberships = result.user.tenants;
+      if (result.user?.tenants) optimisticMemberships = result.user.tenants;
       await query.refetch();
+      optimisticMemberships = null;
     },
   };
 
@@ -111,7 +123,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
 /** Remembers the workspace list a login returned, so the switcher can render immediately. */
 export function rememberMemberships(memberships: readonly Membership[]): void {
-  cachedMemberships = memberships;
+  optimisticMemberships = memberships;
 }
 
 export function useSession(): SessionContextValue {
@@ -119,3 +131,4 @@ export function useSession(): SessionContextValue {
   if (!context) throw new Error('useSession must be used inside <SessionProvider>');
   return context;
 }
+

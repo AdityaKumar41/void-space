@@ -32,9 +32,15 @@
     "test:e2e": "pnpm --filter @void-space/web test:e2e",
     "lint": "eslint .",
     "format": "prettier --write \"{apps,packages,scripts,docker}/**/*.{ts,tsx,js,mjs,json,md,yml,yaml,css}\"",
-    "demo:publish": "node scripts/demo-publish.mjs"
+    "demo:publish": "node scripts/demo-publish.mjs",
+    "stack:up": "docker compose --profile infra --profile edge --profile app up -d --build",
+    "stack:down": "docker compose --profile infra --profile edge --profile app down",
+    "stack:logs": "docker compose --profile app logs -f --tail=80 api worker web",
+    "assets:thumbnails": "node scripts/render-thumbnails.mjs",
+    "db:sync-catalog": "pnpm --filter @void-space/db sync-catalog"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^20.17.10",
     "eslint": "^9.17.0",
     "prettier": "^3.4.2",

@@ -36,6 +36,14 @@ export {
 
 /** Deterministic, valid GLB fixtures — used by the seed and, in tests, by the upload path. */
 export { buildGlbFixture } from './glb-fixture';
+export {
+  buildShapeGlb,
+  buildShapeParts,
+  isShapeName,
+  SHAPE_NAMES,
+  type ShapeName,
+  type ShapeStats,
+} from './glb-shapes';
 
 export {
   metadataFromGlbBuffer,
@@ -60,6 +68,17 @@ export {
 
 export { hashPassword, verifyPassword, bcryptCostOf, BCRYPT_COST } from './password';
 
+export {
+  syncPublicCatalogEntry,
+  removePublicCatalogEntry,
+  listPublicCatalog,
+  getPublicCatalogEntry,
+  publicCatalogFacets,
+  toPublicCatalogItem,
+  PUBLIC_CATALOG_SORTS,
+  type PublicCatalogItem,
+  type PublicCatalogSort,
+} from './public-catalog';
 export { loadRootEnv, migrateDatabaseUrl, REPO_ROOT } from './env';
 
 // Prisma enums/types so consumers never import from the generated path directly.

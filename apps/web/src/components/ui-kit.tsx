@@ -14,7 +14,7 @@ import type { AssetStatus } from '@void-space/types';
 export function SectionTitle({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div className="vs-panel-head">
-      <span>[ {children} ]</span>
+      <span>{children}</span>
       {right ? <span className="vs-data">{right}</span> : null}
     </div>
   );
@@ -74,35 +74,44 @@ const STATUS_TONE: Record<AssetStatus, string> = {
 };
 
 const STATUS_LABEL: Record<AssetStatus, string> = {
-  draft: 'DRAFT',
-  pending: 'IN REVIEW',
-  needs_manual_review: 'MANUAL REVIEW',
-  approved: 'APPROVED',
-  rejected: 'REJECTED',
-  revision: 'REVISION',
-  published: 'PUBLISHED',
+  draft: 'Draft',
+  pending: 'In review',
+  needs_manual_review: 'Manual review',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  revision: 'Needs changes',
+  published: 'Published',
 };
 
 export function StatusPill({ status }: { status: AssetStatus }) {
+  const tone = STATUS_TONE[status];
+
   return (
     <span
-      className="vs-data inline-flex items-center gap-1.5 border px-2 py-[3px]"
-      style={{ borderColor: STATUS_TONE[status], color: STATUS_TONE[status] }}
+      className="vs-chip"
+      style={{ borderColor: `${tone}66`, color: tone }}
+      title={`Lifecycle state: ${STATUS_LABEL[status]}`}
     >
-      <span aria-hidden>▚</span>
+      {/* A dot carries the state at a glance; the word removes any doubt. */}
+      <span
+        aria-hidden
+        className="inline-block h-1.5 w-1.5 rounded-full"
+        style={{ background: tone }}
+      />
       {STATUS_LABEL[status]}
     </span>
   );
 }
 
 export function Tag({ children, tone = 'default' }: { children: React.ReactNode; tone?: 'default' | 'accent' }) {
+  if (tone === 'accent') {
+    return <span className="vs-chip vs-chip-accent">{children}</span>;
+  }
+
   return (
     <span
-      className="vs-data border px-1.5 py-[2px]"
-      style={{
-        borderColor: tone === 'accent' ? 'var(--vs-accent)' : 'var(--vs-line-strong)',
-        color: tone === 'accent' ? 'var(--vs-accent)' : 'var(--vs-fg-dim)',
-      }}
+      className="rounded-full px-2.5 py-0.5 text-[11px]"
+      style={{ background: 'var(--vs-surface-2)', color: 'var(--vs-fg-dim)' }}
     >
       {children}
     </span>
@@ -186,8 +195,13 @@ export function Sparkbars({ data }: { data: readonly { day: string; count: numbe
 
 export function BackLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} className="vs-data opacity-70 hover:opacity-100">
-      &lt;&lt; {children}
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold transition-colors"
+      style={{ color: 'var(--vs-fg-faint)' }}
+    >
+      <span aria-hidden>←</span>
+      {children}
     </Link>
   );
 }

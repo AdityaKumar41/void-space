@@ -195,7 +195,29 @@ component in it is either tenant-scoped or derived from data the caller may alre
 Read-only by construction: `UPDATE`/`DELETE` on `audit_logs` are revoked from the
 runtime role at the database level (FR-13.3), so there is no write path to expose.
 
-### 2.10 Health — `/health`
+### 2.11 Public catalogue — `apps/api/src/modules/public`
+
+Anonymous. No session, no tenant context, no platform-role access — this is the read path behind
+the marketplace at `/`, and it is what lets §6.1's "Public Catalog" be reachable by a stranger
+following a shared link.
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| GET | `/public/catalog` | 🔓 | Published assets only: `category`, `tag`, `q`, `sort` (`newest`/`oldest`/`polycount`/`name`), `limit`, `offset`. Each row carries what a buyer decides on — `polycount`, `vertices`, `sizeBytes`, `materials`, `textures`, `animations`, `description` — plus the provenance triple `contractAddress`, `tokenId`, `txHash`, and the `licenseType`/`licenseTerms` that token commits to. |
+| GET | `/public/facets` | 🔓 | Category and tag counts for the filter rail, computed over published assets only. |
+| GET | `/public/stats` | 🔓 | Headline figures (licences, triangles indexed, bytes pinned, categories). |
+
+**How it stays inside §5.3.** The obvious implementation — query `assets` across every tenant —
+would need either the platform role or a bypass of row-level security, both of which the data model
+deliberately denies. Instead `packages/db/src/public-catalog.ts` reads the publish-time projection,
+which is written when an asset is published and holds only fields that are safe to make public. A
+takedown removes the row, so revocation takes effect on the next request instead of at the next
+cache expiry.
+
+The field list is also the privacy boundary: no draft content, no member identities, no internal
+ids beyond the asset's own. Anything added here should be checked against that rule first.
+
+### 2.12 Health — `/health`
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
@@ -217,8 +239,8 @@ in the code. Same treatment as the Phase 2 data-model gap-fills.
 | `/auth/providers`, `/tenant`, `/users/*`, `/roles` | §6.1, FR-1.2/1.3 | The SRS specifies the capabilities (workspace switcher, member administration, settings) without fixing paths; the frontend needs read models for them. |
 | SIWE nonce store is in-process | FR-2.6 | Correct for the single-API-instance local stack; a horizontally scaled deployment moves this map to the Redis already in the compose stack. Recorded so it is not forgotten. |
 | Wallet unlink detaches instead of deleting | FR-2.6, §3.9.2 | A minted licence may reference the address; deleting the row would break provenance. |
-| `assets.description` column | FR-3.2, FR-7.5 | **Not yet implemented.** Accepting the AI description records it on `ai_suggestions.acceptedDescription` (auditable), but the asset itself has no description field, so nothing renders it in the catalog. Add `description` plus a `metadata` JSON column to close FR-3.2's tenant-required fields and FR-7.5's one-click accept. |
-| Public catalog read path | §6.1 "Public Catalog" | **Not yet implemented.** `/catalog` currently requires a session and is served from the tenant-scoped `GET /assets?publishedOnly=true`. A genuinely anonymous catalog needs a deliberate cross-tenant read (a dedicated view or the platform role) — a security decision, not an oversight. |
+| `assets.description` + `assets.metadata` columns | FR-3.2, FR-7.5 | **Implemented** (migration `20260923050524_public_catalog_and_asset_description`). Accepting an AI suggestion writes `acceptedDescription` onto the asset as well as recording it on `ai_suggestions` (auditable), and the marketplace renders it. `metadata` is the JSON column FR-3.2's tenant-required fields will validate against. |
+| Public catalogue read path | §6.1 "Public Catalog" | **Implemented** as `GET /api/v1/public/catalog` (`apps/api/src/modules/public`). The decision the earlier note flagged was made explicitly: the read goes through `packages/db/src/public-catalog.ts`, which reads the **publish-time projection** rather than tenant tables, so no tenant context and no platform-role access are needed (§5.3 stays intact). It exposes only published assets and only fields that are safe to publish — no draft content, no member identities. `GET /public/facets` and `GET /public/stats` back the catalogue's filters and headline figures. |
 | Seed fixtures are generated and pinned by the seed itself | FR-3.1, FR-8.1 | Demo assets must actually render. Earlier the seed wrote placeholder CIDs that only resolved because content had been pinned by hand — a fresh clone produced links pointing at nothing. `buildGlbFixture` now emits valid geometry with exactly the recorded triangle count, and the seed pins it (falling back to a placeholder CID with a warning when IPFS is down). |
 | Version `format` is the dotted extension (`.glb`) | §5.1 | The upload path stores `ALLOWED_ASSET_EXTENSIONS` values, and the `?format=` filter enum accepts only those. The seed previously stored the undotted form, which meant seeded assets could not be filtered by format and the viewer skipped them; both are now canonical, and the viewer normalises defensively. |
 

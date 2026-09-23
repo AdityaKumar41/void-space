@@ -51,4 +51,13 @@ packages/types/src/contracts/*.abi.json
 
 screenshots/*
 
-docs/*
+docs/*.audit/
+
+# Rendered thumbnails (regenerate with: node scripts/render-thumbnails.mjs)
+.thumbnails/
+
+# One-off Playwright capture scripts
+.shot*.mjs
+apps/web/.shot*.mjs
+apps/web/.tmp-*.mjs
+packages/db/check-shapes.mts
