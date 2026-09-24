@@ -73,8 +73,16 @@ export class RateLimitError extends AppError {
 }
 
 export class ServiceUnavailableError extends AppError {
-  constructor(message: string, code = 'SERVICE_UNAVAILABLE') {
-    super(message, { statusCode: 503, code });
+  /**
+   * `details` exists because the message is not exposed for a 5xx (see the error handler: "5xx
+   * messages are never leaked to the caller"). That policy is right — an upstream failure message
+   * can carry a hostname or a driver string — but it left a caller unable to tell "the vendor says
+   * the model is gone (404)" from "the vendor is down", which are different things to do something
+   * about. Structured `details` is the sanctioned channel for exactly that, so an upstream status
+   * goes here rather than into the message.
+   */
+  constructor(message: string, code = 'SERVICE_UNAVAILABLE', details?: unknown) {
+    super(message, { statusCode: 503, code, details });
   }
 }
 

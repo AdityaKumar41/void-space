@@ -19,7 +19,7 @@ export interface IpfsClient {
   add(params: { readonly filePath: string; readonly fileName: string }): Promise<IpfsAddResult>;
   /** FR-8.5 — releases the pin; used when an asset is deleted. */
   unpin(cid: string): Promise<void>;
-  /** True when the content is retrievable from this node (health probe, FR-11.5). */
+  /** True when the content is retrievable from this node (health probe, §3.10). */
   has(cid: string): Promise<boolean>;
 }
 

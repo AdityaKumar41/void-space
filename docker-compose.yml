@@ -224,9 +224,15 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       STAGING_DIR: /var/lib/void-space/uploads/staging
+      # FR-6.3 — where the headless Blender runner is, and the volume the two share. Unset (the
+      # default) means the processor records a labelled simulation instead of converting; see
+      # `apps/worker/src/processors/blender-optimize.ts`.
+      BLENDER_RUNNER_URL: ${BLENDER_RUNNER_URL:-}
+      BLENDER_JOB_DIR: /var/lib/void-space/blender-jobs
     volumes:
       - contractsdata:/shared:ro
       - uploads:/var/lib/void-space/uploads
+      - blenderjobs:/var/lib/void-space/blender-jobs
     restart: unless-stopped
 
   web:
@@ -249,17 +255,36 @@ services:
 
   # --------------------------------------------- headless Blender (FR-6.3)
   # Heavy image (~1 GB); pulled on demand only, never part of `pnpm dev:up`.
+  #
+  # Runs as a small HTTP service rather than a one-shot CLI, because the worker is what drives it
+  # and a worker container has no Docker socket — see the note in docker/blender.Dockerfile. It is
+  # not exposed on the host: the worker reaches it as `http://blender-runner:8090` over the Compose
+  # network, which is as far as it needs to travel.
   blender-runner:
     build:
       context: .
       dockerfile: docker/blender.Dockerfile
     profiles: ["blender"]
     environment:
-      BLENDER_JOB_DIR: /jobs
+      BLENDER_JOB_DIR: /var/lib/void-space/blender-jobs
+      BLENDER_PORT: "8090"
+      # A large scene can legitimately take minutes; this is the ceiling, not the expectation.
+      BLENDER_TIMEOUT_SECONDS: ${BLENDER_TIMEOUT_SECONDS:-900}
     volumes:
       - uploads:/var/lib/void-space/uploads
-      - blenderjobs:/jobs
-    restart: "no"
+      # The shared job volume. Deliberately the *same path* as in the worker, though that is now a
+      # convenience rather than a requirement: the worker sends filenames and the runner resolves
+      # them against its own `BLENDER_JOB_DIR`, so the two mounts are free to differ. Aligning them
+      # means a path in a log line or an error message means the same file in both containers.
+      #
+      # The earlier version of this file required them to match, silently — the worker sent absolute
+      # paths and the runner rejected anything outside its own job dir, so `blenderjobs:/jobs` here
+      # against `/var/lib/void-space/blender-jobs` in the worker made every real conversion fail
+      # with a 400. The simulation path hid it, because a simulation never calls the runner.
+      - blenderjobs:/var/lib/void-space/blender-jobs
+    expose:
+      - "8090"
+    restart: unless-stopped
 
 volumes:
   pgdata:

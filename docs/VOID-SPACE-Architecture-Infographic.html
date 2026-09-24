@@ -686,6 +686,12 @@
     <p class="cover-sub">
       Multi-tenant 3D/XR asset lifecycle platform — from raw upload to governed, content-addressed, on-chain licensed assets delivered to XR consumers.
     </p>
+    <p class="cover-sub" style="font-size:12px;opacity:.75;max-width:62ch;margin-top:14px;">
+      <strong>An exported snapshot.</strong> The living documents are
+      <code>docs/architecture.md</code> and <code>docs/FR-traceability.md</code>. The figures on this
+      page were copied from them by hand and had drifted before this export was corrected &mdash; check
+      <code>architecture.md</code> before quoting a number.
+    </p>
 
     <div class="cover-pipeline">
       <div class="pipe-step">Upload</div>
@@ -707,11 +713,11 @@
         <div class="cover-stat-label">Containers</div>
       </div>
       <div class="cover-stat">
-        <span class="cover-stat-num">224</span>
+        <span class="cover-stat-num">275</span>
         <div class="cover-stat-label">Tests</div>
       </div>
       <div class="cover-stat">
-        <span class="cover-stat-num">51</span>
+        <span class="cover-stat-num">69</span>
         <div class="cover-stat-label">API Operations</div>
       </div>
       <div class="cover-stat">
@@ -832,7 +838,7 @@
           <div class="layer-content" style="background:#eff6ff;border:1px solid #93c5fd;flex-wrap:wrap;gap:8px;">
             <div class="layer-node" style="background:#fff;border-color:#93c5fd;">
               <div style="font-size:10px;font-weight:700;">PostgreSQL 16</div>
-              <div style="font-size:9px;color:#9ca3af;">19 tables · RLS on 18<br>append-only audit</div>
+              <div style="font-size:9px;color:#9ca3af;">20 tables · RLS on 18<br>append-only audit</div>
             </div>
             <div class="layer-node" style="background:#fff;border-color:#93c5fd;">
               <div style="font-size:10px;font-weight:700;">Redis 7</div>
@@ -1967,7 +1973,7 @@
   <div class="section">
     <div class="sec-head">
       <span class="sec-num">§17</span>
-      <h2 class="sec-title">Verification &amp; Test Coverage — 224 Tests</h2>
+      <h2 class="sec-title">Verification &amp; Test Coverage — 275 Tests</h2>
     </div>
 
     <div class="grid-2">
@@ -1977,7 +1983,7 @@
           <div class="test-row">
             <div>apps/api</div>
             <div class="test-bar-track"><div class="test-bar-fill" style="width:100%"></div></div>
-            <div class="test-count">57</div>
+            <div class="test-count">91</div>
           </div>
           <div class="test-row">
             <div>packages/db</div>
@@ -1987,7 +1993,7 @@
           <div class="test-row">
             <div>apps/worker</div>
             <div class="test-bar-track"><div class="test-bar-fill" style="width:72%"></div></div>
-            <div class="test-count">41</div>
+            <div class="test-count">58</div>
           </div>
           <div class="test-row">
             <div>packages/contracts</div>
@@ -2069,28 +2075,28 @@
             <div class="roadmap-dot" style="background:#065f46;"></div>
             <div>RBAC · RLS · Google SSO · SIWE wallet · API keys</div>
           </div>
+          <div class="roadmap-item">
+            <div class="roadmap-dot" style="background:#065f46;"></div>
+            <div>Blender conversion · vendor search importers · outbound webhooks</div>
+          </div>
+          <div class="roadmap-item">
+            <div class="roadmap-dot" style="background:#065f46;"></div>
+            <div>Public catalogue — cross-tenant projection, read anonymously</div>
+          </div>
         </div>
       </div>
 
       <!-- Designed -->
       <div class="roadmap-col">
-        <div class="roadmap-col-head" style="background:#d81f26;">⏳ Designed — Adapter Pending</div>
+        <div class="roadmap-col-head" style="background:#d81f26;">🔌 Needs a Third-Party Account</div>
         <div class="roadmap-col-body">
           <div class="roadmap-item">
             <div class="roadmap-dot" style="background:#d81f26;"></div>
-            <div><strong>Blender auto-conversion</strong><br>Queue and worker exist; adapter stubbed</div>
+            <div><strong>Blender conversion, real mode</strong><br>Processor and runner exist; the ~1 GB image is not in <code>dev:up</code></div>
           </div>
           <div class="roadmap-item">
             <div class="roadmap-dot" style="background:#d81f26;"></div>
-            <div><strong>EoN Reality push</strong><br>xr-publish builds the descriptor</div>
-          </div>
-          <div class="roadmap-item">
-            <div class="roadmap-dot" style="background:#d81f26;"></div>
-            <div><strong>Importers</strong><br>Sketchfab · Poly Pizza · Meshy — columns reserved</div>
-          </div>
-          <div class="roadmap-item">
-            <div class="roadmap-dot" style="background:#d81f26;"></div>
-            <div><strong>Outbound webhooks</strong><br>Table and event list defined</div>
+            <div><strong>Vendor search, live</strong><br>Adapters exist; need API keys and outbound network</div>
           </div>
           <div class="roadmap-item">
             <div class="roadmap-dot" style="background:#d81f26;"></div>
@@ -2129,7 +2135,7 @@
 
     <div style="margin-top:14px;" class="callout note">
       <span class="callout-icon">📝</span>
-      <div><strong>Each "adapter pending" item</strong> has its contract, queue, and data model already in place. What remains is only the integration adapter — the platform skeleton is complete.</div>
+      <div><strong>Each item in the middle column</strong> has its contract, queue, processor and tests already in place. What is missing is a third-party account or a production target, not the adapter — so “pending” was the wrong word for it.</div>
     </div>
   </div>
 

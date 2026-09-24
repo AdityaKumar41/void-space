@@ -21,16 +21,20 @@ import { assertRlsEnforced, prisma } from '@void-space/db';
 
 import type { ApiEnv } from './env';
 import { isAppError } from './lib/errors';
+import { rateLimitKey } from './lib/rate-limit-key';
 import { createJobProducer } from './lib/producer';
 import { authPlugin } from './plugins/auth';
 import { openApiPlugin } from './plugins/openapi';
 import { auditRoutes } from './modules/audit/routes';
 import { assetRoutes } from './modules/assets/routes';
 import { dashboardRoutes } from './modules/dashboard/routes';
+import { developerRoutes } from './modules/developer/routes';
+import { jobRoutes } from './modules/jobs/routes';
 import { licensingRoutes } from './modules/licensing/routes';
 import { notificationRoutes } from './modules/notifications/routes';
 import { publicRoutes } from './modules/public/routes';
 import { reviewRoutes } from './modules/review/routes';
+import { toolsRoutes } from './modules/tools/routes';
 import { authRoutes } from './modules/auth/routes';
 import { googleRoutes } from './modules/auth/google-routes';
 import { siweRoutes } from './modules/auth/siwe-routes';
@@ -105,13 +109,16 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
 
-  // §3.1: the API is the only trusted boundary, so it rate-limits by default
-  // (NFR-SEC.6). Auth routes tighten this further per-route.
+  // §3.1: the API is the only trusted boundary, so it rate-limits by default (NFR-SEC.6), and
+  // FR-12.4 requires the bucket to follow the credential rather than the address on
+  // bearer-authenticated calls. See `lib/rate-limit-key.ts` for the rule and why it is not inline.
   await app.register(rateLimit, {
     max: 300,
     timeWindow: '1 minute',
     // Health checks come from nginx every few seconds.
     allowList: (request) => request.url.startsWith('/api/v1/health'),
+    keyGenerator: (request) =>
+      rateLimitKey({ headers: request.headers, ip: request.ip ?? undefined }),
   });
 
   await app.register(jwt, {
@@ -248,10 +255,19 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   await app.register(tenantRoutes, { prefix: '/api/v1' });
   await app.register(auditRoutes, { prefix: '/api/v1' });
   await app.register(assetRoutes, { prefix: '/api/v1', env, producer });
+  // FR-6.1–FR-6.4 and UC-09 — the third-party tools module. It was written, tested and code-reviewed
+  // and then never mounted here, so every route in it answered 404 in a running API while its own
+  // header claimed the paths were "fixed by the specification". `routes.test.ts` now asserts they
+  // resolve, because nothing else can see an unregistered module: it typechecks, lints and passes
+  // its unit tests whether or not it is reachable.
+  await app.register(toolsRoutes, { prefix: '/api/v1', env, producer });
   await app.register(reviewRoutes, { prefix: '/api/v1', env, producer });
   await app.register(licensingRoutes, { prefix: '/api/v1', env, producer });
   await app.register(notificationRoutes, { prefix: '/api/v1' });
   await app.register(dashboardRoutes, { prefix: '/api/v1' });
+  // FR-6.5 — polling for any long-running operation, and FR-12.3 — API key management.
+  await app.register(jobRoutes, { prefix: '/api/v1' });
+  await app.register(developerRoutes, { prefix: '/api/v1' });
   // §6.1 Public Catalog — the only unauthenticated surface, and the only one reading the
   // cross-tenant projection rather than tenant-scoped tables.
   await app.register(publicRoutes, { prefix: '/api/v1' });

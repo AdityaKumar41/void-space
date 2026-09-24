@@ -66,6 +66,8 @@ const CONSOLE_ROUTES = [
   { path: '/console/review', label: 'Review queue', roles: ['assessor'] },
   { path: '/console/audit', label: 'Audit ledger', roles: ['assessor'] },
   { path: '/console/admin', label: 'Administration', roles: ['admin'] },
+  // FR-14.1 — the cross-workspace view is SuperAdmin-only, so it is audited as such.
+  { path: '/console/tenants', label: 'Workspaces (platform)', roles: ['superadmin'] },
 ];
 
 /** Routes that must refuse a role that lacks the permission (403 surface, not a crash or a blank page). */

@@ -25,17 +25,33 @@ import { cn } from '../lib/cn';
  */
 export type PublicSurface = 'product' | 'catalog' | 'model';
 
+/**
+ * Whether the interactive API reference exists on this deployment.
+ *
+ * The API registers Swagger UI **outside production only**, deliberately (`plugins/openapi.ts`): a
+ * browsable list of every route with its RBAC requirement is a tool for somebody building against the
+ * API, not something to publish to the open internet. The prose contract is
+ * `docs/VS-SDD-2.0-api.md`.
+ *
+ * The storefront linked to it unconditionally, so on a production deployment the "API" nav item, the
+ * announcement-bar link, the footer link and the landing page's call to action were four dead ends.
+ * An earlier fix here — swapping `next/link` for a plain `<a>` to stop a prefetch 404 — took the
+ * symptom out of the UI audit without making the link work, which is worth remembering: a link that
+ * has stopped failing *noisily* is not the same as a link that resolves.
+ *
+ * Gating on the same condition the API uses is what keeps a link and its target from disagreeing.
+ */
+export const API_REFERENCE_AVAILABLE = process.env.NODE_ENV !== 'production';
+
 interface NavEntry {
-  readonly surface: PublicSurface | 'docs';
+  readonly surface: PublicSurface;
   readonly href: string;
   readonly label: string;
-  readonly external?: boolean;
 }
 
 const NAV: readonly NavEntry[] = [
   { surface: 'product', href: '/', label: 'Product' },
   { surface: 'catalog', href: '/catalog', label: 'Catalogue' },
-  { surface: 'docs', href: '/api/v1/docs', label: 'API', external: true },
 ];
 
 /**
@@ -79,22 +95,24 @@ export function MarketAnnouncement() {
           The whole stack runs locally — no cloud account, no faucet, no paid RPC.
         </span>
         {/*
-          A plain `<a>`, not `next/link`. `/api/v1/docs` is served by the API through the edge — it is
-          not a Next route, so a `Link` prefetches `/api/v1/docs?_rsc=…` and gets a 404 on every page
-          load. The console error it produced failed the UI audit.
+          Shown only where the reference exists — see `API_REFERENCE_AVAILABLE`. In development it
+          resolves; on the deployed storefront the API's Swagger UI is not registered, so the link
+          would be a dead end and is omitted rather than left to 404.
 
-          The link also relabels honestly: it points at the OpenAPI reference, which does describe the
-          architecture, but "See the architecture" over a Swagger page would be a small lie.
+          A plain `<a>` rather than `next/link` in any case: the path is served by the API through the
+          edge, so it is not a Next route and a `Link` would prefetch `/api/v1/docs?_rsc=…`.
         */}
-        <a
-          href="/api/v1/docs"
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-[13px] font-semibold text-ink transition-colors duration-150 ease-standard hover:text-brand-warm"
-        >
-          Read the API reference
-          <ArrowRightIcon width={13} height={13} />
-        </a>
+        {API_REFERENCE_AVAILABLE ? (
+          <a
+            href="/api/v1/docs"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-[13px] font-semibold text-ink transition-colors duration-150 ease-standard hover:text-brand-warm"
+          >
+            Read the API reference
+            <ArrowRightIcon width={13} height={13} />
+          </a>
+        ) : null}
       </Container>
     </div>
   );
@@ -124,43 +142,37 @@ export function MarketHeader({
             wordmark beside it already goes home, and the API link waits until `sm`.
           */}
           <nav className="flex items-center gap-0.5 md:gap-1" aria-label="Main">
-            {NAV.map((entry) => {
-              const responsive =
-                entry.surface === 'product'
-                  ? 'hidden md:inline-flex'
-                  : entry.surface === 'docs'
-                    ? 'hidden sm:inline-flex'
-                    : 'inline-flex';
+            {NAV.map((entry) => (
+              <Link
+                key={entry.label}
+                href={entry.href}
+                aria-current={current === entry.surface ? 'page' : undefined}
+                className={cn(
+                  'rounded-control px-2.5 py-2 text-[14px] transition-colors duration-150 ease-standard hover:bg-veil-6 hover:text-ink md:px-3',
+                  // "Product" is the longest label and the one a repeat visitor needs least.
+                  entry.surface === 'product' ? 'hidden md:inline-flex' : 'inline-flex',
+                  current === entry.surface ? 'font-semibold text-ink' : 'text-ink-dim',
+                )}
+              >
+                {entry.label}
+              </Link>
+            ))}
 
-              const base = cn(
-                'rounded-control px-2.5 py-2 text-[14px] transition-colors duration-150 ease-standard hover:bg-veil-6 hover:text-ink md:px-3',
-                responsive,
-              );
-
-              return entry.external ? (
-                <a
-                  key={entry.label}
-                  href={entry.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={cn(base, 'text-ink-dim')}
-                >
-                  {entry.label}
-                </a>
-              ) : (
-                <Link
-                  key={entry.label}
-                  href={entry.href}
-                  aria-current={current === entry.surface ? 'page' : undefined}
-                  className={cn(
-                    base,
-                    current === entry.surface ? 'font-semibold text-ink' : 'text-ink-dim',
-                  )}
-                >
-                  {entry.label}
-                </Link>
-              );
-            })}
+            {/*
+              The API entry, rendered only where the reference actually exists. An `<a>` and not a
+              `Link`, because `/api/v1/docs` is served by the API through the edge rather than by Next
+              — a `Link` prefetches `?_rsc=…` and 404s on every page load.
+            */}
+            {API_REFERENCE_AVAILABLE ? (
+              <a
+                href="/api/v1/docs"
+                target="_blank"
+                rel="noreferrer"
+                className="hidden rounded-control px-2.5 py-2 text-[14px] text-ink-dim transition-colors duration-150 ease-standard hover:bg-veil-6 hover:text-ink sm:inline-flex md:px-3"
+              >
+                API
+              </a>
+            ) : null}
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
@@ -224,16 +236,18 @@ export function MarketFooter() {
                   </Link>
                 </li>
               ))}
-              <li>
-                <a
-                  href="/api/v1/docs"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-ink-dim transition-colors duration-150 ease-standard hover:text-ink"
-                >
-                  API reference
-                </a>
-              </li>
+              {API_REFERENCE_AVAILABLE ? (
+                <li>
+                  <a
+                    href="/api/v1/docs"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-ink-dim transition-colors duration-150 ease-standard hover:text-ink"
+                  >
+                    API reference
+                  </a>
+                </li>
+              ) : null}
             </ul>
           </nav>
 

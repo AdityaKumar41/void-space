@@ -1,5 +1,6 @@
 /**
- * Dashboard read model (SRS §6.1: "Role-aware dashboards", FR-11.2, FR-11.5).
+ * Dashboard read model (SRS §6.1: "Role-aware dashboards"; FR-11.2 for the unread count,
+ * §3.10 for the queue depth).
  *
  *   GET /api/v1/dashboard   one payload for the landing screen
  *

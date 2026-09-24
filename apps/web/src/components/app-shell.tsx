@@ -47,6 +47,9 @@ const NAV: readonly NavItem[] = [
   { href: '/console/licenses', label: 'Licences', permission: 'catalog:view' },
   { href: '/console/audit', label: 'Audit', permission: 'audit:view' },
   { href: '/console/admin', label: 'Team', permission: 'tenant:manage-users' },
+  // FR-14.1 — the SuperAdmin's cross-workspace view. Separate from Team, which is a single
+  // workspace's members: one screen is the tenant, the other is the platform.
+  { href: '/console/tenants', label: 'Workspaces', permission: 'tenant:manage' },
 ];
 
 /**

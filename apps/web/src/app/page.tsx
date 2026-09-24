@@ -21,7 +21,11 @@ import Link from 'next/link';
 
 import { HeroStage } from '../components/hero-showcase';
 import { MarketCard } from '../components/market-card';
-import { MarketFooter, MarketHeader } from '../components/market-shell';
+import {
+  API_REFERENCE_AVAILABLE,
+  MarketFooter,
+  MarketHeader,
+} from '../components/market-shell';
 import { cn } from '../lib/cn';
 import { buttonVariants } from '../components/ui/button';
 import { Chip } from '../components/ui/chip';
@@ -515,15 +519,22 @@ export default async function LandingPage() {
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-3">
-                <a
-                  href="/api/v1/docs"
-                  target="_blank"
-                  rel="noreferrer"
-                  className={buttonVariants({ variant: 'primary' })}
-                >
-                  Read the API reference
-                  <ArrowRightIcon width={15} height={15} />
-                </a>
+                {/*
+                  The CTA points at the interactive reference, which the API registers outside
+                  production only — so it is rendered only where it resolves. See
+                  `API_REFERENCE_AVAILABLE`.
+                */}
+                {API_REFERENCE_AVAILABLE ? (
+                  <a
+                    href="/api/v1/docs"
+                    target="_blank"
+                    rel="noreferrer"
+                    className={buttonVariants({ variant: 'primary' })}
+                  >
+                    Read the API reference
+                    <ArrowRightIcon width={15} height={15} />
+                  </a>
+                ) : null}
                 <span className="font-mono text-[12.5px] text-ink-faint">
                   OpenAPI 3.1 · Bearer token or cookie
                 </span>

@@ -109,7 +109,7 @@ export class JobProducer {
     }
   }
 
-  /** Queue depth per queue, for the System Health screen (FR-11.5). */
+  /** Queue depth per queue, for the System Health screen (§3.10, NFR-SCAL.2). */
   async counts(): Promise<Partial<Record<QueueName, number>>> {
     const result: Partial<Record<QueueName, number>> = {};
     for (const name of Object.keys(QUEUE_POLICIES) as QueueName[]) {

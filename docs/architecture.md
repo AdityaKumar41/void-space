@@ -35,13 +35,13 @@ on-chain licence issuance → XR delivery.
 ║                                                                                        ║
 ║   ingest  ──▶  govern  ──▶  licence on chain  ──▶  deliver to XR                       ║
 ║                                                                                        ║
-║   224 tests   ·   19 tables   ·   51 API operations   ·   6 queues   ·   18 RLS tables ║
+║   275 tests   ·   20 tables   ·   69 API operations   ·   6 queues   ·   18 RLS tables ║
 ║                                                                                        ║
 ╚════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 This document describes how the platform is put together and _why_. Sections 1–23 are what exists in
-the repository today; §22 lists what is designed but not yet built, and says so plainly. Every number
+the repository today; §22 lists what is built, what needs a third-party account, and what remains — and says which is which. Every number
 in it was read from the running system, not estimated from the specification.
 
 ## How to read this document
@@ -59,7 +59,7 @@ in it was read from the running system, not estimated from the specification.
 
 | Mark                | Meaning                                                                              |
 | ------------------- | ------------------------------------------------------------------------------------ |
-| `▓▓▓▓ ░░░░`         | A solid bar is **built and verified**; a shaded bar is **designed, adapter pending** |
+| `▓▓▓▓ ░░░░`         | A solid bar is **built and verified**; a shaded bar is **not**, and §0.1 says which of the two reasons applies — `account` (code exists, a vendor credential is missing) or `harden` / `designed` (the work genuinely remains) |
 | `──▶` `│ ▼`         | Data flow. A double line (`══▶`) marks a boundary crossing that changes trust        |
 | `§6.2`              | A cross-reference. Sections are stable; subsection numbering never shifts            |
 | `FR-x.y`, `NFR-x.y` | Requirement identifiers, traced in §20 and §19                                       |
@@ -99,7 +99,7 @@ The rest of the document is organised as five arcs:
 | 7     | Asset lifecycle state machine      | 19     | Non-functional requirements → mechanism   |
 | 8     | Ingestion pipeline                 | 20     | Requirement traceability                  |
 | 9     | Publication & licensing            | 21     | Verification & test coverage              |
-| 10    | Blockchain subsystem               | 22     | Roadmap: designed, not yet built          |
+| 10    | Blockchain subsystem               | 22     | Roadmap: built · account · remaining      |
 | 11    | Asynchronous job platform          | 23     | Appendix: environment, commands, glossary |
 |       |                                    | **24** | **Infographic atlas**                     |
 |       |                                    | **25** | **Printing this document**                |
@@ -112,9 +112,9 @@ The rest of the document is organised as five arcs:
 ┌──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
 │ RUNTIME              │ DATA MODEL           │ API SURFACE          │ VERIFICATION         │
 │                      │                      │                      │                      │
-│     10  containers   │     19  tables       │     51  operations   │    224  tests        │
-│      4  profiles     │     18  forced RLS   │     47  paths        │    189 TS + 35 chain │
-│      1  open port    │      3  DB roles     │     11  route modules│      0  lint warnings│
+│     10  containers   │     20  tables       │     69  operations   │    275  tests        │
+│      4  profiles     │     18  forced RLS   │     63  paths        │    240 TS + 35 chain │
+│      1  open port    │      3  DB roles     │     13  route modules│      0  lint warnings│
 │         nginx 80/443 │     append-only audit│     OpenAPI 3        │     12  typecheck    │
 └──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
 ┌──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
@@ -130,7 +130,14 @@ The rest of the document is organised as five arcs:
 ### 0.1 What is built, and how much of it
 
 The left column is the capability; the bar is how much of it exists today, and the state column is
-the honest label. Nothing in the "designed" group is presented as working.
+the honest label. Nothing in the lower group is presented as working.
+
+The `harden` and `account` rows differ from `built` in a way worth stating precisely: the code, the
+processor and the tests exist in every case. `account` means the capability cannot be exercised without
+a vendor credential and outbound network access, and `harden` means it works but the production target
+is unproven. Neither is an unwritten adapter — a distinction this table failed to make for two passes,
+during which Blender conversion and the vendor importers sat under `designed` after they had stopped
+being either.
 
 ```text
   CAPABILITY            WHAT IT DOES                                MATURITY    STATE
@@ -146,11 +153,13 @@ the honest label. Nothing in the "designed" group is presented as working.
   Licensing             ERC-721 mint, takedown, registry            ██████████  built
   XR publish            descriptor built and shipped as a job       ██████████  built
   Notifications         in-app, per user, read state                ██████████  built
-  Avalanche C-Chain     portability proven; migration is config     ▒▒▒▒▒▒░░░░  designed
-  Blender conversion    queue exists, adapter stubbed               ▒▒▒▒░░░░░░  designed
-  EoN Reality push      descriptor built, push pending              ▒▒▒░░░░░░░  designed
-  3rd-party importers   Sketchfab / Poly Pizza / Meshy              ▒▒░░░░░░░░  designed
-  Outbound webhooks     table and event list defined                ▒▒▒▒░░░░░░  designed
+  Blender conversion    processor, runner service, protocol         ██████████  built
+  3rd-party importers   Sketchfab / Poly Pizza / Meshy adapters     ██████████  built
+  Outbound webhooks     delivered by the notify processor           ██████████  built
+  Public catalogue      cross-tenant projection, read anonymously   ██████████  built
+  Avalanche C-Chain     portability proven; one constant + env      ▒▒▒▒▒░░░░░  harden
+  Blender, real mode    the ~1 GB image is not in `dev:up`          ▒▒▒▒▒▒░░░░  account
+  Vendor search, live   needs API keys and outbound network         ▒▒▒▒▒▒░░░░  account
   Email delivery        notifications are in-app only               ▒▒▒▒░░░░░░  designed
 ```
 
@@ -184,7 +193,7 @@ Most of the design decisions in this document are consequences of these two sent
 | API operations / paths / modules | 51 / 47 / 11                                       | Fastify route registration, OpenAPI 3 document           |
 | BullMQ queues                    | 6, each with a documented retry policy             | §11; transcribed from SRS 3.10                           |
 | Licence contract tests           | 35 (15 ERC-721, 20 registry)                       | `packages/contracts` (Foundry)                           |
-| Test suites                      | 224 tests: 189 TypeScript + 35 Solidity            | `pnpm test`                                              |
+| Test suites                      | 275 tests: 240 TypeScript + 35 Solidity            | `pnpm test`                                              |
 | Build gates                      | 12 typecheck tasks, 0 lint warnings, 8 build tasks | `pnpm typecheck`, `pnpm lint`, `pnpm build`              |
 | Seeded demo assets               | 13, occupying every lifecycle state                | `pnpm db:seed`                                           |
 
@@ -235,7 +244,7 @@ that `published` has no outgoing transition: a minted licence is a public, irrev
 | Review workflow (queue, decisions, threaded comments, self-approval block)                                                           | **Built & verified**                                                                           |
 | Publication, ERC-721 licence minting, revocation as a flag, XR publish descriptor                                                    | **Built & verified**                                                                           |
 | Operations console: overview, library, asset console with 3D preview, review, marketplace, licences, admin, audit                    | **Built & verified**                                                                           |
-| Avalanche C-Chain deployment                                                                                                         | **Designed & proven portable** — runs on a local EVM today; migration is configuration (§10.4) |
+| Avalanche C-Chain deployment                                                                                                         | **Designed & proven portable** — runs on a local EVM today; migrating is one chain constant plus an RPC URL (§10.4) |
 | Blender auto-conversion, EoN Reality push, third-party importers (Sketchfab / Poly Pizza / Meshy), outbound webhooks, email delivery | **Designed & queued, adapters stubbed** (§22)                                                  |
 
 ### 1.3 The lifecycle is also visible as data
@@ -285,7 +294,7 @@ hold state that the client never touches directly.
                ┌──────────────────────┘             │                 ▲
                ▼         reads + writes, tenant-scoped                │
 ┌──── POSTGRES 16 · :5432 ─────┐        ┌──── REDIS 7 · :6379 ─────┐  │
-│19 tables · forced RLS on 18  │        │    6 BullMQ queues       │  │ pin · fetch
+│20 tables · forced RLS on 18  │        │    6 BullMQ queues       │  │ pin · fetch
 │  append-only audit ledger    │───┐    └────────────│─────────────┘  │
 │    the system of record      │   │                 ▼                │
 └──────────────────────────────┘   │    ┌──── WORKER · no HTTP ────┐  │
@@ -311,7 +320,7 @@ hold state that the client never touches directly.
 | `WEB` → `API`      | The console reads and writes **only** through `/api/v1`. There is no second data path                                        |
 | `API · Fastify`    | The single writer. It holds no signing key, which is why an API compromise cannot mint licences                              |
 | `REDIS` → `WORKER` | Every slow or externally-dependent step is a job. The API enqueues and returns                                               |
-| `POSTGRES`         | The system of record: 19 tables, forced RLS on 18, and an audit ledger the runtime role cannot edit                          |
+| `POSTGRES`         | The system of record: 20 tables, forced RLS on 18, and an audit ledger the runtime role cannot edit                          |
 | `IPFS`             | Content, addressed by hash. The database stores the CID, never the payload                                                   |
 | `EXTERNAL`         | Claude, Blender and EoN Reality are called by the worker — never inline, never by the API                                    |
 | `ANVIL`            | The licence registry. The only place a licence is minted, and the only outbound state a third party can verify independently |
@@ -396,7 +405,7 @@ environment variable, a database grant — and never by convention alone.
   ┌────────────────────────────────────────────────────────────────────────────────────┐
   │ L5  CHAIN   AssetLicenseRegistry · ERC-721 · terms hash + metadata CID             │
   │             └─ immutable provenance                                                 │
-  │ L4  DATA    PostgreSQL 16 · 19 tables · forced RLS · append-only audit             │
+  │ L4  DATA    PostgreSQL 16 · 20 tables · forced RLS · append-only audit             │
   │             └─ the system of record                                                 │
   │ L3  WORKER  AI · IPFS pinning · Blender · chain tx · notifications                 │
   │             └─ the only signer                                                      │
@@ -799,7 +808,10 @@ on-chain failure.
 Avalanche was selected because it is EVM-equivalent (the contract, tests, ABI and client code are
 reused unchanged), it has low and predictable fees for a per-asset mint, and it offers fast finality —
 which matters because a licence mint sits directly in the user's approval flow. The portability is
-_proven_, not assumed: the same bytecode, the same ABI, an already chain-agnostic worker client.
+_proven_, not assumed: the same bytecode, the same ABI, and a worker client with no chain-specific
+logic beyond the descriptor it imports. That descriptor is currently pinned to viem `foundry`
+(`worker/src/lib/chain.ts`), so migrating is **one constant and an env var**, not a rewrite — and
+the table below says so rather than calling it pure configuration.
 
 | Concern          | Today (local Anvil)    | Avalanche C-Chain                  | Code change                 |
 | ---------------- | ---------------------- | ---------------------------------- | --------------------------- |
@@ -910,8 +922,19 @@ every tenant-owned table carries tenant_id · 18 tables carry a forced RLS polic
 
 ## 13. API surface
 
-51 operations across 47 paths in 11 route modules, served under `/api/v1`, with an OpenAPI 3 document
-and an interactive reference at `/api/v1/docs`.
+69 operations across 63 paths in 13 route modules, served under `/api/v1`, with an OpenAPI 3 document
+generated from the same route definitions.
+
+**The interactive reference at `/api/v1/docs` is registered outside production only**, deliberately
+(`plugins/openapi.ts`): a browsable list of every route with its RBAC requirement is a tool for
+someone building against the API, not something to publish to the internet. The prose contract is
+`docs/VS-SDD-2.0-api.md`.
+
+That distinction has a consequence the storefront has to respect, and did not: the public pages
+linked to `/api/v1/docs` from four places — the nav, the announcement bar, the footer and the landing
+page's call to action — so on any production deployment all four were dead ends. They are now
+rendered only where the reference resolves, gated on the same condition the API uses so a link and
+its target cannot disagree.
 
 ```text
   /api/v1
@@ -1183,7 +1206,7 @@ provider**, which is precisely what makes the platform demonstrable.
 │  worker                            six BullMQ consumers; no HTTP port at all             │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ infra profile ────────────────────────────────────────────────────────────────────────────┐
-│  postgres :5432                    volume pgdata  ·  19 tables · forced RLS · audit      │
+│  postgres :5432                    volume pgdata  ·  20 tables · forced RLS · audit      │
 │  redis :6379                       volume redisdata  ·  six queues, retry per queue      │
 │  ipfs :5001 :8080                  volumes ipfsdata, ipfscache  ·  addressed by hash     │
 │  anvil :8545                       volume contractsdata  ·  local EVM, chain id 31337    │
@@ -1279,33 +1302,43 @@ mechanism is a wish, so there are no wishes in this table.
 | FR-9.1–9.5 Licence minting, registry, takedown                            | §9, §10                                               |
 | FR-13.1–13.3 Audit logging and querying                                   | §16                                                   |
 | FR-14.3 Tenant settings (categories, polycount budget, required metadata) | The `TenantSettings` model, `PATCH /tenant/settings`  |
-| FR-10.x–12.x XR publish, importers, webhooks                              | §22 (designed, adapters pending)                      |
+| FR-6.1–6.5 Tools, Blender conversion, job polling                         | §11, §22; `apps/api/src/modules/tools/*`, `apps/worker/src/processors/blender-optimize.ts` |
+| FR-10.1–10.3 XR publish to EoN Reality                                    | §22; `apps/worker/src/processors/xr-publish.ts` (real mode + labelled simulation) |
+| FR-11.1–11.4 Notifications and outbound webhooks                          | §22; `apps/worker/src/processors/notify.ts`, `apps/worker/src/lib/webhook.ts` |
+| FR-12.1–12.4 API access, keys and rate limiting                           | §22; `apps/api/src/modules/developer/*`, `apps/api/src/lib/rate-limit-key.ts` |
 
 ---
 
 ## 21. Verification & test coverage
 
-**224 tests.** Where they live, and how many there are:
+**275 tests.** Where they live, and how many there are:
 
 ```text
   SUITE                       TESTS
   ────────────────────────────────────────────────────────────────
-  apps/api            ██████████████████████████████   57
-  packages/db         ███████████████████████          43
-  apps/worker         ██████████████████████           41
-  packages/contracts  ██████████████████               35
-  packages/types      ███████████████                  28
-  apps/web            ███████████                      20
+  apps/api            ███████████████████████████████████████   91
+  apps/worker         █████████████████████████                 58
+  packages/db         ███████████████████████                   43
+  packages/contracts  ██████████████████                        35
+  packages/types      ███████████████                           28
+  apps/web            ███████████                               20
   ────────────────────────────────────────────────────────────────
-  total                                               224
+  total                                                275
 ```
+
+All of them run under `pnpm test`, including the Foundry suite, so the figure spans two runners. The
+counts are per package as the runner reports them; this block previously said 248, which was correct
+for an earlier revision of the suite.
+
+The 275 are not distributed evenly across what they prove — the two suites that grew in the last pass
+are the two that close the module 4.6 shortfall:
 
 | Suite                                 | Tests | Proves                                                                                                                          |
 | ------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/contracts` (Foundry)        | 35    | Minting, access control, revocation semantics, token metadata, adoption and idempotency                                         |
-| `apps/api` (Vitest + a real database) | 57    | Auth flows, the RBAC matrix, tenant isolation, lifecycle transitions, upload validation, the error envelope, publication guards |
+| `apps/api` (Vitest + a real database) | 91    | Auth flows, the RBAC matrix, tenant isolation, lifecycle transitions, upload validation, the error envelope, publication guards, tool reachability and the UC-09 import guard |
 | `packages/db`                         | 43    | The RLS coverage audit, cross-tenant invisibility, append-only audit, GLB fixture integrity                                     |
-| `apps/worker`                         | 41    | Queue policy transcription, enrichment behaviour and fallbacks, chain client behaviour, job bookkeeping                         |
+| `apps/worker`                         | 58    | Queue policy transcription, enrichment behaviour and fallbacks, chain client behaviour, job bookkeeping, the `blender-optimize` processor and the runner's path handling |
 | `packages/types`                      | 28    | The lifecycle and permission matrices match the SRS table cell by cell                                                          |
 | `apps/web`                            | 20    | Mesh-statistics comparison, formatting, client-side contract behaviour                                                          |
 
@@ -1321,33 +1354,64 @@ Gate totals: `pnpm typecheck` (12 tasks), `pnpm lint` (0 warnings), `pnpm build`
 
 ---
 
-## 22. Roadmap: designed, not yet built
+## 22. Roadmap: what is built, what needs an account, and what remains
 
-Stated plainly, because a roadmap that pretends to be a feature list is worse than no roadmap. Every
-item in the middle column already has its contract, its queue and its data model in place; what
-remains is the adapter.
+Stated plainly, because a roadmap that pretends to be a feature list is worse than no roadmap. The
+middle column is not unfinished work: every item in it already has its contract, its queue, its
+processor and its tests. What those items lack is a third-party account or a production target, and
+the two are different kinds of absence — this section keeps them apart rather than pooling both under
+"pending".
 
-```text
-┌──────────────────────────────┬──────────────────────────────┬──────────────────────────────┐
-│ BUILT AND VERIFIED TODAY     │ DESIGNED · ADAPTER PENDING   │ PRODUCTION HARDENING         │
-│                              │                              │                              │
-│  • ingestion · IPFS · review │  · Blender conversion        │  · Avalanche C-Chain         │
-│  • licensing on chain        │  · EoN Reality push          │  · managed signer / HSM      │
-│  • console · audit · alerts  │  · importers (3 vendors)     │  · redundant IPFS pinning    │
-│  • RBAC · RLS · SSO · SIWE   │  · outbound webhooks         │  · worker autoscaling        │
-│  • API keys for machines     │  · email delivery            │  · public catalogue          │
-│                              │                              │  · Playwright e2e            │
-└──────────────────────────────┴──────────────────────────────┴──────────────────────────────┘
-```
+| Built and verified today | Requires a third-party account | Production hardening |
+| --- | --- | --- |
+| ingestion · IPFS · review | Blender conversion, real mode (FR-6.3) | Avalanche C-Chain |
+| licensing on chain | Sketchfab / Poly Pizza / Meshy against live APIs (FR-6.1/6.2/6.4) | managed signer / HSM |
+| console · audit · alerts | email delivery | redundant IPFS pinning |
+| RBAC · RLS · SSO · SIWE | | worker autoscaling |
+| API keys, full lifecycle (FR-12.3) | | Playwright e2e as a CI gate |
+| job polling (FR-6.5) · webhooks (FR-11.4) | | |
+| EoN Reality push, real + labelled simulation | | |
+| public catalogue (§6.1, `/catalog`) | | |
+
+The middle column changed meaning in the last pass, which is why it was renamed. It used to be
+"designed, adapter pending" — work that was owed. Everything in it now *has* an adapter, a processor
+and a test; what is missing is a third-party account, a key and outbound network access, none of which
+this environment has. **That is a different kind of absence**, and listing it as pending work was
+concealing that the work was done.
+
+This table has been wrong in both directions and has been corrected against the code each time. Three
+entries left the middle column earlier — **outbound webhooks** and **job polling** were built, and the
+**EoN Reality push** already had a working processor while the table called it pending. **API keys for
+machines** was listed as built when only *verification* was: a key could be exchanged for a token but
+not created. **Blender conversion** and the **importers** left it in the last pass, and **public
+catalogue** moved out of the hardening column, where it never belonged — `modules/public/routes.ts`
+has been serving `/api/v1/public/catalog` and the storefront at `/catalog` for some time, and
+`pnpm audit:ui` reaches it anonymously on every run.
+
+`docs/FR-traceability.md` is the requirement-level view of the same system — all 69 functional and
+28 non-functional requirements, each with the file that implements it and the test that proves it.
+This table is the phase-level summary of it.
 
 ### 22.1 The same items, plotted against impact
 
-|                   | **Built and verified**                                                                                         | **Designed, adapter pending**                                                                                        |
-| ----------------- | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **Higher impact** | Ingestion → IPFS → AI → review → licensing on chain; RBAC, RLS, tenancy, audit; the console and 3D marketplace | Avalanche C-Chain migration (portability already proven); Blender auto-conversion; EoN Reality push                  |
-| **Lower impact**  | In-app notifications; the licence registry views                                                               | Outbound webhooks; third-party importers (Sketchfab, Poly Pizza, Meshy); email delivery; Playwright end-to-end suite |
+| | **Built and verified** | **Needs a third-party account or a production target** |
+| --- | --- | --- |
+| **Higher impact** | Ingestion → IPFS → AI → review → licensing on chain; RBAC, RLS, tenancy, audit; the console and 3D marketplace; Blender conversion | Avalanche C-Chain migration (one chain constant plus an RPC URL, §10.4); the ~1 GB Blender image, which is what the *real* conversion mode needs |
+| **Lower impact** | In-app notifications and webhooks; the licence registry views; job polling; the vendor importers; the public catalogue | Vendor adapters against live APIs (they need keys and outbound network); email delivery (which the SRS never asks for — see below); Playwright end-to-end as a CI gate |
 
-### 22.2 Open decisions, recorded rather than guessed
+**Two counting notes.** *Email delivery* is listed above as an option, not a shortfall: the SRS's
+notification requirements are FR-11.1–11.3 (in-app) and FR-11.4 (an *optional* outbound webhook), and
+it never asks the system to send mail. Invitations record an address and return a token for the
+TenantAdmin to relay (§22.2). Adding a provider would be a feature, not the closing of a gap, and the
+table keeps it in the right column for that reason.
+
+*The SRS's test-case ids are only partly mapped.* The specification defines twelve `TC-<AREA>-<nnn>`
+identifiers in its test appendix; six are cited by the suite that proves them
+(`TC-AUTH-005`, `TC-SEC-009` and four others), and six are not referenced anywhere in the repository:
+`TC-AI-002`, `TC-AI-005`, `TC-ASSET-011`, `TC-IPFS-004`, `TC-PUBLISH-002`, `TC-REVIEW-006`. The
+*behaviours* they describe are covered — module 4.7, 4.3, 4.8, 4.9 and 4.4 in
+`docs/FR-traceability.md` each name a test — so this is a gap in the paper trail rather than in the
+product. Worth closing because a reviewer holding the SRS will look for those ids and find nothing.
 
 Each of these is a defensible reading that was written down instead of silently chosen. If the
 requirements change, this table is where the change lands.
@@ -1355,7 +1419,7 @@ requirements change, this table is where the change lands.
 | Question                                                        | Current behaviour                                                                                                                                     | Why it is a decision, not an oversight                                                                                              |
 | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | May a TenantAdmin change their own workspace's upload defaults? | Tenant settings are SuperAdmin-only, because the SRS §3.6 matrix grants "manage tenants" to SuperAdmin while giving TenantAdmin `tenant:manage-users` | Reading the matrix differently is defensible; changing it silently would not be                                                     |
-| Should the catalogue be anonymously readable?                   | It requires sign-in                                                                                                                                   | A public catalogue needs a deliberate cross-tenant read path, which is exactly the kind of thing that should not happen by accident |
+| How wide is the anonymous read path?                            | One deliberate cross-tenant projection (`modules/public/routes.ts`), serving `/api/v1/public/*` and the storefront at `/catalog`                       | Widening it is the risk, not having it: every other read is tenant-scoped through RLS, and this is the one place that is not — so it is the one place to review |
 | Where do SIWE nonces live?                                      | Process memory, correct for one API instance                                                                                                          | Redis is already in the stack; this becomes a one-line change when the API is replicated                                            |
 | How are invitations delivered?                                  | `/users/invite` returns the token once, for out-of-band relay                                                                                         | No email provider is configured; pretending otherwise would hide a real dependency                                                  |
 
@@ -1426,6 +1490,7 @@ pnpm docs:pdf         # this document as a print-ready PDF (see §25)
 | Document                                   | Contents                                                   |
 | ------------------------------------------ | ---------------------------------------------------------- |
 | `docs/VOID-SPACE_SRS_v2.0_Production.docx` | The source requirements specification                      |
+| `docs/FR-traceability.md`                  | Every SRS requirement against the code that implements it  |
 | `docs/VS-SDD-2.0-data-model.md`            | Field-level data model and the reasoning behind each table |
 | `docs/VS-SDD-2.0-api.md`                   | Endpoint-by-endpoint API specification and gap-fill notes  |
 | `README.md`                                | How to run the platform, demo accounts, troubleshooting    |
@@ -1707,7 +1772,7 @@ flowchart TB
 
     subgraph DATA[" Backing services "]
         direction LR
-        PG[("PostgreSQL 16<br/>19 tables · RLS on 18<br/>append-only audit")]
+        PG[("PostgreSQL 16<br/>20 tables · RLS on 18<br/>append-only audit")]
         RD[("Redis 7<br/>6 BullMQ queues<br/>retry policies from SRS 3.10")]
         IPFS[("IPFS Kubo<br/>content addressed by hash")]
     end
@@ -2211,16 +2276,16 @@ flowchart TB
 
 ```mermaid
 pie showData
-    title Where the 224 tests live
-    "apps/api" : 57
+    title Where the 275 tests live
+    "apps/api" : 91
+    "apps/worker" : 58
     "packages/db" : 43
-    "apps/worker" : 41
     "packages/contracts" : 35
     "packages/types" : 28
     "apps/web" : 20
 ```
 
-### A.17 22. Roadmap: designed, not yet built
+### A.17 22. Roadmap: built, account, remaining
 
 ```mermaid
 flowchart LR
@@ -2229,32 +2294,34 @@ flowchart LR
         D2["Licensing on chain · takedown"]
         D3["Console · audit · in-app notifications"]
         D4["RBAC · RLS · SSO · SIWE · API keys"]
+        D5["Blender conversion (FR-6.3)<br/>processor · runner service · filename protocol"]
+        D6["Importers · Sketchfab · Poly Pizza · Meshy<br/>adapters reachable at the §6.4 paths"]
+        D7["UC-09 import a vendor result<br/>with a vendor-host allowlist"]
+        D8["Outbound webhooks (FR-11.4) · job polling (FR-6.5)"]
+        D9["Public catalogue (§6.1)<br/>cross-tenant projection, read anonymously"]
     end
-    subgraph NEXT["Designed, adapter pending"]
-        N1["Blender auto-conversion<br/>queue and worker exist"]
-        N2["EoN Reality push<br/>xr-publish builds the descriptor"]
-        N3["Importers: Sketchfab · Poly Pizza · Meshy<br/>source columns and keys reserved"]
-        N4["Outbound webhooks<br/>table and event list defined"]
-        N5["Email delivery<br/>notifications are in-app only"]
+    subgraph NEXT["Requires a third-party account"]
+        N1["Blender conversion in real mode<br/>needs the ~1 GB image, excluded from dev:up"]
+        N2["Vendor adapters against live APIs<br/>need keys and outbound network"]
+        N3["Email delivery<br/>notifications are in-app only"]
     end
     subgraph LATER["Production hardening"]
         L1["Avalanche C-Chain + managed signer"]
         L2["IPFS pinning service · replicated"]
         L3["Horizontal worker scaling"]
-        L4["Public anonymous catalogue<br/>needs a deliberate cross-tenant read"]
-        L5["Playwright end-to-end browser suite"]
+        L4["Playwright e2e as a CI gate"]
     end
     DONE --> NEXT --> LATER
 
     classDef done fill:#fff,stroke:#0f766e,stroke-width:1.5px,color:#111
     classDef next fill:#fff,stroke:#d81f26,stroke-width:1.5px,color:#111
     classDef later fill:#fff,stroke:#c3c3bb,stroke-width:1.5px,color:#111
-    class D1,D2,D3,D4 done
-    class N1,N2,N3,N4,N5 next
-    class L1,L2,L3,L4,L5 later
+    class D1,D2,D3,D4,D5,D6,D7,D8,D9 done
+    class N1,N2,N3 next
+    class L1,L2,L3,L4 later
 ```
 
-### A.18 22. Roadmap: designed, not yet built
+### A.18 22. Roadmap: built, account, remaining
 
 ```mermaid
 quadrantChart

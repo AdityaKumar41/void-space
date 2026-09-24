@@ -1,5 +1,5 @@
 /**
- * `notify` processor (SRS FR-12.x, §3.10).
+ * `notify` processor (SRS FR-11.1–FR-11.3, §3.10).
  *
  * Turns domain events into in-app notifications. The queue exists so that notification
  * fan-out never blocks the request that caused it, and so a webhook/materialised
@@ -18,9 +18,12 @@ import {
   isTerminalFailure,
   type JobPayload,
 } from '../lib/job-tracking';
+import { createWebhookDispatcher } from '../lib/webhook';
 
 export interface NotifyDeps {
   readonly logger: Logger;
+  /** Injected in tests; omitted in production so the real fetch is used (FR-11.4). */
+  readonly fetchImpl?: typeof fetch;
 }
 
 export interface NotifyJobData extends JobPayload {
@@ -33,6 +36,13 @@ export interface NotifyJobData extends JobPayload {
 }
 
 export function createNotifyProcessor(deps: NotifyDeps) {
+  // FR-11.4 — outbound webhooks fan out from the same event that produces the in-app
+  // notification, so a tenant's integration cannot silently drift from what its users are told.
+  const deliverWebhooks = createWebhookDispatcher({
+    logger: deps.logger,
+    fetchImpl: deps.fetchImpl,
+  });
+
   return async function processNotify(job: Job<NotifyJobData>): Promise<Record<string, unknown>> {
     const tenantId = String(job.data.tenantId ?? '');
     const ctx = createJobContext({
@@ -89,10 +99,36 @@ export function createNotifyProcessor(deps: NotifyDeps) {
         return recipients.length;
       });
 
-      await ctx.succeed({ recipients: created, event });
+      // FR-11.4 — the webhook runs after the in-app rows are committed, and outside the tenant
+      // transaction: an external HTTP call inside a database transaction is how a slow third
+      // party turns into a lock held for its timeout.
+      //
+      // Its outcome is reported but never thrown. See the note at the top of `lib/webhook.ts`
+      // for why a dead endpoint must not fail the notification job (NFR-REL.1).
+      const deliveries = await deliverWebhooks({
+        tenantId,
+        event,
+        payload: {
+          title: title ?? defaultTitle(event),
+          body: body ?? '',
+          entityType: job.data.entityType,
+          entityId: job.data.entityId,
+          ...(metadata ?? {}),
+        },
+      });
+
+      const failed = deliveries.filter((delivery) => !delivery.ok).length;
+      if (deliveries.length > 0) {
+        deps.logger.info(
+          { event, delivered: deliveries.length - failed, failed },
+          'webhooks dispatched',
+        );
+      }
+
+      await ctx.succeed({ recipients: created, event, webhooks: deliveries.length });
       deps.logger.info({ event, recipients: created }, 'notifications queued');
 
-      return { recipients: created };
+      return { recipients: created, webhooks: deliveries.length };
     } catch (error) {
       // Terminal when the policy is spent *or* the error is unrecoverable — see
       // isTerminalFailure, which also keeps the row out of a permanent "will retry".

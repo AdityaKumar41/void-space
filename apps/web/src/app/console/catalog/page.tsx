@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * The workspace marketplace — published modules (SRS FR-5.4, §6.1).
+ * The workspace marketplace — the staff view of every module (SRS §6.1).
  *
  * Laid out as a collection page, because that is what it is: a banner with the totals, a filter rail
  * on the left, a toolbar, and a grid of items. The rules the earlier table-based version already

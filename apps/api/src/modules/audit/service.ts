@@ -1,5 +1,5 @@
 /**
- * Audit log read model (SRS FR-13.1, FR-13.2, FR-13.5).
+ * Audit log read model (SRS FR-13.1, FR-13.2).
  *
  * The log is append-only at the *database permission* level (packages/db
  * prisma/sql/rls.sql revokes UPDATE/DELETE from the runtime role), so this module

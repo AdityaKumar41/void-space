@@ -1,13 +1,19 @@
 # VOID·SPACE — Platform Architecture
 > **Multi-tenant 3D/XR asset lifecycle** · Upload → AI Review → IPFS → On-Chain Licence → XR Delivery
 
+> **⚠ This file is an older hand-maintained snapshot.** The living documents are
+> `docs/architecture.md` and `docs/FR-traceability.md`; the counts and the roadmap here were
+> duplicated from them by hand and had drifted (it read "224 tests / 19 tables / 51 operations" until
+> a later pass corrected it to 275 / 20 / 69 against the running system). It is correct as of that
+> pass, and nothing in it is authoritative — check `architecture.md` before quoting a number.
+
 ---
 
 ## At a Glance
 
-| 🧱 10 Containers | ✅ 224 Tests | 🔌 51 API Operations | 🔒 18 RLS Tables | ⛓️ ERC-721 Licences |
+| 🧱 10 Containers | ✅ 275 Tests | 🔌 69 API Operations | 🔒 18 RLS Tables | ⛓️ ERC-721 Licences |
 |:---:|:---:|:---:|:---:|:---:|
-| 4 Docker profiles | 0 lint warnings | 47 paths · OpenAPI 3 | Forced on every tenant table | Avalanche C-Chain target |
+| 4 Docker profiles | 0 lint warnings | 63 paths · OpenAPI 3 | Forced on every tenant table | Avalanche C-Chain target |
 
 ---
 
@@ -34,7 +40,7 @@ flowchart TB
     end
 
     subgraph DATA["🗄️ Backing Services"]
-        PG[("PostgreSQL 16\n19 tables · RLS on 18\nappend-only audit")]
+        PG[("PostgreSQL 16\n20 tables · RLS on 18\nappend-only audit")]
         RD[("Redis 7\n6 BullMQ queues")]
         IPFS[("IPFS Kubo\ncontent-addressed")]
     end
@@ -386,14 +392,14 @@ flowchart TB
 
 ---
 
-## Test Coverage — 224 Tests
+## Test Coverage — 275 Tests
 
 ```mermaid
 pie showData
     title Tests by suite
-    "apps/api" : 57
+    "apps/api" : 91
     "packages/db" : 43
-    "apps/worker" : 41
+    "apps/worker" : 58
     "packages/contracts" : 35
     "packages/types" : 28
     "apps/web" : 20
@@ -401,13 +407,13 @@ pie showData
 
 | Suite | Tests | What it proves |
 |-------|:-----:|----------------|
-| `apps/api` | 57 | Auth flows · RBAC matrix · tenant isolation · lifecycle transitions · publication guards |
+| `apps/api` | 91 | Auth flows · RBAC matrix · tenant isolation · lifecycle transitions · publication guards |
 | `packages/db` | 43 | RLS coverage · cross-tenant invisibility · append-only audit · GLB fixture integrity |
-| `apps/worker` | 41 | Queue policy · enrichment fallbacks · chain client · job bookkeeping |
+| `apps/worker` | 58 | Queue policy · enrichment fallbacks · chain client · job bookkeeping |
 | `packages/contracts` | 35 | Mint · revocation as flag · token metadata · idempotency (Foundry) |
 | `packages/types` | 28 | Lifecycle and permission matrices match SRS table cell by cell |
 | `apps/web` | 20 | Mesh-statistics comparison · client-side contract behaviour |
-| **Total** | **224** | + 12 typecheck tasks · 0 lint warnings · 8 build tasks |
+| **Total** | **275** | + 12 typecheck tasks · 0 lint warnings · 8 build tasks |
 
 > Tests run against the **real stack** — real Postgres with real RLS policies, real Redis, real EVM chain. Cross-tenant isolation tested against a mock would prove nothing.
 
@@ -422,14 +428,16 @@ flowchart LR
         D2["ERC-721 Licensing · Takedown"]
         D3["Console · Audit · Notifications"]
         D4["RBAC · RLS · SSO · SIWE · API keys"]
+        D5["Blender conversion\\nprocessor · runner service · protocol"]
+        D6["Importers: Sketchfab · Poly Pizza · Meshy\\nadapters reachable"]
+        D7["Outbound webhooks · UC-09 import"]
+        D8["Public catalogue"]
     end
 
-    subgraph NEXT["⏳ Designed — Adapter Pending"]
-        N1["Blender auto-conversion\nqueue & worker exist"]
-        N2["EoN Reality push\nxr-publish descriptor ready"]
-        N3["Importers: Sketchfab · Poly Pizza · Meshy"]
-        N4["Outbound webhooks\ntable & event list defined"]
-        N5["Email delivery"]
+    subgraph NEXT["🔌 Needs a Third-Party Account"]
+        N1["Blender conversion, real mode\\nneeds the ~1 GB image"]
+        N2["Vendor APIs\\nneed keys and outbound network"]
+        N3["Email delivery"]
     end
 
     subgraph LATER["🔧 Production Hardening"]

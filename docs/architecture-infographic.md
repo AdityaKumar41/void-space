@@ -1,5 +1,16 @@
 # VOID·SPACE — Architecture, visually
 
+> **⚠ This file is a hand-maintained copy.** The living documents are `docs/architecture.md` (the
+> reference) and `docs/FR-traceability.md` (requirement by requirement). The figures below — test
+> counts, table counts, operation counts, and the roadmap in §14 — are duplicated from them by hand,
+> which is exactly how they drifted: this file said "224 tests / 19 tables / 51 operations" for a pass
+> after the running system said 275 / 20 / 69, and for two passes after Blender conversion and the
+> vendor importers had stopped being "designed, adapter pending".
+>
+> They are correct as of the last pass, verified against the running system. **If you are reading this
+> to check a number, read `architecture.md` instead** — or re-derive it (`pnpm test`, and the counts in
+> §21 there). Nothing in this file is authoritative.
+
 **The platform on one page.** Ingestion → AI-assisted classification → human review → content-addressed
 storage on IPFS → on-chain licence → XR delivery.
 
@@ -18,7 +29,7 @@ storage on IPFS → on-chain licence → XR delivery.
 ║                                                                                        ║
 ║   ingest  ──▶  govern  ──▶  licence on chain  ──▶  deliver to XR                       ║
 ║                                                                                        ║
-║   224 tests   ·   19 tables   ·   51 API operations   ·   6 queues   ·   18 RLS tables ║
+║   275 tests   ·   20 tables   ·   69 API operations   ·   6 queues   ·   18 RLS tables ║
 ║                                                                                        ║
 ╚════════════════════════════════════════════════════════════════════════════════════════╝
 ```
@@ -52,7 +63,7 @@ storage on IPFS → on-chain licence → XR delivery.
                ┌──────────────────────┘             │                 ▲
                ▼         reads + writes, tenant-scoped                │
 ┌──── POSTGRES 16 · :5432 ─────┐        ┌──── REDIS 7 · :6379 ─────┐  │
-│19 tables · forced RLS on 18  │        │    6 BullMQ queues       │  │ pin · fetch
+│20 tables · forced RLS on 18  │        │    6 BullMQ queues       │  │ pin · fetch
 │  append-only audit ledger    │───┐    └────────────│─────────────┘  │
 │    the system of record      │   │                 ▼                │
 └──────────────────────────────┘   │    ┌──── WORKER · no HTTP ────┐  │
@@ -135,8 +146,8 @@ storage on IPFS → on-chain licence → XR delivery.
 ┌──────────────────────┬──────────────────────┬──────────────────────┬──────────────────────┐
 │ RUNTIME              │ DATA MODEL           │ API SURFACE          │ VERIFICATION         │
 │                      │                      │                      │                      │
-│     10  containers   │     19  tables       │     51  operations   │    224  tests        │
-│      4  profiles     │     18  forced RLS   │     47  paths        │    189 TS + 35 chain │
+│     10  containers   │     20  tables       │     69  operations   │    275  tests        │
+│      4  profiles     │     18  forced RLS   │     63  paths        │    240 TS + 35 chain │
 │      1  open port    │      3  DB roles     │     11  route modules│      0  lint warnings│
 │         nginx 80/443 │     append-only audit│     OpenAPI 3        │     12  typecheck    │
 └──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
@@ -150,19 +161,19 @@ storage on IPFS → on-chain licence → XR delivery.
 └──────────────────────┴──────────────────────┴──────────────────────┴──────────────────────┘
 ```
 
-Where the 224 tests live, and what they prove:
+Where the 275 tests live, and what they prove:
 
 ```text
   SUITE                       TESTS
   ────────────────────────────────────────────────────────────────
-  apps/api            ██████████████████████████████   57
-  packages/db         ███████████████████████          43
-  apps/worker         ██████████████████████           41
-  packages/contracts  ██████████████████               35
-  packages/types      ███████████████                  28
-  apps/web            ███████████                      20
+  apps/api            ███████████████████████████████████████   91
+  apps/worker         █████████████████████████                 58
+  packages/db         ███████████████████████                   43
+  packages/contracts  ██████████████████                        35
+  packages/types      ███████████████                           28
+  apps/web            ███████████                               20
   ────────────────────────────────────────────────────────────────
-  total                                               224
+  total                                                275
 ```
 
 | Credibility note                                                                    |                                                                                                                             |
@@ -176,8 +187,10 @@ Where the 224 tests live, and what they prove:
 
 ## 4. What is built, and what is not
 
-Solid bars are built and verified; shaded bars are designed with the adapter still pending. Nothing in
-the lower group is presented as working.
+Solid bars are built and verified; shaded bars need a third-party account or a deployment target. The
+distinction matters: a shaded row is never an unwritten adapter — the code, the processor and the
+tests exist, and what is absent is something only an account or a production environment can supply.
+Nothing in the lower group is presented as working.
 
 ```text
   CAPABILITY            WHAT IT DOES                                MATURITY    STATE
@@ -193,13 +206,17 @@ the lower group is presented as working.
   Licensing             ERC-721 mint, takedown, registry            ██████████  built
   XR publish            descriptor built and shipped as a job       ██████████  built
   Notifications         in-app, per user, read state                ██████████  built
-  Avalanche C-Chain     portability proven; migration is config     ▒▒▒▒▒▒░░░░  designed
-  Blender conversion    queue exists, adapter stubbed               ▒▒▒▒░░░░░░  designed
-  EoN Reality push      descriptor built, push pending              ▒▒▒░░░░░░░  designed
-  3rd-party importers   Sketchfab / Poly Pizza / Meshy              ▒▒░░░░░░░░  designed
-  Outbound webhooks     table and event list defined                ▒▒▒▒░░░░░░  designed
+  Blender conversion    processor, runner service, protocol         ██████████  built
+  3rd-party importers   Sketchfab / Poly Pizza / Meshy adapters     ██████████  built
+  Outbound webhooks     delivered by the notify processor           ██████████  built
+  Public catalogue      cross-tenant projection, read anonymously   ██████████  built
+  Avalanche C-Chain     portability proven; migration is config     ▒▒▒▒▒░░░░░  harden
   Email delivery        notifications are in-app only               ▒▒▒▒░░░░░░  designed
 ```
+
+The three that moved out of the shaded group in the last pass — Blender conversion, the importers and
+outbound webhooks — had all been marked "designed" for longer than they were actually undesigned. The
+bars were not measuring missing code; they were measuring missing credentials.
 
 ---
 
@@ -339,7 +356,7 @@ one. Ordering is deliberate.
 
 ## 8. The data model on one map
 
-19 tables in four clusters. Two pointers carry the domain: an asset points at its current version, and
+20 tables in four clusters. Two pointers carry the domain: an asset points at its current version, and
 a **licence points at a version** — so a new upload can never change what was licensed.
 
 ```text
@@ -457,11 +474,11 @@ happens when it finally gives up?" always has an answer.
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ app profile  ·  run natively by pnpm dev, or in containers ───────────────────────────────┐
 │  web :3000                         Next.js console; the browser only ever reaches nginx  │
-│  api :4000                         Fastify REST API, OpenAPI docs at /api/v1/docs        │
+│  api :4000                         Fastify REST API; OpenAPI at /api/v1/docs (dev only)  │
 │  worker                            six BullMQ consumers; no HTTP port at all             │
 └────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ infra profile ────────────────────────────────────────────────────────────────────────────┐
-│  postgres :5432                    volume pgdata  ·  19 tables · forced RLS · audit      │
+│  postgres :5432                    volume pgdata  ·  20 tables · forced RLS · audit      │
 │  redis :6379                       volume redisdata  ·  six queues, retry per queue      │
 │  ipfs :5001 :8080                  volumes ipfsdata, ipfscache  ·  addressed by hash     │
 │  anvil :8545                       volume contractsdata  ·  local EVM, chain id 31337    │
@@ -500,16 +517,24 @@ credential anyone has to pay for.
 
 ```text
 ┌──────────────────────────────┬──────────────────────────────┬──────────────────────────────┐
-│ BUILT AND VERIFIED TODAY     │ DESIGNED · ADAPTER PENDING   │ PRODUCTION HARDENING         │
+│ BUILT AND VERIFIED TODAY     │ NEEDS A THIRD-PARTY ACCOUNT  │ PRODUCTION HARDENING         │
 │                              │                              │                              │
 │  • ingestion · IPFS · review │  · Blender conversion        │  · Avalanche C-Chain         │
-│  • licensing on chain        │  · EoN Reality push          │  · managed signer / HSM      │
-│  • console · audit · alerts  │  · importers (3 vendors)     │  · redundant IPFS pinning    │
-│  • RBAC · RLS · SSO · SIWE   │  · outbound webhooks         │  · worker autoscaling        │
-│  • API keys for machines     │  · email delivery            │  · public catalogue          │
-│                              │                              │  · Playwright e2e            │
+│  • licensing on chain        │    (real mode: ~1 GB image)  │  · managed signer / HSM      │
+│  • console · audit · alerts  │  · vendor search adapters    │  · redundant IPFS pinning    │
+│  • RBAC · RLS · SSO · SIWE   │    (live API keys)           │  · worker autoscaling        │
+│  • API keys for machines     │  · email delivery            │  · Playwright e2e in CI      │
+│  • Blender conversion        │                              │                              │
+│  • 3rd-party importers       │                              │                              │
+│  • outbound webhooks         │                              │                              │
+│  • public catalogue          │                              │                              │
 └──────────────────────────────┴──────────────────────────────┴──────────────────────────────┘
 ```
+
+The middle column was headed "designed · adapter pending" until the last pass, and that heading was
+wrong in a way the column itself could not show: everything listed under it already *had* its adapter,
+its processor and its tests. What it lacks is a vendor account and outbound network access. Calling
+that "designed but not built" made finished work look unfinished, which is its own kind of inaccuracy.
 
 ```text
   ┌─ THE SHORT VERSION ────────────────────────────────────────────────────────────────────────┐
@@ -518,12 +543,12 @@ credential anyone has to pay for.
   │    upload → content-addressed storage → AI tags → human review → on-chain licence →          │
   │    marketplace and XR descriptor, with RBAC, tenant isolation, SSO/SIWE and an audit ledger  │
   │                                                                                            │
-  │  DESIGNED, ADAPTER PENDING (queues, tables and contracts already exist)                      │
-  │    Blender auto-conversion · EoN Reality push · third-party importers · webhooks · email     │
+  │  NEEDS A THIRD-PARTY ACCOUNT (code, queues and tests already exist)                          │
+  │    Blender conversion in real mode · vendor search against live APIs · email delivery        │
   │                                                                                            │
   │  PRODUCTION HARDENING                                                                        │
   │    Avalanche C-Chain + managed signer · redundant IPFS pinning · worker autoscaling ·        │
-  │    public catalogue (needs a deliberate cross-tenant read) · Playwright end-to-end suite     │
+  │    Playwright end-to-end suite as a CI gate                                                  │
   │                                                                                            │
   └────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -535,9 +560,9 @@ credential anyone has to pay for.
 ```text
 ╔════════════════════════════════════════════════════════════════════════════════════════╗
 ║                                                                                        ║
-║    10 containers · 4 profiles · 1 published port      224 tests · 0 lint warnings      ║
-║    19 tables · 18 under forced RLS · 3 DB roles       6 queues with documented retries ║
-║    51 API operations · 47 paths · 11 modules         35 Solidity contract tests        ║
+║    10 containers · 4 profiles · 1 published port      275 tests · 0 lint warnings      ║
+║    20 tables · 18 under forced RLS · 3 DB roles       6 queues with documented retries ║
+║    69 API operations · 63 paths · 13 modules         35 Solidity contract tests        ║
 ║    content stored by hash, cached at the edge        an ERC-721 licence per asset      ║
 ║                                                                                        ║
 ║    THE LOOP      upload → hash → tag → human review → licence → marketplace → XR       ║
@@ -558,8 +583,8 @@ credential anyone has to pay for.
 | What is the real product risk?          | A customer's unreleased product models leaking. That is why isolation is enforced by Postgres itself, not by application code, and why a test tries to cross tenants on every run                                                  |
 | What happens when a dependency is down? | Nothing loud. AI falls back to a deterministic offline enricher, IPFS retries with backoff, and a chain outage leaves the asset `approved` rather than falsely published                                                           |
 | Can a licence be taken back?            | Yes — revocation is a flag on chain, not a burn. The asset leaves the marketplace, the token stays, and the history of the original grant remains auditable                                                                        |
-| How much of this is real?               | Everything in the "built and verified" row is demoable right now, end to end, from one `docker compose` stack. §14 lists what is designed but not yet wired, without dressing it up                                                |
-| How do we know the numbers are true?    | Every figure was read from the running system: 224 tests across six suites, 19 tables, 51 API operations, 6 queues, 18 RLS-protected tables                                                                                        |
+| How much of this is real?               | Everything in the "built and verified" column is demoable right now, end to end, from one `docker compose` stack. §14 lists what still needs a third-party account or a production target, and says which — nothing there is an unwritten adapter                                                                                        |
+| How do we know the numbers are true?    | Every figure was read from the running system: 275 tests across six suites, 20 tables, 69 API operations, 6 queues, 18 RLS-protected tables                                                                                        |
 | Who sees what?                          | Six roles, assigned per workspace. A Creator can never approve; a Viewer cannot write anything; an Assessor can never review their own upload (§9)                                                                                 |
 
 ---

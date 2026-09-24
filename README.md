@@ -168,9 +168,9 @@ Additional guarantees worth knowing:
 ## Testing
 
 ```bash
-pnpm test                                     # everything: 224 tests (189 TypeScript + 35 Foundry)
-pnpm --filter @void-space/api test            # 57 API tests: auth, RBAC, tenancy, assets, review
-pnpm --filter @void-space/worker test         # 41 worker tests: enrichment, chain, queue policies
+pnpm test                                     # everything: 275 tests (240 TypeScript + 35 Foundry)
+pnpm --filter @void-space/api test            # 91 API tests: auth, RBAC, tenancy, assets, review, tools
+pnpm --filter @void-space/worker test         # 58 worker tests: enrichment, chain, queues, Blender
 pnpm --filter @void-space/db test             # 43 tests: RLS/tenancy, audit, GLB fixture generation
 pnpm --filter @void-space/contracts test      # 35 Foundry tests: minting, role gate, revocation, ERC-721
 pnpm --filter @void-space/types test          # 28 tests: the §3.6 RBAC matrix and the §5.1 lifecycle

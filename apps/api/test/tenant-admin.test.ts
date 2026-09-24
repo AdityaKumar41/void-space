@@ -232,8 +232,19 @@ describe('FR-1.5 workspace suspension', () => {
       headers: { cookie: cookieHeader(superAdmin.cookies, 'vs_access') },
     });
     expect(list.statusCode).toBe(200);
-    const tenants = (list.json() as { tenants: { id: string }[] }).tenants;
-    expect(tenants.some((tenant) => tenant.id === workspace.tenantId)).toBe(true);
+    const tenants = (list.json() as { tenants: Record<string, unknown>[] }).tenants;
+    const listed = tenants.find((tenant) => tenant.id === workspace.tenantId);
+    expect(listed).toBeDefined();
+
+    // FR-14.1 requires status, user count *and* asset count. The latter two cannot come from one
+    // query: §5.3 denies the platform role the asset table, so the count is read per workspace
+    // inside that workspace's own RLS context. This asserts the fan-out actually happened —
+    // the field being present but always 0 is exactly the failure it would otherwise hide.
+    expect(listed).toHaveProperty('userCount');
+    expect(listed).toHaveProperty('assetCount');
+    expect(listed).toHaveProperty('licenseCount');
+    expect(typeof listed?.['userCount']).toBe('number');
+    expect(typeof listed?.['assetCount']).toBe('number');
 
     const suspend = await context.app.inject({
       method: 'PATCH',

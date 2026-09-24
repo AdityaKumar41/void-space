@@ -29,6 +29,7 @@ import {
   type LicenseSummary,
   type Paginated,
   type QueueName,
+  queueNameFromDb,
   type ReviewCommentSummary,
 } from '@void-space/types';
 
@@ -450,7 +451,8 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
   ): Promise<Paginated<AssetSummary>> {
     return withTenant(principal.tenantId, async (db) => {
       const statuses = query.statuses ?? (query.status ? [query.status] : []);
-      // FR-5.4/§6.1 — the Viewer role only ever sees the published catalog.
+      // §3.6 — the Viewer role holds only `catalog:view`, so it is narrowed to published
+      // work here rather than being refused (FR-3.5 lists what a scoped read must support).
       const publishedOnly = query.publishedOnly || principal.readOnly;
 
       const where: Prisma.AssetWhereInput = {
@@ -588,7 +590,8 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
         comments: buildCommentTree(comments),
         jobs: jobs.map((job) => ({
           id: job.id,
-          queue: job.queue,
+          // §3.10 vocabulary, not the `jobs.queue` enum spelling — see `queueNameFromDb`.
+          queue: queueNameFromDb(job.queue),
           status: job.status,
           attempts: job.attempts,
           error: job.error,

@@ -211,11 +211,9 @@ export function createTenantsService(): TenantsService {
   async function list(principal: AuthPrincipal): Promise<TenantSummary[]> {
     assertSuperAdmin(principal);
 
-    // Only user counts are read here. The platform role is deliberately denied
-    // access to asset, review and licence tables (§5.3), so a `_count` over them
-    // would be a permission error — a useful example of the boundary being real
-    // rather than aspirational. Per-tenant content counts come from `detail()`,
-    // which runs under the tenant's own RLS context.
+    // User counts come from the platform role. Asset and licence counts cannot: §5.3 denies the
+    // platform role access to those tables, so a `_count` over them is a permission error — a
+    // useful example of the boundary being real rather than aspirational.
     const rows = await withPlatform((db) =>
       db.tenant.findMany({
         select: {
@@ -230,13 +228,31 @@ export function createTenantsService(): TenantsService {
       }),
     );
 
-    return rows.map((row) => ({
+    // So content counts are read one tenant at a time, each inside its *own* RLS context. That is
+    // N queries for N workspaces, which is the honest cost of not granting the platform role a
+    // cross-tenant read. This screen is a SuperAdmin console, not a hot path, and the count is
+    // bounded by the number of workspaces rather than by their size.
+    const counts = await Promise.all(
+      rows.map((row) =>
+        withTenant(row.id, async (db) => {
+          const [assetCount, licenseCount] = await Promise.all([
+            db.asset.count({ where: { tenantId: row.id } }),
+            db.license.count({ where: { tenantId: row.id } }),
+          ]);
+          return { assetCount, licenseCount };
+        }),
+      ),
+    );
+
+    return rows.map((row, index) => ({
       id: row.id,
       name: row.name,
       slug: row.slug,
       status: row.status,
       createdAt: row.createdAt.toISOString(),
       userCount: row._count.users,
+      assetCount: counts[index]?.assetCount ?? 0,
+      licenseCount: counts[index]?.licenseCount ?? 0,
     }));
   }
 

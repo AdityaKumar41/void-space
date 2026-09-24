@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Audit ledger (SRS FR-13.1–FR-13.4). Append-only; the API has no write path for it.
+ * Audit ledger (SRS FR-13.1–FR-13.3). Append-only; the API has no write path for it.
  *
  * The event column is the interesting one. A ledger row's action name is a stable identifier
  * (`asset.publish_requested`), not a sentence, so it is translated for reading *and* coloured by

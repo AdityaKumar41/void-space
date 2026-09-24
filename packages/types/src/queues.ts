@@ -159,3 +159,33 @@ export interface NotifyJobData {
   readonly recipientUserIds: readonly string[];
   readonly payload: Record<string, unknown>;
 }
+
+/**
+ * The `jobs.queue` column is a Prisma enum, so it stores the underscore spelling
+ * (`chain_license`) while every other surface — the queue names above, the SRS §3.10 table,
+ * the BullMQ queue itself — uses the hyphenated one. Without a conversion the API leaks a
+ * database enum spelling into the UI, and the same job appears as `chain_license` in one
+ * payload and `chain-license` in another.
+ *
+ * This is the one place the two spellings meet. Both the asset detail payload and
+ * `GET /jobs/:id` (FR-6.5) read through it, so the wire format is the §3.10 vocabulary
+ * everywhere and a client never has to know how the column is typed.
+ */
+export const JOB_QUEUE_DB_TO_NAME: Readonly<Record<string, QueueName>> = {
+  ai_enrichment: 'ai-enrichment',
+  ipfs_pin: 'ipfs-pin',
+  blender_optimize: 'blender-optimize',
+  chain_license: 'chain-license',
+  xr_publish: 'xr-publish',
+  notify: 'notify',
+};
+
+/**
+ * Normalises a `jobs.queue` value to its §3.10 name.
+ *
+ * Falls back to the input rather than throwing: a queue added to the Prisma enum before this
+ * map is a display bug, and a 500 on a read endpoint would be a worse one.
+ */
+export function queueNameFromDb(value: string): string {
+  return JOB_QUEUE_DB_TO_NAME[value] ?? value;
+}

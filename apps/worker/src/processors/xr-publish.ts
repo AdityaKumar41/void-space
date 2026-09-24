@@ -1,5 +1,5 @@
 /**
- * `xr-publish` processor (SRS FR-10.1–FR-10.4, §3.9.4).
+ * `xr-publish` processor (SRS FR-10.1–FR-10.3, §3.9.4).
  *
  * Pushes a licensed, published asset into the EoN Reality training platform and records the
  * returned module reference. EoN Reality is an external SaaS that is **not** part of the
@@ -9,7 +9,7 @@
  *   - `EON_API_URL` + `EON_API_KEY` set → POST the manifest for real;
  *   - unset (the default) → the documented *simulated* push: a deterministic manifest is
  *     written, `manifestUrl`/`xrManifestRef` are recorded, and the audit row is marked
- *     `simulated: true` so nobody mistakes it for a live integration (FR-10.4 requires the
+ *     `simulated: true` so nobody mistakes it for a live integration (§3.9.4 requires the
  *     simulation to be visible, not hidden).
  */
 import { recordAudit, withTenant } from '@void-space/db';
