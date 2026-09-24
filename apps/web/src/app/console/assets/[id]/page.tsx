@@ -236,24 +236,31 @@ export default function AssetConsolePage() {
 
       {error ? <ErrorNote message={error.message} code={error.code} /> : null}
 
+      {/*
+       * The stage, full width.
+       *
+       * It sat inside the two-column grid, which gave the viewer 61% of the page while the metadata
+       * panels took the rest — and a 3D file is the one thing on this screen that cannot be scrolled,
+       * zoomed or rearranged to fit a narrow column. The inverse of the usual rule applies: the object
+       * gets the whole width, and the text about it wraps.
+       *
+       * Full width also means the toolbar fits on one row, so the controls cost about 40px instead of
+       * stacking into three rows taller than the model.
+       */}
+      <section className="vs-panel vs-enter vs-enter-1 mb-5 overflow-hidden">
+        <div className="h-[clamp(420px,62vh,760px)]">
+          <ModelViewer
+            cid={version?.ipfsCid ?? null}
+            format={version?.format ?? '.glb'}
+            label={asset.name}
+            dimensions={version?.dimensions ?? null}
+            recordedPolycount={version?.polycount ?? null}
+          />
+        </div>
+      </section>
+
       <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
         <div className="space-y-5">
-          {/*
-           * The stage. The viewer is the reason this page exists, so it gets the width and the
-           * height, and its own overlay toolbar rather than a caption bar bolted above it.
-           */}
-          <section className="vs-panel vs-enter vs-enter-1 overflow-hidden">
-            <div className="h-[clamp(340px,54vh,660px)]">
-              <ModelViewer
-                cid={version?.ipfsCid ?? null}
-                format={version?.format ?? '.glb'}
-                label={asset.name}
-                dimensions={version?.dimensions ?? null}
-                recordedPolycount={version?.polycount ?? null}
-              />
-            </div>
-          </section>
-
           <Panel title="Integrity" right="FR-8.1 / FR-9.6">
             <div className="vs-stat-strip grid-cols-2 md:grid-cols-4">
               <div className="p-3">

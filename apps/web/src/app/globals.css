@@ -3077,3 +3077,402 @@ body {
 .mk-mini > span:last-child {
   min-width: 0;
 }
+
+/* ============================================================================================
+ * STUDIO LAYOUT — the chrome gets its own space
+ * --------------------------------------------------------------------------------------------
+ * Every control in this viewer used to float *on top of* the model: the toolbar, the transport,
+ * the inventory panel and the integrity strip were absolutely positioned over the canvas. That is a
+ * common pattern and the wrong one here. A 3D file is the thing being inspected, and a surface that
+ * sits behind buttons cannot be judged — you cannot tell a lighting artefact from a toolbar shadow,
+ * and an object that a control covers is an object you have not inspected.
+ *
+ * So the studio is now a grid of named regions, and each piece of chrome occupies one. DOM order is
+ * unchanged (the viewport is still first), because grid areas place items independently of order —
+ * which is what makes this a layout change rather than a rewrite of the markup.
+ *
+ *   toolbar | transport | viewport | dock | hint | status
+ *
+ * The `dock` column only exists when the inventory is open: the second track is `auto`, so an absent
+ * panel collapses to zero width instead of leaving a gutter beside the canvas.
+ * ========================================================================================== */
+.studio {
+  display: grid;
+  grid-template-areas:
+    'toolbar'
+    'transport'
+    'viewport'
+    'hint'
+    'dock'
+    'status';
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
+}
+
+@media (min-width: 1080px) {
+  .studio {
+    grid-template-areas:
+      'toolbar   toolbar'
+      'transport transport'
+      'viewport  dock'
+      'hint      hint'
+      'status    status';
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  }
+}
+
+/* The one genuine overlay that remains, and only while bytes are in flight. */
+.studio-loading {
+  grid-area: viewport;
+}
+
+/* --- toolbar: a real row above the canvas ------------------------------------------------ */
+.studio-top {
+  grid-area: toolbar;
+  position: static;
+  inset: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--vs-line);
+  background: var(--vs-surface-2);
+  /* No longer floating, so it does not need pointer-events delegation. */
+  pointer-events: auto;
+}
+
+/*
+ * The buttons used a translucent glass background because the canvas showed through them. Docked on a
+ * solid surface, the blur is both pointless and expensive — `backdrop-filter` forces a compositor
+ * layer per group for an effect nobody can see.
+ */
+.studio-group {
+  background: var(--vs-surface-3);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* --- viewport: the model, and nothing else ------------------------------------------------ */
+.studio-viewport {
+  grid-area: viewport;
+  position: relative;
+  inset: auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* --- inventory dock ----------------------------------------------------------------------- */
+.studio-dock {
+  grid-area: dock;
+  overflow-y: auto;
+  max-height: 46vh;
+  border-top: 1px solid var(--vs-line);
+  background: var(--vs-surface-2);
+}
+
+@media (min-width: 1080px) {
+  .studio-dock {
+    width: 304px;
+    max-height: none;
+    border-top: 0;
+    border-left: 1px solid var(--vs-line);
+  }
+}
+
+/* --- animation transport: its own row, tight under the toolbar ---------------------------- */
+.studio-transport {
+  grid-area: transport;
+  position: static;
+  inset: auto;
+  margin: 0;
+  border-radius: 0;
+  border-top: 0;
+  border-right: 0;
+  border-left: 0;
+  border-bottom: 1px solid var(--vs-line);
+  background: var(--vs-surface-2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 8px 12px;
+}
+
+/* --- hint: a caption line, not a chip over the model --------------------------------------- */
+.studio-hint {
+  grid-area: hint;
+  position: static;
+  inset: auto;
+  transform: none;
+  justify-self: start;
+  margin: 0 12px 10px;
+  white-space: normal;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--vs-fg-dim);
+}
+
+/* --- status strip: identity + integrity ---------------------------------------------------- */
+.studio-bottom {
+  grid-area: status;
+  position: static;
+  inset: auto;
+  padding: 9px 13px;
+  border-top: 1px solid var(--vs-line);
+  background: var(--vs-surface-2);
+}
+
+/* Full screen: the same regions, filling the display. */
+.studio:fullscreen {
+  height: 100vh;
+  background: #0c0c0f;
+}
+
+/*
+ * The toolbar wraps by default, and with twenty-odd controls in a column narrower than the page that
+ * meant three rows of chrome — 130px of buttons stacked above a 347px canvas. Chrome taller than the
+ * thing it controls is the opposite of an inspection tool.
+ *
+ * A single row that scrolls is the honest fix: every control stays exactly one click away and in the
+ * same place, and the canvas keeps its height. Scrollbars are hidden because the row is discoverable
+ * by drag and by keyboard, and a visible scrollbar under a toolbar reads as a defect.
+ */
+.studio-top {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.studio-top::-webkit-scrollbar {
+  display: none;
+}
+
+/* Denser controls, still above the 4.5:1 contrast floor set earlier for these labels. */
+.studio-btn {
+  padding: 4px 8px;
+  font-size: 11.5px;
+}
+
+.studio-group {
+  padding: 2px;
+  flex: none;
+}
+
+/* The actions sit at the end of the row and stay reachable without scrolling past every mode. */
+.studio-top .studio-spacer {
+  margin-left: auto;
+}
+
+/* ============================================================================================
+ * PRODUCT LANDING PAGE
+ * --------------------------------------------------------------------------------------------
+ * The root is a marketing surface, and these are the blocks it needs: a split hero with a diagram of
+ * the asset record, three-column statements, a four-step pipeline, and a capability grid.
+ *
+ * Layout is all this adds — no new colours, no new type scale. The page is selling a system, so it
+ * should look like the system's own console, not like a different product with a landing page.
+ * ========================================================================================== */
+
+/* A full-bleed band, so sections alternate instead of running together in one grey column. */
+.mk-band {
+  border-top: 1px solid var(--vs-line);
+  background: #0a0a0c;
+}
+
+.mk-band p,
+.mk-shell p {
+  color: var(--vs-fg-dim);
+}
+
+/*
+ * The hero for the product page: copy and diagram, not copy and a live canvas. The split is close to
+ * even because the record card carries as much meaning as the headline — it is the product in one
+ * glance.
+ */
+.mk-hero-product {
+  display: grid;
+  gap: 48px;
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .mk-hero-product {
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+    gap: 64px;
+  }
+}
+
+/* --- the asset-record diagram ---------------------------------------------------------------
+ * Styled as an artifact from the console: monospaced values, hairline dividers, one status pill. It is
+ * a figure, so it is aria-hidden and carries no interactive controls.
+ */
+.mk-record-card {
+  border: 1px solid var(--vs-line-strong);
+  border-radius: var(--vs-radius-lg);
+  background: var(--vs-surface);
+  box-shadow: var(--vs-shadow-lg);
+  overflow: hidden;
+}
+
+.mk-record-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--vs-line);
+  background: var(--vs-surface-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.mk-record-state {
+  margin-left: auto;
+  border-radius: 999px;
+  border: 1px solid rgba(61, 220, 151, 0.35);
+  background: rgba(61, 220, 151, 0.12);
+  color: var(--vs-signal);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+}
+
+.mk-record-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vs-signal);
+  box-shadow: 0 0 0 3px rgba(61, 220, 151, 0.15);
+  flex: none;
+}
+
+.mk-record-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.mk-record-body > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+}
+
+.mk-record-body > div + div {
+  border-top: 1px solid var(--vs-line);
+}
+
+.mk-record-body dt {
+  font-size: 12.5px;
+  color: var(--vs-fg-faint);
+  flex: none;
+}
+
+.mk-record-body dd {
+  font-family: var(--vs-font-mono);
+  font-size: 12.5px;
+  color: var(--vs-fg);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.mk-record-foot {
+  padding: 11px 16px;
+  border-top: 1px solid var(--vs-line);
+  background: var(--vs-surface-2);
+  font-size: 12px;
+  color: var(--vs-fg-faint);
+}
+
+/* --- three-column statements ---------------------------------------------------------------- */
+.mk-three {
+  display: grid;
+  gap: 40px;
+}
+
+@media (min-width: 860px) {
+  .mk-three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 44px;
+  }
+}
+
+/* --- pipeline ------------------------------------------------------------------------------
+ * Numbered because the order is the point: an unreviewed file must not be licensable, and a licence
+ * must not outlive a revoked one. A hairline runs along the top of the row so the steps read as a
+ * sequence rather than as four unrelated boxes.
+ */
+.mk-pipeline {
+  display: grid;
+  gap: 40px;
+}
+
+@media (min-width: 760px) {
+  .mk-pipeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 44px;
+  }
+}
+
+@media (min-width: 1180px) {
+  .mk-pipeline {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.mk-pipeline > div {
+  border-top: 2px solid var(--vs-line-strong);
+  padding-top: 18px;
+}
+
+/* --- capability grid ------------------------------------------------------------------------
+ * `auto-fit` with a generous minimum, so a wide screen shows three or four and a laptop shows two
+ * without a media query for each. Cards keep a fixed padding rather than a fixed height: these are
+ * read, not compared side by side, so ragged bottoms are honest and cheaper than clamped text.
+ */
+.mk-caps {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.mk-cap {
+  border: 1px solid var(--vs-line);
+  border-radius: var(--vs-radius);
+  background: var(--vs-surface);
+  padding: 18px;
+  transition: border-color 160ms var(--vs-ease);
+}
+
+.mk-cap:hover {
+  border-color: var(--vs-line-strong);
+}
+
+.mk-cap-tag {
+  font-family: var(--vs-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--vs-accent);
+}
+
+/* --- closing call to action ----------------------------------------------------------------- */
+.mk-cta {
+  display: grid;
+  gap: 32px;
+  align-items: center;
+}
+
+@media (min-width: 900px) {
+  .mk-cta {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 48px;
+  }
+}
+
+/* Placeholder values in the specimen record card on the landing page. Visually distinguished from a
+   real value so the illustration cannot be mistaken for a live listing. */
+.mk-record-placeholder {
+  color: var(--vs-fg-dim) !important;
+  font-style: italic;
+}

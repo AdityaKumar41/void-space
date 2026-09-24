@@ -1,29 +1,49 @@
 /**
- * The marketplace frame (§6.1 "Public Catalog").
+ * The public frame: marketing site and catalogue (§6.1 "Public Catalog").
  *
  * A visitor's first page must not begin with a session check, so nothing here touches the session
  * context or React Query — it is a plain server-rendered header and footer. Sign-in is an offered
  * action, not a gate.
  *
- * The header is purposefully thin. On a catalogue the objects should be the largest thing on screen,
- * so the chrome is one line tall, holds no call to action but sign-in, and never competes with a
- * model for attention.
+ * Two surfaces share this frame and are deliberately separate:
+ *
+ *   `/`         the product — what the platform does, for whom, and how to buy or try it.
+ *   `/catalog`  the licensed-asset catalogue, which is a *feature of* the product.
+ *
+ * They were one page, and the root URL behaved like a public gallery of customer assets. That is
+ * wrong twice over: it exposes licensed work on the company's front page, and it answers "what is
+ * this product?" with a grid of whales. A vendor's landing page sells the platform; the catalogue is
+ * somewhere a visitor goes on purpose.
  */
 import Link from 'next/link';
 
-export function MarketHeader({ current }: { readonly current?: 'catalogue' | undefined }) {
+export type PublicSurface = 'product' | 'catalog' | 'model';
+
+const NAV: readonly { readonly surface: PublicSurface; readonly href: string; readonly label: string }[] = [
+  { surface: 'product', href: '/', label: 'Product' },
+  { surface: 'catalog', href: '/catalog', label: 'Catalogue' },
+];
+
+export function MarketHeader({ current }: { readonly current?: PublicSurface | undefined }) {
   return (
     <header className="mk-header">
       <div className="mk-shell mk-header-inner">
-        <Link href="/" className="mk-brand" aria-label="VOID·SPACE catalogue — home">
+        <Link href="/" className="mk-brand" aria-label="VOID·SPACE — home">
           VOID·SPACE
-          <span>catalogue</span>
+          {/* The descriptor changes with the surface: "catalogue" on a listing, nothing on the product page. */}
+          {current === 'catalog' || current === 'model' ? <span>catalogue</span> : null}
         </Link>
 
-        <nav className="mk-nav" aria-label="Catalogue">
-          <Link href="/" aria-current={current === 'catalogue' ? 'page' : undefined}>
-            All models
-          </Link>
+        <nav className="mk-nav" aria-label="Main">
+          {NAV.map((entry) => (
+            <Link
+              key={entry.surface}
+              href={entry.href}
+              aria-current={current === entry.surface ? 'page' : undefined}
+            >
+              {entry.label}
+            </Link>
+          ))}
         </nav>
 
         <nav className="ml-auto flex items-center gap-2" aria-label="Workspace">
@@ -65,16 +85,16 @@ export function MarketFooter() {
               <span>catalogue</span>
             </div>
             <p className="mt-4 max-w-md text-[13px] leading-relaxed" style={{ color: 'var(--vs-fg-faint)' }}>
-              Every model here was reviewed before it was listed, stored by content hash, and licensed
-              as an ERC-721 token. The token id, the contract address and the transaction that minted
-              it are printed on the listing, and the geometry is served from the same bytes the hash
-              commits to — so a licence can be checked without asking us.
+              The 3D asset lifecycle platform: ingest, review, license and deliver 3D content with
+              provenance that can be checked rather than trusted. Every licensed asset carries an
+              ERC-721 token and content-addressed storage on IPFS.
             </p>
           </div>
 
           <div>
-            <div className="mk-eyebrow">Workspace</div>
-            <nav className="mt-4 flex flex-col gap-2.5" aria-label="Workspace">
+            <div className="mk-eyebrow">Product</div>
+            <nav className="mt-4 flex flex-col gap-2.5" aria-label="Product">
+              <Link href="/catalog">Licensed catalogue</Link>
               <Link href="/login">Sign in</Link>
               <Link href="/console">Operations console</Link>
               <a href="/api/v1/docs" target="_blank" rel="noreferrer">

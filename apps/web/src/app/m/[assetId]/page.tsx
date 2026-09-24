@@ -82,7 +82,7 @@ export default async function ModelPage({ params }: PageProps) {
 
   return (
     <div className="mk-page">
-      <MarketHeader current="catalogue" />
+      <MarketHeader current="model" />
 
       <main id="main" className="mk-shell flex-1 py-8">
         <nav className="mb-6 flex items-center gap-2 text-[13px]" aria-label="Breadcrumb">

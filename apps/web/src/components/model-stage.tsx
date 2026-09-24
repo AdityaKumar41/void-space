@@ -26,6 +26,12 @@ export interface ModelStageProps {
   readonly autoRotate?: boolean;
   /** Compact drops the toolbar entirely (cards, quick-look). */
   readonly compact?: boolean;
+  /** `sphere` normalises apparent size across models — used by the thumbnail render surface. */
+  /**
+   * Overrides the camera fit. Defaults to the viewer's own choice (`box`), which is the measure
+   * that reproduces in the browser what the catalogue renders show.
+   */
+  readonly frameFit?: 'box' | 'sphere';
   /**
    * Storefront chrome: keeps the model and the orbit hint, hides the inspection studio. Set by the
    * marketplace hero, where the visitor is a buyer looking at a product rather than an artist
@@ -43,6 +49,7 @@ export function ModelStage({
   variant = 'default',
   autoRotate = false,
   compact = false,
+  frameFit = 'box',
   presentation = false,
 }: ModelStageProps) {
   return (
@@ -56,6 +63,7 @@ export function ModelStage({
           dimensions={dimensions ?? null}
           autoRotate={autoRotate}
           compact={compact}
+          frameFit={frameFit}
           presentation={presentation}
         />
       </div>

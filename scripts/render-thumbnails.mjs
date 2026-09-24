@@ -31,8 +31,14 @@ import { chromium } from '@playwright/test';
 const BASE = process.env.DEMO_WEB_URL ?? 'https://localhost';
 const API = process.env.DEMO_API_URL ?? 'https://localhost/api/v1';
 const ASSESSOR = { email: 'assessor@aurora.dev', password: 'VoidSpace!2026' };
-// 16:10 to match the card well, and large enough to stay crisp at 2x on a 420px card.
-const VIEWPORT = { width: 1200, height: 750 };
+/**
+ * 4:3, matching `.mk-card-media` exactly.
+ *
+ * This has to match or `object-fit: cover` silently crops every card: the renders used to be 1200×750
+ * (16:10) in a 4:3 well, so a seventh of every model's width was cut off — and because the crop is
+ * invisible in the markup, it reads as "the models are framed inconsistently" rather than as cropping.
+ */
+const VIEWPORT = { width: 1200, height: 900 };
 const RENDER_TIMEOUT_MS = 90_000;
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -106,18 +112,24 @@ async function main() {
         { waitUntil: 'networkidle', timeout: RENDER_TIMEOUT_MS },
       );
 
-      // Wait for the model to be on screen: three.js reports progress, and the hint overlay (which
-      // the interactive viewer shows) is hidden in compact mode, so the canvas is the signal.
+      // Wait for the model to actually be on screen.
+      //
+      // The previous condition — "a canvas exists with non-zero size" — was true the instant the
+      // canvas mounted, so it always passed immediately and the real wait was the fixed settle below.
+      // That worked for small models and produced a blank render for the largest one (the 16.7 MB
+      // whale scan) whenever the file was slow: the script screenshotted an empty stage. The render
+      // surface now sets a flag when the geometry is decoded *and* framed, which is a genuine
+      // readiness signal rather than a race.
       await page.waitForFunction(
-        () => {
-          const canvas = document.querySelector('canvas');
-          return Boolean(canvas && canvas.width > 0);
-        },
-        { timeout: RENDER_TIMEOUT_MS },
+        // Plain JavaScript: this callback is stringified and evaluated in the page, so TypeScript
+        // syntax would be a runtime syntax error here.
+        () => window.__voidSpaceRenderReady === true,
+        { timeout: RENDER_TIMEOUT_MS, polling: 250 },
       );
 
-      // Camera fitting runs on the frame after the scene is ready; give it a beat to settle.
-      await page.waitForTimeout(2_500);
+      // The fit settles on the frame after readiness; give shadows a beat so the screenshot is not
+      // taken mid-animation.
+      await page.waitForTimeout(1_200);
 
       const canvas = await page.$('canvas');
       if (!canvas) throw new Error('no canvas');

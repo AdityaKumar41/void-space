@@ -51,7 +51,6 @@ packages/types/src/contracts/*.abi.json
 
 screenshots/*
 
-docs/*.audit/
 
 # Rendered thumbnails (regenerate with: node scripts/render-thumbnails.mjs)
 .thumbnails/
@@ -61,3 +60,13 @@ docs/*.audit/
 apps/web/.shot*.mjs
 apps/web/.tmp-*.mjs
 packages/db/check-shapes.mts
+
+# Ad-hoc browser screenshot output from verification runs
+.shots/
+
+# Browser-audit output (screenshots + report). Regenerate with: node scripts/audit-ui.mjs
+.audit/
+
+# Local design reference material. Not part of the product, not referenced by any code, and not ours
+# to redistribute — kept out of the repository but left on disk for design work.
+DESIGN.md

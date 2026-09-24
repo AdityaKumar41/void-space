@@ -51,7 +51,8 @@ const ACCOUNTS = {
 
 /** Public routes, plus every published model detail page discovered at runtime. */
 const PUBLIC_ROUTES = [
-  ['/', 'Marketplace home'],
+  ['/', 'Product landing'],
+  ['/catalog', 'Catalogue'],
   ['/login', 'Sign in'],
 ];
 

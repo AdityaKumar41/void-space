@@ -512,12 +512,51 @@ interface OrbitLike {
 }
 
 /**
+ * Which measure the camera fit uses.
+ *
+ * `box` (default) fits the bounding box and fills whichever axis binds first.
+ *
+ * `sphere` fits the circumscribed sphere, so the sphere subtends a constant angle regardless of the
+ * model's proportions. This is *not* the same as a constant apparent size: an elongated subject has a
+ * bounding sphere far larger than itself, so it renders small while a compact subject renders large.
+ *
+ * Measured on the catalogue renders (1200x900, four assets of very different proportions), comparing
+ * each model's longest on-screen dimension, with `fill` 0.82:
+ *
+ *   sphere   drill 43%  crane 50%  whale 37%  heart 54%   — all models small and unrelated
+ *   box      drill 83%  crane 72%  whale 74%  heart 75%   — every model ~1.8x larger
+ *
+ * The box fit was chosen on that measurement. It also keeps every silhouette at least 4.6% clear of
+ * the frame edge, so nothing is cropped — which a sphere fit gets for free and a box fit does not, and
+ * is the reason the margin was measured rather than assumed.
+ *
+ * Two further measures were implemented and rejected: normalising the *projected area*, and fitting
+ * the projected *silhouette* by iterating vertices. Both look better on paper — a box is not a
+ * silhouette, and a subject can sit off-centre inside its own box — but on screen the silhouette fit
+ * disagreed with what three.js actually rendered (it predicted a 46% wide whale where the render was
+ * 76%), and the cause was not found. An unexplained discrepancy in a camera fit is worse than a
+ * simpler fit that measures correctly, so it was removed rather than shipped.
+ */
+export type FrameFit = 'box' | 'sphere';
+
+/** Headroom below the frame edge that the fit is expected to leave, as a fraction of the dimension. */
+export const FRAME_SAFE_MARGIN = 0.046;
+
+/**
  * Frames whatever geometry actually loaded, and answers the standard viewpoints.
  *
- * Distance is derived from the object's *projected* extent — its width and height measured in the
- * camera's own basis. Fitting the bounding sphere instead, which is the obvious implementation,
- * frames an elongated subject badly: the whale skeleton is 13 x 38 x 16 units, so its sphere is far
- * larger than the animal and the animal ends up occupying a third of the frame.
+ * Two measures, because the viewer serves two jobs:
+ *
+ * - **`box` (inspection).** Distance is derived from the object's *projected* extent — its width and
+ *   height measured in the camera's own basis. Fitting the bounding sphere instead frames an
+ *   elongated subject badly: the whale skeleton is 13 x 38 x 16 units, so its sphere is far larger
+ *   than the animal and the animal ends up occupying a third of the frame. For someone checking
+ *   topology, filling the frame wins.
+ * - **`sphere` (catalogue).** The opposite trade, and the same reasoning in reverse. Box-fitting fills
+ *   whichever axis binds first, so a wide model fills the width and a tall model fills the height —
+ *   side by side in a grid at fixed 4:3, a crane and a heart render at visibly different scales and
+ *   the grid reads as broken. Fitting the circumscribed sphere makes every model subtend the same
+ *   angle regardless of proportions. Wasted frame is invisible in a grid; inconsistent scale is not.
  *
  * The subject is also parked on the origin, so the orbit target and the subject coincide for models
  * of any size or offset. Orthographic uses the same extents but converts them to a zoom factor,
@@ -526,12 +565,15 @@ interface OrbitLike {
 function CameraRig({
   target,
   fill,
+  mode,
   request,
   readyKey,
   onFramed,
 }: {
   target: React.RefObject<THREE.Group>;
   fill: number;
+  /** Which measure to fit. See the note above on when each is right. */
+  mode: FrameFit;
   request: FitRequest;
   /**
    * Bumped once the geometry has been decoded and measured.
@@ -570,6 +612,12 @@ function CameraRig({
       object.updateMatrixWorld(true);
 
       const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+
+      /**
+       * Circumscribed sphere about the recentred box. Used by sphere mode so that a model's apparent
+       * size is a property of the model's overall extent rather than of its proportions.
+       */
+      const radius = half.length();
       const fillRatio = Math.max(0.3, Math.min(1, fill));
 
       const direction = new THREE.Vector3();
@@ -590,6 +638,8 @@ function CameraRig({
       const extentAlong = (axis: THREE.Vector3) =>
         Math.abs(axis.x) * half.x + Math.abs(axis.y) * half.y + Math.abs(axis.z) * half.z;
 
+
+
       if (camera instanceof THREE.OrthographicCamera) {
         const span = Math.max(half.x, half.y, half.z);
         const distance = Math.max(extentAlong(direction) * 3, span * 6, 1);
@@ -601,18 +651,40 @@ function CameraRig({
         // extent of 2h occupies 2h * zoom pixels. Solve for the axis that binds first.
         const zoomVertical = (size.height * fillRatio) / Math.max(1e-6, 2 * extentAlong(up));
         const zoomHorizontal = (size.width * fillRatio) / Math.max(1e-6, 2 * extentAlong(right));
-        camera.zoom = Math.max(0.001, Math.min(zoomVertical, zoomHorizontal));
+        // Sphere mode uses one zoom for both axes, so a model's apparent size does not depend on how
+        // it happens to be proportioned.
+        const zoomSphere =
+          (Math.min(size.width, size.height) * fillRatio) / Math.max(1e-6, 2 * radius);
+        camera.zoom =
+          mode === 'sphere'
+            ? Math.max(0.001, zoomSphere)
+            : Math.max(0.001, Math.min(zoomVertical, zoomHorizontal));
         camera.near = 0.01;
         camera.far = distance * 4 + span * 8;
         camera.updateProjectionMatrix();
       } else {
         const perspective = camera as THREE.PerspectiveCamera;
         const aspect = Math.max(0.2, size.width / Math.max(1, size.height));
-        const tanVertical = Math.tan((perspective.fov * Math.PI) / 360);
-        const tanHorizontal = tanVertical * aspect;
+        const halfVertical = (perspective.fov * Math.PI) / 360;
+        const halfHorizontal = Math.atan(Math.tan(halfVertical) * aspect);
+        const tanVertical = Math.tan(halfVertical);
+        const tanHorizontal = Math.tan(halfHorizontal);
 
+        /*
+          Box: fill whichever axis binds first (the model touches the frame on that side).
+          Sphere: place the camera where the circumscribed sphere is tangent to the frustum sides —
+          `radius / sin(halfAngle)` — so the projected radius is the same fraction of the shortest
+          screen axis for every model, whatever its proportions.
+          Silhouette/area: solve for the distance at which the projected *shape* covers `fill` of both
+          dimensions multiplied together, then cap so the longer axis keeps a margin. A wide flat model
+          and a compact one end up occupying comparable fractions of the tile, which is what makes a
+          grid read as a set rather than a collection.
+        */
         const distance =
-          Math.max(extentAlong(up) / tanVertical, extentAlong(right) / tanHorizontal) / fillRatio;
+          mode === 'sphere'
+            ? radius / Math.sin(Math.min(halfVertical, halfHorizontal)) / fillRatio
+            : Math.max(extentAlong(up) / tanVertical, extentAlong(right) / tanHorizontal) /
+              fillRatio;
 
         perspective.position.copy(direction).multiplyScalar(distance);
         perspective.lookAt(0, 0, 0);
@@ -634,7 +706,7 @@ function CameraRig({
       cancelled = true;
       cancelAnimationFrame(handle);
     };
-  }, [target, camera, size, fill, request, readyKey, controls, onFramed]);
+  }, [target, camera, size, fill, mode, request, readyKey, controls, onFramed]);
 
   return null;
 }
@@ -914,6 +986,10 @@ function StatRow({ label, value }: { label: string; value: string }) {
 /**
  * What is actually inside the file.
  *
+ * Docked beside the viewport rather than floating over it: this panel is long — geometry, materials,
+ * textures, rig — and a long panel that covers the model defeats the purpose of opening it, since
+ * every figure in here is meant to be checked against what you can see.
+ *
  * Counts come from the decoded scene, not from the ingest record, because the two can disagree and
  * this panel exists to show it. The material list is the part an artist cannot get anywhere else on
  * this page: how many sheets they will have to manage, whether each one carries a texture, and
@@ -933,7 +1009,7 @@ function StatsPanel({
   onClose: () => void;
 }) {
   return (
-    <div className="studio-panel">
+    <aside className="studio-dock" aria-label="Model inventory">
       <div className="studio-panel-head">
         <span>File inventory</span>
         <button type="button" className="studio-btn" onClick={onClose} aria-label="Hide inventory">
@@ -1008,7 +1084,7 @@ function StatsPanel({
           </div>
         ) : null}
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -1111,10 +1187,28 @@ export interface ModelViewerProps {
    * decoded, so a record that disagrees with the file is visible rather than silently trusted.
    */
   readonly recordedPolycount?: number | null;
+  /**
+   * Fires once the model is **decoded and framed** — the first moment the canvas shows the asset
+   * rather than an empty stage.
+   *
+   * The headless thumbnail renderer needs exactly this, and nothing weaker. Its old condition was
+   * "a canvas exists with non-zero size", which is true the instant the canvas mounts and therefore
+   * says nothing about whether the model has arrived. On the largest asset in the catalogue (the
+   * 16.7 MB whale scan) that produced a blank render whenever the file was slow to arrive, because
+   * the script screenshotted an empty stage. Waiting for a genuine readiness signal is what makes a
+   * render reproducible rather than a race.
+   */
+  readonly onReady?: () => void;
   /** Compact hides the whole toolbar (used for marketplace cards and the quick-look dialog). */
   readonly compact?: boolean;
   /** Fraction of the view the model is fitted to. */
   readonly fill?: number;
+  /**
+   * Which measure the fit uses. `box` (default) fills the frame — right for inspecting a model.
+   * `sphere` normalises apparent size across models — right for a catalogue, where a grid of
+   * cards must look like one set rather than a collection of different scales.
+   */
+  readonly frameFit?: FrameFit;
   /**
    * Gently rotates the model until the visitor touches it.
    *
@@ -1143,8 +1237,10 @@ export function ModelViewer({
   recordedPolycount = null,
   compact = false,
   fill = 0.8,
+  frameFit = 'box',
   autoRotate = false,
   presentation = false,
+  onReady,
 }: ModelViewerProps) {
   const previewable = canPreviewNatively(format);
   const url = cid ? `/ipfs/${cid}` : null;
@@ -1193,10 +1289,27 @@ export function ModelViewer({
     setReadyKey((value) => value + 1);
   }, []);
   const handleSummary = useCallback((next: SceneSummary) => setSummary(next), []);
-  const handleFramed = useCallback((nextFloor: number, nextBox: THREE.Box3) => {
-    setFloor(nextFloor);
-    setBox(nextBox);
-  }, []);
+
+  /**
+   * `onReady` is held in a ref so the callback can change identity without re-running the camera rig.
+   * It fires once per decoded model: `handleFramed` also runs on every manual re-frame, and the
+   * renderer only cares about the first.
+   */
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const readyFiredFor = useRef(-1);
+
+  const handleFramed = useCallback(
+    (nextFloor: number, nextBox: THREE.Box3) => {
+      setFloor(nextFloor);
+      setBox(nextBox);
+      if (readyFiredFor.current === readyKey) return;
+      readyFiredFor.current = readyKey;
+      // A frame has been drawn by the time the rig reports back, so the next paint is the model.
+      requestAnimationFrame(() => onReadyRef.current?.());
+    },
+    [readyKey],
+  );
   const registerCapture = useCallback((capture: (() => string) | null) => {
     captureRef.current = capture;
   }, []);
@@ -1546,6 +1659,7 @@ export function ModelViewer({
             <CameraRig
               target={modelRef}
               fill={fill}
+              mode={frameFit}
               request={request}
               readyKey={readyKey}
               onFramed={handleFramed}

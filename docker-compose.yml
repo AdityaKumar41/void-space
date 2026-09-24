@@ -22,10 +22,24 @@ x-dns-host-gateway: &host-gateway
 
 services:
   # ---------------------------------------------------------------- data tier
+  #
+  # Profiles, and why the data tier carries two.
+  #
+  # The api and worker services declare `depends_on: postgres/redis/ipfs`, and Compose refuses to
+  # build a project whose dependency sits in a profile it was not asked for — `--profile app up`
+  # used to fail with `service "worker" depends on undefined service "redis"`. Listing `app` here as
+  # well as `infra` says the true thing: the application tier cannot exist without its data tier, so
+  # asking for the application gets you the database it runs on. Selecting `infra` alone still starts
+  # only the data tier, which is what the local-development workflow wants.
+  #
+  # `deploy-contracts` deliberately does *not* join the `app` profile. It deploys a fresh registry and
+  # overwrites the shared state file on every run, so folding it into `up` would silently move the
+  # contract address (and orphan every licence already minted against the old one). Deploying stays an
+  # explicit step.
   postgres:
     <<: *default-restart
     image: postgres:16-alpine
-    profiles: ["infra"]
+    profiles: ["infra", "app"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-voidspace}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voidspace_pw}
@@ -49,7 +63,7 @@ services:
   redis:
     <<: *default-restart
     image: redis:7-alpine
-    profiles: ["infra"]
+    profiles: ["infra", "app"]
     command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
     ports:
       - "${REDIS_PORT:-6379}:6379" # dev only (§9.2)
@@ -64,7 +78,7 @@ services:
   ipfs:
     <<: *default-restart
     image: ipfs/kubo:latest
-    profiles: ["infra"]
+    profiles: ["infra", "app"]
     entrypoint: ["/bin/sh", "/scripts/ipfs-entrypoint.sh"]
     environment:
       IPFS_PATH: /data/ipfs
@@ -86,7 +100,7 @@ services:
   anvil:
     <<: *default-restart
     image: ghcr.io/foundry-rs/foundry:stable
-    profiles: ["infra"]
+    profiles: ["infra", "app"]
     entrypoint: ["anvil"]
     command:
       ["--host", "0.0.0.0", "--port", "8545", "--chain-id", "${ANVIL_CHAIN_ID:-31337}"]
