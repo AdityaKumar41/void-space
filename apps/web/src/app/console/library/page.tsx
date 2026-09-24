@@ -3,20 +3,38 @@
 /**
  * Asset library (SRS FR-3.5, FR-3.1).
  *
- * A Creator's working set: filters, a dense table, and the intake panel. The table shows the
- * operator what the pipeline is doing — pin state, polycount, state — because "why is this
- * asset not in the review queue yet" is the question this screen exists to answer.
+ * A Creator's working set: a filter rail, a grid of item cards, and the intake panel behind a
+ * disclosure. The card carries what the pipeline is doing — pin state, polycount, version — because
+ * "why is this asset not in the review queue yet" is the question this screen exists to answer, and
+ * the answer is a measurement rather than a status word.
+ *
+ * Every filter here is a *server* filter: `q`, `status` and `category` are all in
+ * `assetListQuerySchema`. Pinning deliberately is not one — the endpoint cannot filter on it, and a
+ * rail row that narrowed the current page while claiming to narrow the library would be the exact
+ * lie this screen exists to prevent. Pin state is printed on each card instead.
+ *
+ * The search box belongs to the shell too. The top bar submits `?q=`, this screen reads it as the
+ * initial query, and refining it here updates the same parameter — one search, not two that disagree.
  */
-import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
-import { ASSET_STATUSES, type AssetStatus, type Paginated } from '@void-space/types';
+import { Suspense, useMemo, useState } from 'react';
+import type { AssetStatus, Paginated } from '@void-space/types';
 
 import { apiFetch } from '../../../lib/api';
-import { formatBytes, formatNumber, formatRelative, shortCid } from '../../../lib/format';
+import { formatBytes, formatNumber, formatRelative } from '../../../lib/format';
 import { useSession } from '../../../lib/session';
 import { UploadPanel } from '../../../components/upload-panel';
-import { EmptyState, ErrorNote, Loading, Panel, StatusPill, Tag } from '../../../components/ui-kit';
+import {
+  EmptyBlock,
+  FilterRail,
+  ItemCard,
+  PageHead,
+  Toolbar,
+  type RailGroup,
+} from '../../../components/console-kit';
+import { Panel } from '../../../components/ui/card';
+import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
 
 interface AssetSummaryView {
   readonly id: string;
@@ -40,14 +58,75 @@ interface TenantView {
   readonly settings: { readonly allowedCategories: readonly string[] };
 }
 
-export default function LibraryPage() {
-  const { can } = useSession();
-  const [status, setStatus] = useState<AssetStatus | ''>('');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+/** The lifecycle states, with the label a reader expects to see. */
+const STATUS_FILTERS: readonly { readonly value: AssetStatus; readonly label: string }[] = [
+  { value: 'draft', label: 'Draft' },
+  { value: 'pending', label: 'In review' },
+  { value: 'needs_manual_review', label: 'Manual review' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'revision', label: 'Needs changes' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'published', label: 'Published' },
+];
 
-  const query = new URLSearchParams({ page: String(page), pageSize: '24', sort: 'updatedAt', order: 'desc' });
+const PAGE_SIZE = 24;
+
+export default function LibraryPage() {
+  // `useSearchParams` needs a Suspense boundary while the route is prepared; the console is
+  // force-dynamic, so this only ever renders with real parameters.
+  return (
+    <Suspense fallback={<LoadingBlock label="Loading the library" />}>
+      <Library />
+    </Suspense>
+  );
+}
+
+function Library() {
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.get('q') ?? '';
+  const status = (searchParams.get('status') ?? '') as AssetStatus | '';
+  const category = searchParams.get('category') ?? '';
+
+  // Keyed on the parameters so a global search or a shared link lands on a fresh view rather than on
+  // stale local state.
+  return (
+    <LibraryView
+      key={`${urlQuery}|${status}|${category}`}
+      initialQuery={urlQuery}
+      initialStatus={status}
+      initialCategory={category}
+    />
+  );
+}
+
+function LibraryView({
+  initialQuery,
+  initialStatus,
+  initialCategory,
+}: {
+  readonly initialQuery: string;
+  readonly initialStatus: AssetStatus | '';
+  readonly initialCategory: string;
+}) {
+  const { can } = useSession();
+  const router = useRouter();
+
+  const [search, setSearch] = useState(initialQuery);
+  const [status, setStatus] = useState<AssetStatus | ''>(initialStatus);
+  const [category, setCategory] = useState(initialCategory);
+  const [page, setPage] = useState(1);
+  const [uploading, setUploading] = useState(false);
+
+  const canUpload = can('asset:upload-own');
+
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(PAGE_SIZE),
+    sort: 'updatedAt',
+    order: 'desc',
+  });
   if (status) query.set('status', status);
+  if (category) query.set('category', category);
   if (search.trim()) query.set('q', search.trim());
 
   const assets = useQuery<Paginated<AssetSummaryView>>({
@@ -60,140 +139,202 @@ export default function LibraryPage() {
     queryFn: () => apiFetch<{ tenant: TenantView }>('/tenant').then((result) => result.tenant),
   });
 
-  const canUpload = can('asset:upload-own');
+  /**
+   * Mirrors the filters into the URL with `replaceState`, not a navigation: the link stays
+   * shareable, which is the point, and a keystroke does not cost a router round trip.
+   */
+  function writeUrl(next: { q?: string; status?: string; category?: string }) {
+    const params = new URLSearchParams();
+    const q = next.q ?? search;
+    const s = next.status ?? status;
+    const c = next.category ?? category;
+    if (q.trim()) params.set('q', q.trim());
+    if (s) params.set('status', s);
+    if (c) params.set('category', c);
+    const value = params.toString();
+    router.replace(value.length > 0 ? `/console/library?${value}` : '/console/library', {
+      scroll: false,
+    });
+  }
+
+  const categories = useMemo(
+    () => (tenant.data?.settings.allowedCategories ?? []).map((value) => ({ value, label: value })),
+    [tenant.data],
+  );
+
+  const filtering = Boolean(search.trim() || status || category);
+
+  const groups: readonly RailGroup[] = [
+    {
+      title: 'State',
+      value: status,
+      onChange: (next) => {
+        setStatus(next as AssetStatus | '');
+        setPage(1);
+        writeUrl({ status: next });
+      },
+      options: STATUS_FILTERS.map((entry) => ({ value: entry.value, label: entry.label })),
+    },
+    {
+      title: 'Category',
+      value: category,
+      onChange: (next) => {
+        setCategory(next);
+        setPage(1);
+        writeUrl({ category: next });
+      },
+      options: categories,
+    },
+  ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="vs-display text-4xl">Asset library</h1>
-          <div className="vs-label mt-1">
-            {assets.data ? `${assets.data.total} RECORDS` : 'QUERYING'} / SCOPE{' '}
-            {can('review:decide') ? 'TENANT' : 'OWN'}
+    <div className="space-y-7">
+      <PageHead
+        title="Asset library"
+        meta={
+          assets.data
+            ? `${formatNumber(assets.data.total)} records · ${
+                can('review:decide') ? 'workspace scope' : 'your assets'
+              } · page ${assets.data.page} of ${assets.data.totalPages}`
+            : 'Querying'
+        }
+        actions={
+          canUpload ? (
+            <button
+              type="button"
+              className={uploading ? 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12' : 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm'}
+              aria-expanded={uploading}
+              onClick={() => setUploading((value) => !value)}
+            >
+              {uploading ? 'Close intake' : 'Ingest an asset'}
+            </button>
+          ) : null
+        }
+      />
+
+      {canUpload && uploading ? (
+        <Panel title="Intake" right="FR-3.1 · streamed, 200 MB ceiling">
+          <UploadPanel categories={tenant.data?.settings.allowedCategories ?? []} />
+        </Panel>
+      ) : null}
+
+      {assets.isLoading ? <LoadingBlock label="Loading the library" /> : null}
+      {assets.error ? <ErrorNote message={(assets.error as Error).message} /> : null}
+
+      {assets.data ? (
+        <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <FilterRail groups={groups} />
+
+          <div>
+            <Toolbar
+              search={search}
+              onSearch={(next) => {
+                setSearch(next);
+                setPage(1);
+                writeUrl({ q: next });
+              }}
+              placeholder="Search by name or tag"
+              count={
+                filtering
+                  ? `${formatNumber(assets.data.total)} matching`
+                  : `${formatNumber(assets.data.total)} records`
+              }
+            />
+
+            {assets.data.items.length === 0 ? (
+              <div className="relative overflow-hidden rounded-card border border-hairline bg-surface shadow-panel mt-6">
+                <EmptyBlock
+                  title={filtering ? 'Nothing matches those filters' : 'The library is empty'}
+                  hint={
+                    filtering
+                      ? 'Try a broader search, or click the selected row in the rail to switch that filter off.'
+                      : canUpload
+                        ? 'Ingest a model to start the pipeline: it is staged, measured, pinned to IPFS and — if you submit it — placed in the review queue.'
+                        : 'Ask a workspace administrator for upload rights, or wait for a teammate to submit work.'
+                  }
+                  action={
+                    filtering ? (
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12"
+                        onClick={() => {
+                          setSearch('');
+                          setStatus('');
+                          setCategory('');
+                          setPage(1);
+                          router.replace('/console/library', { scroll: false });
+                        }}
+                      >
+                        Clear filters
+                      </button>
+                    ) : canUpload ? (
+                      <button
+                        type="button"
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm"
+                        onClick={() => setUploading(true)}
+                      >
+                        Ingest an asset
+                      </button>
+                    ) : null
+                  }
+                />
+              </div>
+            ) : (
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {assets.data.items.map((asset) => {
+                  const version = asset.currentVersion;
+                  const pinned = version?.pinStatus === 'pinned';
+
+                  return (
+                    <ItemCard
+                      key={asset.id}
+                      assetId={asset.id}
+                      name={asset.name}
+                      href={`/console/assets/${asset.id}`}
+                      collection={`${asset.category}${
+                        asset.creator ? ` · ${asset.creator.fullName}` : ''
+                      }`}
+                      cid={version?.ipfsCid ?? null}
+                      polycount={version?.polycount ?? null}
+                      sizeBytes={version?.sizeBytes ?? null}
+                      badge={`v${version?.versionNumber ?? '—'}`}
+                      status={asset.status}
+                      figure={`${formatNumber(version?.polycount ?? null)} tris`}
+                      figureSub={`${formatBytes(version?.sizeBytes ?? 0)} · ${
+                        pinned ? 'pinned' : (version?.pinStatus ?? 'unpinned')
+                      } · ${formatRelative(asset.updatedAt)}`}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
+            {assets.data.totalPages > 1 ? (
+              <div className="mt-6 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12"
+                  disabled={page <= 1}
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                >
+                  Previous
+                </button>
+                <span className="text-[12px] tracking-[0.01em] text-ink-faint">
+                  Page {assets.data.page} of {assets.data.totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12"
+                  disabled={page >= assets.data.totalPages}
+                  onClick={() => setPage((value) => value + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            className="vs-input w-56"
-            placeholder="search name / tag"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
-          />
-          <select
-            className="vs-select w-44"
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as AssetStatus | '');
-              setPage(1);
-            }}
-          >
-            <option value="">ALL STATES</option>
-            {ASSET_STATUSES.map((option) => (
-              <option key={option} value={option}>
-                {option.replace(/_/g, ' ').toUpperCase()}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className={canUpload ? 'grid gap-4 xl:grid-cols-[2fr_1fr]' : ''}>
-        <Panel title="Records" right={assets.data ? `PAGE ${assets.data.page}/${assets.data.totalPages}` : undefined}>
-          {assets.isLoading ? <Loading /> : null}
-          {assets.error ? <ErrorNote message={(assets.error as Error).message} /> : null}
-
-          {assets.data && assets.data.items.length === 0 ? (
-            <EmptyState title="No assets match" hint="ADJUST FILTERS OR INGEST A MODEL" />
-          ) : null}
-
-          {assets.data && assets.data.items.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="vs-table">
-                <thead>
-                  <tr>
-                    <th>Asset</th>
-                    <th>State</th>
-                    <th>Ver</th>
-                    <th>Poly</th>
-                    <th>Size</th>
-                    <th>Pin</th>
-                    <th className="text-right">Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {assets.data.items.map((asset) => (
-                    <tr key={asset.id}>
-                      <td>
-                        <Link href={`/console/assets/${asset.id}`} className="vs-link font-medium">
-                          {asset.name}
-                        </Link>
-                        <div className="vs-label mt-1">
-                          {asset.category} / {asset.creator?.fullName ?? 'UNKNOWN'}
-                        </div>
-                        {asset.tags.length > 0 ? (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {asset.tags.slice(0, 4).map((tag) => (
-                              <Tag key={tag}>{tag}</Tag>
-                            ))}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td>
-                        <StatusPill status={asset.status} />
-                      </td>
-                      <td className="vs-data">v{asset.currentVersion?.versionNumber ?? '—'}</td>
-                      <td className="vs-num">{formatNumber(asset.currentVersion?.polycount ?? null)}</td>
-                      <td className="vs-num">{formatBytes(asset.currentVersion?.sizeBytes ?? 0)}</td>
-                      <td className="vs-data opacity-70" title={asset.currentVersion?.ipfsCid ?? ''}>
-                        {asset.currentVersion?.pinStatus === 'pinned'
-                          ? shortCid(asset.currentVersion.ipfsCid)
-                          : (asset.currentVersion?.pinStatus ?? '—').toUpperCase()}
-                      </td>
-                      <td className="vs-data whitespace-nowrap text-right opacity-70">
-                        {formatRelative(asset.updatedAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-
-          {assets.data && assets.data.totalPages > 1 ? (
-            <div className="flex items-center justify-between p-3">
-              <button
-                type="button"
-                className="vs-btn"
-                disabled={page <= 1}
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-              >
-                &lt;&lt; PREV
-              </button>
-              <span className="vs-label">
-                PAGE {assets.data.page} OF {assets.data.totalPages}
-              </span>
-              <button
-                type="button"
-                className="vs-btn"
-                disabled={page >= assets.data.totalPages}
-                onClick={() => setPage((value) => value + 1)}
-              >
-                NEXT &gt;&gt;
-              </button>
-            </div>
-          ) : null}
-        </Panel>
-
-        {canUpload ? (
-          <Panel title="Ingest" right="FR-3.1">
-            <UploadPanel categories={tenant.data?.settings.allowedCategories ?? []} />
-          </Panel>
-        ) : null}
-      </div>
+      ) : null}
     </div>
   );
 }

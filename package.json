@@ -37,6 +37,7 @@
     "stack:down": "docker compose --profile infra --profile edge --profile app down",
     "stack:logs": "docker compose --profile app logs -f --tail=80 api worker web",
     "assets:thumbnails": "node scripts/render-thumbnails.mjs",
+    "ui:classes": "node scripts/check-classes-resolve.mjs",
     "db:sync-catalog": "pnpm --filter @void-space/db sync-catalog"
   },
   "devDependencies": {

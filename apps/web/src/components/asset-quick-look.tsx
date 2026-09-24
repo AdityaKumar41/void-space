@@ -60,9 +60,9 @@ function bytes(value: number | null | undefined): string {
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b py-2" style={{ borderColor: 'var(--vs-line)' }}>
-      <dt className="vs-label">{label}</dt>
-      <dd className="vs-data truncate text-right">{children}</dd>
+    <div className="vs-spec-row">
+      <dt className="vs-spec-key">{label}</dt>
+      <dd className="vs-spec-value">{children}</dd>
     </div>
   );
 }
@@ -133,14 +133,19 @@ export function AssetQuickLook({
         aria-label={`${asset.name} — 3D preview`}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="vs-panel flex max-h-full w-full max-w-6xl flex-col"
+        className="relative overflow-hidden rounded-card border border-hairline bg-surface shadow-panel flex max-h-full w-full max-w-6xl flex-col"
       >
-        <div className="vs-panel-head">
-          <span className="truncate">[ {asset.name} ]</span>
+        <div className="flex items-center justify-between gap-4 border-b border-hairline px-5 py-3.5 text-[14px] font-semibold text-ink">
+          <span className="truncate">{asset.name}</span>
           <div className="flex items-center gap-2">
-            <span className="vs-data opacity-70">{asset.category}</span>
-            <button type="button" className="vs-btn vs-btn-ghost" onClick={onClose} aria-label="Close preview">
-              CLOSE ✕
+            <span className="chip">{asset.category}</span>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 font-semibold transition-all duration-200 ease-standard hover:bg-veil-12 h-8 px-3 text-[13px] text-ink-dim hover:bg-veil-6 hover:text-ink"
+              onClick={onClose}
+              aria-label="Close preview"
+            >
+              Close
             </button>
           </div>
         </div>
@@ -157,28 +162,24 @@ export function AssetQuickLook({
             />
           </div>
 
-          <aside className="min-h-0 overflow-y-auto p-4">
-            <div className="flex flex-wrap gap-1">
+          <aside className="min-h-0 overflow-y-auto p-5">
+            <div className="flex flex-wrap gap-1.5">
               {asset.tags.slice(0, 8).map((tag) => (
-                <span
-                  key={tag}
-                  className="vs-data border px-1.5 py-[2px]"
-                  style={{ borderColor: 'var(--vs-line-strong)', color: 'var(--vs-fg-dim)' }}
-                >
+                <span key={tag} className="chip">
                   {tag}
                 </span>
               ))}
             </div>
 
-            <div className="mt-4 flex items-center justify-between">
-              <span className="vs-label">Geometry</span>
+            <div className="mt-5 flex items-center justify-between">
+              <span className="text-[12px] tracking-[0.01em] text-ink-faint">Geometry</span>
               <button
                 type="button"
-                className="vs-data opacity-60 hover:opacity-100"
+                className="font-mono text-[12px] text-ink-dim transition-colors hover:text-[var(--fc-fg)]"
                 aria-expanded={showDetails}
                 onClick={() => setShowDetails((value) => !value)}
               >
-                {showDetails ? 'HIDE' : 'SHOW'}
+                {showDetails ? 'Hide' : 'Show'}
               </button>
             </div>
 
@@ -198,14 +199,14 @@ export function AssetQuickLook({
               </dl>
             ) : null}
 
-            <div className="mt-4 vs-label">Provenance</div>
+            <div className="mt-5 text-[12px] tracking-[0.01em] text-ink-faint">Provenance</div>
             <dl className="mt-1">
               <Row label="Licence token">
-                {licence ? `#${licence.tokenId}` : 'NOT LICENSED'}
+                {licence ? `#${licence.tokenId}` : 'Not licensed'}
               </Row>
               <Row label="Status">
                 <span style={{ color: licence?.status === 'active' ? 'var(--vs-signal)' : 'var(--vs-accent)' }}>
-                  {(licence?.status ?? 'unpublished').toUpperCase()}
+                  {licence?.status ?? 'unpublished'}
                 </span>
               </Row>
               <Row label="Content id">
@@ -213,23 +214,23 @@ export function AssetQuickLook({
               </Row>
             </dl>
 
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <CopyButton label="CID" value={version?.ipfsCid} />
               <CopyButton label="Transaction hash" value={licence?.txHash ?? null} />
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2 border-t pt-4" style={{ borderColor: 'var(--vs-line)' }}>
-              <Link href={`/console/assets/${asset.id}`} className="vs-btn vs-btn-primary">
-                OPEN FULL RECORD
+            <div className="mt-5 flex flex-wrap gap-2 border-t pt-5" style={{ borderColor: 'var(--vs-line)' }}>
+              <Link href={`/console/assets/${asset.id}`} className="inline-flex h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm">
+                Open full record
               </Link>
               {asset.xrModuleUrl ? (
-                <a className="vs-btn" href={asset.xrModuleUrl} target="_blank" rel="noreferrer">
-                  XR MODULE
+                <a className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12" href={asset.xrModuleUrl} target="_blank" rel="noreferrer">
+                  XR module
                 </a>
               ) : null}
               {version?.ipfsCid ? (
-                <a className="vs-btn vs-btn-quiet" href={`/ipfs/${version.ipfsCid}`} target="_blank" rel="noreferrer">
-                  RAW FILE
+                <a className="inline-flex h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard hover:bg-veil-12 border-hairline-strong bg-transparent text-ink-dim hover:bg-veil-6 hover:text-ink" href={`/ipfs/${version.ipfsCid}`} target="_blank" rel="noreferrer">
+                  Raw file
                 </a>
               ) : null}
             </div>

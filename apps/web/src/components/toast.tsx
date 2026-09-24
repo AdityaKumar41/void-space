@@ -13,6 +13,8 @@
  */
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 
+import { cn } from '../lib/cn';
+
 type Tone = 'ok' | 'error' | 'info';
 
 interface Toast {
@@ -30,6 +32,12 @@ interface ToastApi {
 }
 
 const ToastContext = createContext<ToastApi | null>(null);
+
+const TONE_STYLE: Record<Tone, { dot: string; ring: string }> = {
+  ok: { dot: 'bg-state-published', ring: 'border-state-published' },
+  info: { dot: 'bg-brand', ring: 'border-heat-40' },
+  error: { dot: 'bg-state-rejected', ring: 'border-state-rejected' },
+};
 
 const DISMISS_AFTER_MS: Record<Tone, number | null> = {
   ok: 6_000,
@@ -75,30 +83,30 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         aria-live="polite"
       >
         {toasts.map((toast) => (
-          <div key={toast.id} className="vs-toast pointer-events-auto" data-tone={toast.tone}>
+          <div
+            key={toast.id}
+            className="pointer-events-auto flex w-[min(380px,calc(100vw-2rem))] items-start gap-3 rounded-card border border-hairline bg-surface-raised px-4 py-3.5 shadow-float"
+          >
             <span
-              className="vs-data"
-              style={{
-                color:
-                  toast.tone === 'ok'
-                    ? 'var(--vs-signal)'
-                    : toast.tone === 'error'
-                      ? 'var(--vs-accent)'
-                      : 'var(--vs-fg-faint)',
-              }}
               aria-hidden
-            >
-              {toast.tone === 'ok' ? '■' : toast.tone === 'error' ? '▲' : '●'}
-            </span>
+              className={cn(
+                // The rule on the leading edge carries the tone, and the title says it in words: state
+                // is never colour alone.
+                'mt-1 h-2 w-2 shrink-0 rounded-full',
+                TONE_STYLE[toast.tone].dot,
+              )}
+            />
             <div className="min-w-0 flex-1">
-              <div className="vs-data">{toast.title}</div>
+              <div className="text-[13.5px] font-semibold text-ink">{toast.title}</div>
               {toast.detail ? (
-                <div className="mt-1 text-[11.5px] leading-snug opacity-75">{toast.detail}</div>
+                <div className="mt-1 text-[12.5px] leading-snug text-ink-dim">
+                  {toast.detail}
+                </div>
               ) : null}
             </div>
             <button
               type="button"
-              className="vs-data opacity-50 hover:opacity-100"
+              className="shrink-0 rounded-control p-1 font-mono text-[12px] text-ink-faint transition-colors duration-150 ease-standard hover:bg-veil-6 hover:text-ink"
               onClick={() => dismiss(toast.id)}
               aria-label="Dismiss notification"
             >

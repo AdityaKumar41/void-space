@@ -1,14 +1,32 @@
 'use client';
 
-/** Tenant administration (SRS FR-1.2, FR-1.3, §3.6). Members, roles and workspace policy. */
+/**
+ * Tenant administration (SRS FR-1.2, FR-1.3, §3.6). Members, roles and workspace policy.
+ *
+ * The member list is a marketplace's "holders" table: an avatar, a name, the roles that person
+ * holds, and the one control an administrator actually needs — the role selector, inline. A modal
+ * per member edit would be three clicks where one is enough.
+ *
+ * The error and confirmation lines are plain, in the page, rather than toasts. A role change is
+ * consequential and an administrator may be several rows past it by the time it lands; a message
+ * that has already faded is worse than no message.
+ */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ROLES, type Role } from '@void-space/types';
 
 import { ApiRequestError, apiFetch } from '../../../lib/api';
 import { formatNumber, formatRelative } from '../../../lib/format';
-import { ErrorNote, Loading, Panel, Stat } from '../../../components/ui-kit';
+import { Panel } from '../../../components/ui/card';
+import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
 import { RequirePermission } from '../../../components/permission-gate';
+import {
+  EventChip,
+  PageHead,
+  PersonCell,
+  StatCell,
+  StatRow,
+} from '../../../components/console-kit';
 
 interface Member {
   readonly id: string;
@@ -63,9 +81,26 @@ function TeamAdministration() {
     queryFn: () => apiFetch<{ users: readonly Member[] }>('/users'),
   });
 
-  const invites = useQuery<{ invites: readonly { id: string; email: string; role: Role; expiresAt: string; acceptedAt: string | null }[] }>({
+  const invites = useQuery<{
+    invites: readonly {
+      id: string;
+      email: string;
+      role: Role;
+      expiresAt: string;
+      acceptedAt: string | null;
+    }[];
+  }>({
     queryKey: ['invites'],
-    queryFn: () => apiFetch<{ invites: readonly { id: string; email: string; role: Role; expiresAt: string; acceptedAt: string | null }[] }>('/users/invites'),
+    queryFn: () =>
+      apiFetch<{
+        invites: readonly {
+          id: string;
+          email: string;
+          role: Role;
+          expiresAt: string;
+          acceptedAt: string | null;
+        }[];
+      }>('/users/invites'),
   });
 
   async function mutate(label: string, path: string, body: unknown) {
@@ -73,7 +108,10 @@ function TeamAdministration() {
     setError(null);
     setNotice(null);
     try {
-      const result = await apiFetch<{ invite?: { token: string; email: string } }>(path, { method: 'PATCH', body });
+      const result = await apiFetch<{ invite?: { token: string; email: string } }>(path, {
+        method: 'PATCH',
+        body,
+      });
       setNotice(result.invite ? `Invitation token: ${result.invite.token}` : `${label} applied`);
       await queryClient.invalidateQueries({ queryKey: ['users'] });
       await queryClient.invalidateQueries({ queryKey: ['invites'] });
@@ -86,27 +124,38 @@ function TeamAdministration() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="vs-display text-4xl">Administration</h1>
-        <div className="vs-label mt-1">
-          {tenant.data ? `${tenant.data.name} / ${tenant.data.slug}` : 'QUERYING'} / RBAC §3.6
-        </div>
-      </div>
+    <div className="space-y-7">
+      <PageHead
+        title="Administration"
+        meta={
+          tenant.data
+            ? `${tenant.data.name} · ${tenant.data.slug} · roles follow the §3.6 permission matrix`
+            : 'Querying'
+        }
+      />
 
       {error ? <ErrorNote message={error.message} code={error.code} /> : null}
-      {notice ? <div className="vs-data vs-signal">&gt;&gt;&gt; {notice}</div> : null}
+      {notice ? (
+        <div className="relative overflow-hidden rounded-card border border-hairline bg-surface shadow-panel flex items-center gap-3 px-5 py-3.5" role="status">
+          <span className="inline-block h-3.5 w-3.5 shrink-0 rounded-[3px]" aria-hidden />
+          <span className="font-mono text-[12px] text-ink-dim break-all">{notice}</span>
+        </div>
+      ) : null}
 
-      <div className="vs-stat-strip grid-cols-2 lg:grid-cols-4">
-        <Stat label="Members" value={formatNumber(tenant.data?.counts.users ?? 0)} />
-        <Stat label="Assets" value={formatNumber(tenant.data?.counts.assets ?? 0)} />
-        <Stat label="Licences" value={formatNumber(tenant.data?.counts.licenses ?? 0)} />
-        <Stat label="Awaiting review" value={formatNumber(tenant.data?.counts.pendingReview ?? 0)} tone="accent" />
-      </div>
+      <StatRow>
+        <StatCell label="Members" value={formatNumber(tenant.data?.counts.users ?? 0)} />
+        <StatCell label="Assets" value={formatNumber(tenant.data?.counts.assets ?? 0)} />
+        <StatCell label="Licences" value={formatNumber(tenant.data?.counts.licenses ?? 0)} />
+        <StatCell
+          label="Awaiting review"
+          value={formatNumber(tenant.data?.counts.pendingReview ?? 0)}
+          tone={(tenant.data?.counts.pendingReview ?? 0) > 0 ? 'heat' : 'plain'}
+        />
+      </StatRow>
 
-      <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-        <Panel title="Members" right={members.data ? `${members.data.users.length} RECORDS` : undefined}>
-          {members.isLoading ? <Loading /> : null}
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+        <Panel title="Members" right={members.data ? `${members.data.users.length} records` : undefined}>
+          {members.isLoading ? <LoadingBlock label="Loading members" /> : null}
           {members.error ? <ErrorNote message={(members.error as Error).message} /> : null}
 
           {members.data ? (
@@ -117,7 +166,7 @@ function TeamAdministration() {
                     <th>Member</th>
                     <th>Role</th>
                     <th>Status</th>
-                    <th className="text-right">Last login</th>
+                    <th className="text-right">Last seen</th>
                     <th className="text-right">Set role</th>
                   </tr>
                 </thead>
@@ -125,31 +174,51 @@ function TeamAdministration() {
                   {members.data.users.map((member) => (
                     <tr key={member.id}>
                       <td>
-                        <div className="font-medium">{member.fullName}</div>
-                        <div className="vs-label mt-1">{member.email}</div>
+                        <PersonCell name={member.fullName} sub={member.email} />
                       </td>
-                      <td className="vs-data">{member.roles.join('+')}</td>
-                      <td className="vs-data uppercase" style={{ color: member.status === 'active' ? 'var(--vs-published)' : 'var(--vs-accent)' }}>
-                        {member.status}
+                      <td>
+                        <div className="flex flex-wrap gap-1">
+                          {member.roles.map((role) => (
+                            <span key={role} className="chip">
+                              {role}
+                            </span>
+                          ))}
+                        </div>
                       </td>
-                      <td className="vs-data whitespace-nowrap text-right opacity-70">
+                      <td>
+                        <EventChip
+                          action={
+                            member.status === 'active'
+                              ? 'tenant.member_active'
+                              : member.status === 'invited'
+                                ? 'tenant.user_invited'
+                                : 'tenant.member_suspended'
+                          }
+                        />
+                      </td>
+                      <td className="font-mono text-[12px] text-ink-dim whitespace-nowrap text-right">
                         {formatRelative(member.lastLoginAt)}
                       </td>
                       <td className="text-right">
-                        <select
-                          className="vs-select w-36 py-1 text-[11px] uppercase"
-                          value={member.roles[0] ?? ''}
-                          disabled={busy !== null}
-                          onChange={(event) =>
-                            void mutate('ROLE CHANGE', `/users/${member.id}`, { role: event.target.value })
-                          }
-                        >
-                          {ROLES.map((role) => (
-                            <option key={role} value={role}>
-                              {role}
-                            </option>
-                          ))}
-                        </select>
+                        <label className="w-auto">
+                          <span className="sr-only">{`Set the role for ${member.fullName}`}</span>
+                          <select
+                            value={member.roles[0] ?? ''}
+                            disabled={busy !== null}
+                            aria-label={`Set the role for ${member.fullName}`}
+                            onChange={(event) =>
+                              void mutate('Role change', `/users/${member.id}`, {
+                                role: event.target.value,
+                              })
+                            }
+                          >
+                            {ROLES.map((role) => (
+                              <option key={role} value={role}>
+                                {role}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </td>
                     </tr>
                   ))}
@@ -159,39 +228,43 @@ function TeamAdministration() {
           ) : null}
         </Panel>
 
-        <div className="space-y-4">
+
+
+        <div className="space-y-5">
           <Panel title="Workspace policy" right="FR-14.3">
-            <div className="p-3">
-              {tenant.data ? (
-                <dl className="space-y-2">
-                  <div className="flex justify-between gap-3">
-                    <dt className="vs-label">Polycount budget</dt>
-                    <dd className="vs-data">{formatNumber(tenant.data.settings.defaultPolycountBudget)}</dd>
+            {tenant.data ? (
+              <dl className="px-5 py-2">
+                {[
+                  {
+                    key: 'Polycount budget',
+                    value: formatNumber(tenant.data.settings.defaultPolycountBudget),
+                  },
+                  {
+                    key: 'Required metadata',
+                    value: tenant.data.settings.requiredMetadataFields.join(', ') || 'None',
+                  },
+                  {
+                    key: 'Allowed categories',
+                    value: tenant.data.settings.allowedCategories.join(' / ') || 'Any',
+                  },
+                  { key: 'Webhook', value: tenant.data.settings.webhookUrl ?? 'Not configured' },
+                  { key: 'Status', value: tenant.data.status },
+                ].map((row) => (
+                  <div className="vs-spec-row" key={row.key}>
+                    <span className="vs-spec-key">{row.key}</span>
+                    <span className="vs-spec-value break-words">{row.value}</span>
                   </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="vs-label">Required metadata</dt>
-                    <dd className="vs-data">{tenant.data.settings.requiredMetadataFields.join(', ') || 'NONE'}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="vs-label">Allowed categories</dt>
-                    <dd className="vs-data text-right">{tenant.data.settings.allowedCategories.join(' / ') || 'ANY'}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="vs-label">Webhook</dt>
-                    <dd className="vs-data truncate">{tenant.data.settings.webhookUrl ?? 'NOT CONFIGURED'}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt className="vs-label">Status</dt>
-                    <dd className="vs-data uppercase">{tenant.data.status}</dd>
-                  </div>
-                </dl>
-              ) : (
-                <Loading />
-              )}
-            </div>
+                ))}
+              </dl>
+            ) : (
+              <LoadingBlock label="Loading policy" />
+            )}
           </Panel>
 
-          <Panel title="Invitations" right={invites.data ? `${invites.data.invites.length} ON RECORD` : undefined}>
+          <Panel
+            title="Invitations"
+            right={invites.data ? `${invites.data.invites.length} on record` : undefined}
+          >
             {invites.data && invites.data.invites.length > 0 ? (
               <table className="vs-table">
                 <thead>
@@ -205,23 +278,32 @@ function TeamAdministration() {
                   {invites.data.invites.map((invite) => (
                     <tr key={invite.id}>
                       <td className="truncate">{invite.email}</td>
-                      <td className="vs-data">{invite.role}</td>
-                      <td className="vs-data text-right uppercase opacity-80">
-                        {invite.acceptedAt ? 'ACCEPTED' : `EXPIRES ${formatRelative(invite.expiresAt)}`}
+                      <td>
+                        <span className="chip">{invite.role}</span>
+                      </td>
+                      <td className="font-mono text-[12px] text-ink-dim whitespace-nowrap text-right">
+                        {invite.acceptedAt ? 'Accepted' : `Expires ${formatRelative(invite.expiresAt)}`}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             ) : (
-              <div className="vs-data p-3 opacity-60">NO INVITATIONS</div>
+              <div className="px-5 py-6 text-[13.5px]" style={{ color: 'var(--vs-fg-faint)' }}>
+                No invitations outstanding.
+              </div>
             )}
           </Panel>
 
           <Panel title="Developer surface" right="FR-12.3">
-            <div className="p-3 vs-data opacity-80">
-              API keys are issued per user under the Developer role; the raw value is shown once at
-              creation and only a scrypt hash is stored.
+            <div
+              className="px-5 py-5 text-[13.5px] leading-relaxed"
+              style={{ color: 'var(--vs-fg-dim)' }}
+            >
+              API keys are issued per user under the Developer role. The raw value is shown once at
+              creation and only a scrypt hash is stored, so a key that is lost has to be replaced
+              rather than recovered. A key carries the same permissions as the person who owns it,
+              and revoking it does not touch that person’s session.
             </div>
           </Panel>
         </div>

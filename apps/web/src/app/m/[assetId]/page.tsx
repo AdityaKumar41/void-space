@@ -25,6 +25,7 @@ import {
   marketplaceItem,
   thumbnailUrl,
 } from '../../../lib/public-api';
+import { CheckIcon } from '../../../components/ui/icons';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,18 +54,37 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 /** One label/value row in a specification or provenance panel. */
 function SpecRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="mk-spec-row">
-      <span className="mk-spec-key">{label}</span>
-      <span className="mk-spec-value">{children}</span>
+    <div className="vs-spec-row">
+      <span className="vs-spec-key">{label}</span>
+      <span className="vs-spec-value">{children}</span>
     </div>
   );
 }
 
 /** A claim the listing makes, with the evidence for it. */
+/**
+ * One claim, marked verified.
+ *
+ * The marker is a drawn check inside a tinted square, not an empty coloured box — an empty box reads as
+ * a broken image, and this component appears three times on every listing. It inherits `currentColor`
+ * from the wrapper, which is what makes it the success green here.
+ *
+ * The layout is a two-column grid so the check sits on the first line of the prose and the text wraps
+ * cleanly underneath it, at any width.
+ */
 function Verified({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mk-verify-row">
-      <span className="mk-tick" aria-hidden />
+    <div className="grid grid-cols-[16px_minmax(0,1fr)] gap-2.5 text-[13px] leading-[1.65] text-ink-dim">
+      <span
+        aria-hidden
+        // `color-mix` rather than a Tailwind opacity modifier: the check inherits `currentColor`, and
+        // an opacity modifier on `currentColor` is not reliably lowered to a real value. This is the
+        // same technique `StatusChip` uses, so the two markers tint identically.
+        style={{ background: 'color-mix(in srgb, currentColor 16%, transparent)' }}
+        className="mt-[3px] flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] text-current"
+      >
+        <CheckIcon width={11} height={11} strokeWidth={2.4} />
+      </span>
       <span>{children}</span>
     </div>
   );
@@ -81,18 +101,18 @@ export default async function ModelPage({ params }: PageProps) {
   const explorer = process.env.NEXT_PUBLIC_CHAIN_EXPLORER_URL ?? '';
 
   return (
-    <div className="mk-page">
+    <div className="relative z-10 flex min-h-[100dvh] flex-col">
       <MarketHeader current="model" />
 
-      <main id="main" className="mk-shell flex-1 py-8">
+      <main id="main" className="mx-auto w-full max-w-[1360px] px-5 flex-1 py-8">
         <nav className="mb-6 flex items-center gap-2 text-[13px]" aria-label="Breadcrumb">
-          <Link href="/" className="vs-link">
+          <Link href="/catalog" className="link-underline">
             Catalogue
           </Link>
           <span aria-hidden style={{ color: 'var(--vs-fg-faint)' }}>
             /
           </span>
-          <Link href={`/?category=${encodeURIComponent(item.category)}`} className="vs-link">
+          <Link href={`/catalog?category=${encodeURIComponent(item.category)}`} className="link-underline">
             {item.category}
           </Link>
         </nav>
@@ -107,7 +127,7 @@ export default async function ModelPage({ params }: PageProps) {
               polycount={item.polycount}
             />
 
-            <h1 className="mk-h2 mt-8">{item.name}</h1>
+            <h1 className="text-balance text-[clamp(1.5rem,3vw,2.1rem)] font-semibold leading-[1.08] tracking-[-0.02em] text-ink mt-8">{item.name}</h1>
 
             <div
               className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px]"
@@ -121,17 +141,17 @@ export default async function ModelPage({ params }: PageProps) {
             </div>
 
             {item.description ? (
-              <p className="mk-lead mt-6">{item.description}</p>
+              <p className="max-w-[62ch] text-pretty text-[clamp(0.95rem,1.4vw,1.08rem)] leading-[1.62] text-ink-dim mt-6">{item.description}</p>
             ) : (
-              <p className="mk-lead mt-6" style={{ fontStyle: 'italic', opacity: 0.7 }}>
+              <p className="max-w-[62ch] text-pretty text-[clamp(0.95rem,1.4vw,1.08rem)] leading-[1.62] text-ink-dim mt-6" style={{ fontStyle: 'italic', opacity: 0.7 }}>
                 No summary was published for this asset.
               </p>
             )}
 
             {item.tags.length > 0 ? (
-              <div className="mk-tags mt-6">
+              <div className="flex flex-wrap gap-1.5 mt-6">
                 {item.tags.map((value) => (
-                  <Link key={value} href={`/?tag=${encodeURIComponent(value)}`} className="mk-tag">
+                  <Link key={value} href={`/catalog?tag=${encodeURIComponent(value)}`} className="tag-interactive">
                     {value}
                   </Link>
                 ))}
@@ -139,9 +159,9 @@ export default async function ModelPage({ params }: PageProps) {
             ) : null}
 
             {/* ------------------------------------------------------------ specification */}
-            <div className="mk-panel mt-10">
-              <div className="mk-panel-head">The file</div>
-              <div className="mk-panel-body">
+            <div className="overflow-hidden rounded-card border border-hairline bg-surface shadow-panel mt-10">
+              <div className="flex items-center justify-between gap-2.5 border-b border-hairline px-4 py-3 text-[12.5px] font-semibold tracking-[0.02em] text-ink">The file</div>
+              <div className="px-4 py-4">
                 <SpecRow label="Format">{item.format.replace(/^\./, '').toUpperCase()}</SpecRow>
                 <SpecRow label="Triangles">{formatNumber(item.polycount)}</SpecRow>
                 <SpecRow label="Vertices">{formatNumber(item.vertices)}</SpecRow>
@@ -155,13 +175,13 @@ export default async function ModelPage({ params }: PageProps) {
                 <SpecRow label="File size">{formatBytes(Number(item.sizeBytes))}</SpecRow>
                 <SpecRow label="Content address">
                   <a
-                    className="vs-link"
+                    className="link-underline"
                     href={gatewayUrl(item.ipfsCid)}
                     target="_blank"
                     rel="noreferrer"
                     title={item.ipfsCid}
                   >
-                    <span className="vs-data">{shortCid(item.ipfsCid)}</span>
+                    <span className="font-mono text-[12px] text-ink-dim">{shortCid(item.ipfsCid)}</span>
                   </a>{' '}
                   <span style={{ color: 'var(--vs-fg-faint)' }}>· open the raw file</span>
                 </SpecRow>
@@ -169,21 +189,21 @@ export default async function ModelPage({ params }: PageProps) {
             </div>
 
             {/* -------------------------------------------------------------- provenance */}
-            <div className="mk-panel mt-6">
-              <div className="mk-panel-head">
+            <div className="overflow-hidden rounded-card border border-hairline bg-surface shadow-panel mt-6">
+              <div className="flex items-center justify-between gap-2.5 border-b border-hairline px-4 py-3 text-[12.5px] font-semibold tracking-[0.02em] text-ink">
                 Licence provenance
-                <span className="vs-chip vs-chip-live">on chain</span>
+                <span className="chip chip-live">on chain</span>
               </div>
-              <div className="mk-panel-body">
+              <div className="px-4 py-4">
                 <SpecRow label="Licence">{item.licenseType}</SpecRow>
                 <SpecRow label="Token id">
-                  <span className="vs-data">#{item.tokenId ?? '—'}</span>
+                  <span className="font-mono text-[12px] text-ink-dim">#{item.tokenId ?? '—'}</span>
                 </SpecRow>
                 <SpecRow label="Contract">
                   {item.contractAddress ? (
                     explorer ? (
                       <a
-                        className="vs-link vs-data"
+                        className="link-underline font-mono text-[12px] text-ink-dim"
                         href={`${explorer}/address/${item.contractAddress}`}
                         target="_blank"
                         rel="noreferrer"
@@ -191,7 +211,7 @@ export default async function ModelPage({ params }: PageProps) {
                         {item.contractAddress}
                       </a>
                     ) : (
-                      <span className="vs-data">{item.contractAddress}</span>
+                      <span className="font-mono text-[12px] text-ink-dim">{item.contractAddress}</span>
                     )
                   ) : (
                     '—'
@@ -201,7 +221,7 @@ export default async function ModelPage({ params }: PageProps) {
                   {item.txHash ? (
                     explorer ? (
                       <a
-                        className="vs-link vs-data"
+                        className="link-underline font-mono text-[12px] text-ink-dim"
                         href={`${explorer}/tx/${item.txHash}`}
                         target="_blank"
                         rel="noreferrer"
@@ -210,7 +230,7 @@ export default async function ModelPage({ params }: PageProps) {
                         {shortCid(item.txHash)}
                       </a>
                     ) : (
-                      <span className="vs-data" title={item.txHash}>
+                      <span className="font-mono text-[12px] text-ink-dim" title={item.txHash}>
                         {shortCid(item.txHash)}
                       </span>
                     )
@@ -221,7 +241,7 @@ export default async function ModelPage({ params }: PageProps) {
                 {item.licenseMetadataCid ? (
                   <SpecRow label="Licence metadata">
                     <a
-                      className="vs-link vs-data"
+                      className="link-underline font-mono text-[12px] text-ink-dim"
                       href={gatewayUrl(item.licenseMetadataCid)}
                       target="_blank"
                       rel="noreferrer"
@@ -233,13 +253,13 @@ export default async function ModelPage({ params }: PageProps) {
                 ) : null}
                 {item.xrManifestRef ? (
                   <SpecRow label="XR module">
-                    <span className="vs-data">{item.xrManifestRef}</span>
+                    <span className="font-mono text-[12px] text-ink-dim">{item.xrManifestRef}</span>
                   </SpecRow>
                 ) : null}
                 {item.sourceLicense || item.sourceUrl ? (
                   <SpecRow label="Upstream source">
                     {item.sourceUrl ? (
-                      <a className="vs-link" href={item.sourceUrl} target="_blank" rel="noreferrer">
+                      <a className="link-underline" href={item.sourceUrl} target="_blank" rel="noreferrer">
                         {item.sourceAttribution ?? item.sourceUrl}
                       </a>
                     ) : (
@@ -254,32 +274,32 @@ export default async function ModelPage({ params }: PageProps) {
             </div>
 
             {/* ------------------------------------------------------------------ terms */}
-            <div className="mk-panel mt-6">
-              <div className="mk-panel-head">Licence terms</div>
-              <div className="mk-panel-body">
-                <p className="mk-terms">{item.licenseTerms ?? 'No additional terms were recorded.'}</p>
+            <div className="overflow-hidden rounded-card border border-hairline bg-surface shadow-panel mt-6">
+              <div className="flex items-center justify-between gap-2.5 border-b border-hairline px-4 py-3 text-[12.5px] font-semibold tracking-[0.02em] text-ink">Licence terms</div>
+              <div className="px-4 py-4">
+                <p className="text-pretty border-l-2 border-l-[rgba(139,108,246,0.5)] pl-3.5 text-[13.5px] leading-[1.65] text-ink-dim">{item.licenseTerms ?? 'No additional terms were recorded.'}</p>
               </div>
             </div>
           </div>
 
           {/* --------------------------------------------------------------------- rail */}
-          <aside className="mk-rail">
-            <div className="mk-rail-card">
+          <aside className="flex flex-col gap-4">
+            <div className="rounded-card border border-hairline bg-surface p-5">
               <div className="flex items-center justify-between gap-3">
-                <span className="vs-chip vs-chip-live">
-                  <span className="mk-dot-live mr-1.5" aria-hidden />
-                  listed
+                <span className="chip chip-live">
+                  <span className="h-[7px] w-[7px] rounded-full bg-state-published animate-dot-pulse mr-1.5" aria-hidden />
+                  {item.licenseType ?? 'listed'}
                 </span>
-                <span className="mk-id">token #{item.tokenId ?? '—'}</span>
+                <span className="font-mono text-[11.5px] tracking-[0.01em] tabular-nums text-ink-faint">token #{item.tokenId ?? '—'}</span>
               </div>
 
-              <div className="mt-4 text-[13.5px]" style={{ color: 'var(--vs-fg-dim)' }}>
-                Licensed under {item.licenseType}. The registry entry travels with the file, so these
-                terms remain checkable after this page changes.
+              <div className="mt-4 text-[13.5px] leading-relaxed" style={{ color: 'var(--vs-fg-dim)' }}>
+                The registry entry travels with the file, so these terms remain checkable after this
+                page changes.
               </div>
 
               <a
-                className="vs-btn vs-btn-primary mt-5 flex w-full justify-center"
+                className="h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm mt-5 flex w-full justify-center"
                 href={gatewayUrl(item.ipfsCid)}
                 download
               >
@@ -288,14 +308,14 @@ export default async function ModelPage({ params }: PageProps) {
 
               <div className="mt-2 flex gap-2">
                 <a
-                  className="vs-btn flex-1 justify-center"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 flex-1 justify-center"
                   href={gatewayUrl(item.ipfsCid)}
                   target="_blank"
                   rel="noreferrer"
                 >
                   Preview raw
                 </a>
-                <Link className="vs-btn flex-1 justify-center" href={`/console/assets/${item.assetId}`}>
+                <Link className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 flex-1 justify-center" href={`/console/assets/${item.assetId}`}>
                   Console
                 </Link>
               </div>
@@ -306,12 +326,19 @@ export default async function ModelPage({ params }: PageProps) {
               </p>
             </div>
 
-            <div className="mk-rail-card">
-              <div className="mk-eyebrow">What this listing claims</div>
-              <div className="mk-verify mt-4">
+            <div className="rounded-card border border-hairline bg-surface p-5">
+              <div className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-brand-warm">
+                What this listing claims
+              </div>
+              {/*
+                `flex-col`, not `inline-flex`. These are three sentences, and a row puts them side by
+                side inside a 300px rail — which is how this card shipped three unreadable columns of
+                wrapped prose. Claims stack.
+              */}
+              <div className="mt-4 flex flex-col gap-3.5 text-[13px] text-state-published">
                 <Verified>
                   <b>Pinned, not stored.</b> The file resolves from content address{' '}
-                  <span className="vs-data">{shortCid(item.ipfsCid)}</span>.
+                  <span className="font-mono text-[12px] text-ink-dim">{shortCid(item.ipfsCid)}</span>.
                 </Verified>
                 <Verified>
                   <b>Measured in the viewer.</b> The studio counts the geometry it actually decoded, so
@@ -330,15 +357,15 @@ export default async function ModelPage({ params }: PageProps) {
             </div>
 
             {relatedItems.length > 0 ? (
-              <div className="mk-rail-card">
-                <div className="mk-eyebrow">More in {item.category}</div>
+              <div className="rounded-card border border-hairline bg-surface p-5">
+                <div className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-brand-warm">More in {item.category}</div>
                 <div className="mt-4 flex flex-col gap-2.5">
                   {relatedItems.map((entry) => (
-                    <Link key={entry.assetId} href={`/m/${entry.assetId}`} className="mk-mini">
+                    <Link key={entry.assetId} href={`/m/${entry.assetId}`} className="flex min-w-0 items-center gap-2.5 rounded-control border border-hairline bg-deeper p-2 transition-colors duration-150 ease-standard hover:border-hairline-strong">
                       <img src={thumbnailUrl(entry.ipfsCid)} alt="" width={52} height={52} loading="lazy" />
                       <span className="min-w-0">
-                        <span className="mk-mini-name block truncate">{entry.name}</span>
-                        <span className="mk-mini-sub block">
+                        <span className="text-[13px] text-ink block truncate">{entry.name}</span>
+                        <span className="font-mono text-[11px] text-ink-faint block">
                           {formatNumber(entry.polycount)} tris · {entry.licenseType}
                         </span>
                       </span>

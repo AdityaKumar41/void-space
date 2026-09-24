@@ -22,7 +22,8 @@ import Link from 'next/link';
 import type { Permission } from '@void-space/types';
 
 import { useSession } from '../lib/session';
-import { Loading, Panel } from './ui-kit';
+import { Panel } from './ui/card';
+import { LoadingBlock } from './ui/feedback';
 
 /** Human wording for the permissions a whole screen is gated behind. */
 const PERMISSION_LABEL: Partial<Record<Permission, string>> = {
@@ -49,45 +50,49 @@ export function RequirePermission({
 
   // Before the session resolves there is nothing to refuse yet. Showing the panel here would make
   // every first paint claim a permission problem, so the gate stays neutral instead.
-  if (isLoading || !session) return <Loading label="RESOLVING PERMISSIONS" />;
+  if (isLoading || !session) return <LoadingBlock label="Resolving permissions" />;
 
   return (
-    <div className="mx-auto max-w-2xl py-6">
+    <div className="mx-auto max-w-2xl">
       <Panel
         title="Access refused"
-        right={<span className="vs-data opacity-60">§3.6</span>}
+        right={<span className="font-mono text-[12px] text-ink-dim">§3.6 · permission matrix</span>}
       >
-        <div className="p-6">
-          <div className="vs-display text-3xl">
-            This screen is not open to{' '}
-            <em className="vs-accent">{session.user.roles.join(' / ') || 'this role'}</em>.
-          </div>
+        <div className="px-5 py-6">
+          <h2 className="font-medium leading-[1.1] tracking-[-0.021em] text-ink text-2xl">
+            This screen is not open to {session.user.roles.join(' / ') || 'this role'}.
+          </h2>
 
-          <p className="mt-4 text-[13px] leading-relaxed opacity-80">
-            Opening it needs <strong>{PERMISSION_LABEL[permission] ?? permission}</strong> (
-            <code className="vs-data">{permission}</code>), which the §3.6 permission matrix does not
+          <p className="mt-4 max-w-[62ch] text-[13.5px] leading-relaxed" style={{ color: 'var(--vs-fg-dim)' }}>
+            Opening it needs <strong style={{ color: 'var(--fc-fg)' }}>
+              {PERMISSION_LABEL[permission] ?? permission}
+            </strong>{' '}
+            (<code className="font-mono text-[12px] text-ink-dim">{permission}</code>), which the §3.6 permission matrix does not
             grant to {session.user.roles.length > 1 ? 'any of your roles' : 'your role'} in{' '}
             {session.tenant.name}.
           </p>
 
-          <p className="vs-label mt-3">
-            Nothing was requested — the check ran before this page loaded, so the API was never
-            asked for data you cannot read.
+          <p className="mt-3 text-[13px] leading-relaxed" style={{ color: 'var(--vs-fg-faint)' }}>
+            Nothing was requested — the check ran before this page loaded, so the API was never asked
+            for data you cannot read.
           </p>
 
           <div className="mt-6 flex flex-wrap gap-2">
-            <Link href="/console" className="vs-btn vs-btn-primary">
+            <Link href="/console" className="inline-flex h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm">
               Back to overview
             </Link>
-            <Link href="/console/notifications" className="vs-btn">
+            <Link href="/console/notifications" className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12">
               Your notifications
             </Link>
           </div>
 
-          <div className="vs-label mt-6 border-t pt-4" style={{ borderColor: 'var(--vs-line)' }}>
-            Ask a workspace administrator if you need this access — the request has to come from
-            them, in this workspace, because roles are per-workspace and the change takes effect on
-            your next request.
+          <div
+            className="text-[12px] tracking-[0.01em] text-ink-faint mt-6 border-t pt-4 leading-relaxed"
+            style={{ borderColor: 'var(--vs-line)' }}
+          >
+            Ask a workspace administrator if you need this access. The request has to come from them,
+            in this workspace, because roles are per-workspace and a change takes effect on your next
+            request.
           </div>
         </div>
       </Panel>

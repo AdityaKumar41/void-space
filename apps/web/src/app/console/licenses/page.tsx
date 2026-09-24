@@ -1,12 +1,25 @@
 'use client';
 
-/** Licence registry (SRS §6.5, FR-9.6, FR-9.7). Every mint, with its chain evidence. */
+/**
+ * Licence registry (SRS §6.5, FR-9.6, FR-9.7). Every mint, with its chain evidence.
+ *
+ * The provenance columns — block, gas, transaction — are the reason this screen exists, so they are
+ * printed in full rather than hidden behind a tooltip, and the transaction links out to the explorer
+ * when one is configured. A registry entry a reader cannot check is just a row in a table.
+ *
+ * Revocation is shown as a state on the token, not as a deletion: the token is never burned, so a
+ * revoked licence stays visible with its reason and simply stops being distributable. Showing it any
+ * other way would misrepresent what a takedown does.
+ */
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiFetch } from '../../../lib/api';
-import { formatDateTime, shortCid } from '../../../lib/format';
-import { EmptyState, ErrorNote, Loading, Panel } from '../../../components/ui-kit';
+import { formatDateTime, formatNumber, shortCid } from '../../../lib/format';
+import { EmptyBlock, EventChip, PageHead, StatCell, StatRow } from '../../../components/console-kit';
+import { Panel } from '../../../components/ui/card';
+import { Tag } from '../../../components/ui/chip';
+import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
 
 interface LicenceRow {
   readonly tokenId: string;
@@ -29,78 +42,148 @@ export default function LicencesPage() {
     queryFn: () => apiFetch<{ licenses: readonly LicenceRow[]; total: number }>('/licenses'),
   });
 
-  const active = licences.data?.licenses.filter((row) => row.status === 'active').length ?? 0;
+  const rows = licences.data?.licenses ?? [];
+  const active = rows.filter((row) => row.status === 'active').length;
+  const revoked = rows.length - active;
+  const onChain = rows.filter((row) => row.txHash !== null).length;
+  const contractUrl = rows.find((row) => row.explorer.addressUrl)?.explorer.addressUrl ?? null;
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="vs-display text-4xl">Licence registry</h1>
-        <div className="vs-label mt-1">
-          {licences.data ? `${licences.data.total} TOKENS / ${active} ACTIVE` : 'QUERYING'} / ERC-721 / ANVIL 31337
-        </div>
-      </div>
+    <div className="space-y-7">
+      <PageHead
+        title="Licence registry"
+        meta={
+          licences.data
+            ? `${formatNumber(licences.data.total)} tokens · ERC-721 · ${onChain} with an observed transaction`
+            : 'Querying'
+        }
+        actions={
+          contractUrl ? (
+            <a className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12" href={contractUrl} target="_blank" rel="noreferrer">
+              Open the contract
+            </a>
+          ) : null
+        }
+      />
 
-      <Panel title="Mint ledger">
-        {licences.isLoading ? <Loading /> : null}
-        {licences.error ? <ErrorNote message={(licences.error as Error).message} /> : null}
-        {licences.data && licences.data.licenses.length === 0 ? (
-          <EmptyState title="No licences minted" hint="PUBLISH AN APPROVED ASSET" />
-        ) : null}
+      {licences.isLoading ? <LoadingBlock label="Loading the registry" /> : null}
+      {licences.error ? <ErrorNote message={(licences.error as Error).message} /> : null}
 
-        {licences.data && licences.data.licenses.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="vs-table">
-              <thead>
-                <tr>
-                  <th>Token</th>
-                  <th>Asset</th>
-                  <th>State</th>
-                  <th>Block</th>
-                  <th>Gas</th>
-                  <th>Metadata</th>
-                  <th>Tx</th>
-                  <th className="text-right">Minted</th>
-                </tr>
-              </thead>
-              <tbody>
-                {licences.data.licenses.map((row) => (
-                  <tr key={row.tokenId}>
-                    <td className="vs-display vs-num text-lg">#{row.tokenId}</td>
-                    <td>
-                      {row.asset ? (
-                        <Link href={`/console/assets/${row.asset.id}`} className="vs-link">
-                          {row.asset.name}
-                        </Link>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="vs-data uppercase" style={{ color: row.status === 'active' ? 'var(--vs-published)' : 'var(--vs-accent)' }}>
-                      {row.status}
-                      {row.revokedReason ? <div className="vs-label mt-1">{row.revokedReason}</div> : null}
-                    </td>
-                    <td className="vs-num">{row.blockNumber ?? '—'}</td>
-                    <td className="vs-num">{row.gasUsed ?? '—'}</td>
-                    <td className="vs-data opacity-80" title={row.ipfsCid}>
-                      {row.tokenUri ? (
-                        <a className="vs-link" href={row.tokenUri} target="_blank" rel="noreferrer">
-                          {shortCid(row.ipfsCid)}
-                        </a>
-                      ) : (
-                        shortCid(row.ipfsCid)
-                      )}
-                    </td>
-                    <td className="vs-data opacity-70" title={row.txHash ?? 'mint transaction not observed'}>
-                      {row.txHash ? `${row.txHash.slice(0, 14)}…` : 'NOT OBSERVED'}
-                    </td>
-                    <td className="vs-data whitespace-nowrap text-right opacity-70">{formatDateTime(row.mintedAt).slice(0, 16)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </Panel>
+      {licences.data ? (
+        <>
+          <StatRow>
+            <StatCell label="Tokens minted" value={formatNumber(licences.data.total)} />
+            <StatCell
+              label="Active"
+              value={formatNumber(active)}
+              hint="distributable now"
+              tone="forest"
+            />
+            <StatCell
+              label="Revoked"
+              value={formatNumber(revoked)}
+              hint={revoked > 0 ? 'flagged, never burned' : 'none'}
+              tone={revoked > 0 ? 'heat' : 'plain'}
+            />
+            <StatCell
+              label="Not observed on chain"
+              value={formatNumber(rows.length - onChain)}
+              hint="registry record only"
+              tone={rows.length - onChain > 0 ? 'honey' : 'plain'}
+            />
+          </StatRow>
+
+          <Panel title="Mint ledger" right={`${formatNumber(licences.data.total)} entries`}>
+            {rows.length === 0 ? (
+              <EmptyBlock
+                title="No licences minted"
+                hint="A licence is minted when an approved asset is published. An empty ledger means nothing has been published in this workspace yet."
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="vs-table">
+                  <thead>
+                    <tr>
+                      <th>Token</th>
+                      <th>Asset</th>
+                      <th>State</th>
+                      <th className="text-right">Block</th>
+                      <th className="text-right">Gas</th>
+                      <th>Metadata</th>
+                      <th>Transaction</th>
+                      <th className="text-right">Minted</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <tr key={row.tokenId}>
+                        <td className="font-mono tracking-[-0.01em] tabular-nums whitespace-nowrap text-[15px]">
+                          <span style={{ color: 'var(--vs-accent)' }}>#</span>
+                          {row.tokenId}
+                        </td>
+                        <td>
+                          {row.asset ? (
+                            <Link href={`/console/assets/${row.asset.id}`} className="link-underline">
+                              {row.asset.name}
+                            </Link>
+                          ) : (
+                            <span className="font-mono text-[12px] text-ink-dim">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <div className="flex flex-col items-start gap-1.5">
+                            <EventChip
+                              action={
+                                row.status === 'active'
+                                  ? 'chain.license_active'
+                                  : 'chain.license_revoked'
+                              }
+                            />
+                            {row.revokedReason ? <Tag tone="brand">{row.revokedReason}</Tag> : null}
+                          </div>
+                        </td>
+                        <td className="font-mono tracking-[-0.01em] tabular-nums text-right">{row.blockNumber ?? '—'}</td>
+                        <td className="font-mono tracking-[-0.01em] tabular-nums text-right">{row.gasUsed ?? '—'}</td>
+                        <td className="font-mono text-[12px] text-ink-dim" title={row.ipfsCid}>
+                          {row.tokenUri ? (
+                            <a className="link-underline" href={row.tokenUri} target="_blank" rel="noreferrer">
+                              {shortCid(row.ipfsCid)}
+                            </a>
+                          ) : (
+                            shortCid(row.ipfsCid)
+                          )}
+                        </td>
+                        <td className="font-mono text-[12px] text-ink-dim">
+                          {row.txHash ? (
+                            row.explorer.txUrl ? (
+                              <a
+                                className="link-underline"
+                                href={row.explorer.txUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={row.txHash}
+                              >
+                                {row.txHash.slice(0, 12)}…
+                              </a>
+                            ) : (
+                              <span title={row.txHash}>{row.txHash.slice(0, 12)}…</span>
+                            )
+                          ) : (
+                            <span style={{ color: 'var(--vs-fg-faint)' }}>not observed</span>
+                          )}
+                        </td>
+                        <td className="font-mono text-[12px] text-ink-dim whitespace-nowrap text-right">
+                          {formatDateTime(row.mintedAt).slice(0, 16)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+        </>
+      ) : null}
     </div>
   );
 }

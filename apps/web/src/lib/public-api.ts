@@ -89,3 +89,22 @@ export function gatewayUrl(cid: string): string {
 export function thumbnailUrl(cid: string): string {
   return `/thumbnails/${cid}`;
 }
+
+/**
+ * Whether a render can exist for an asset in this state.
+ *
+ * Renders are produced by `pnpm assets:thumbnails` (`scripts/render-thumbnails.mjs`), which walks
+ * `/assets?publishedOnly=true` — deliberately, because a draft nobody can see is not worth a headless
+ * browser round trip. So a card that requests `/thumbnails/<cid>` for a draft, a rejected asset or one
+ * still in review is asking for a file the pipeline never wrote, and gets a 404 on every page load.
+ *
+ * The card copes — it falls back to a drawn figure — but a guaranteed-404 request is still a request,
+ * and it made the UI audit fail on every screen that lists unpublished work. Gating on the state is what
+ * makes the fallback a decision rather than a recovery.
+ *
+ * This is coupled to the renderer's selection rule on purpose and names it, so that if rendering is ever
+ * extended to another state, both places are obvious.
+ */
+export function hasRender(status: string): boolean {
+  return status === 'published';
+}

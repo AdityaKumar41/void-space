@@ -1,30 +1,40 @@
 'use client';
 
 /**
- * Published catalogue — the marketplace (SRS FR-5.4, §6.1).
+ * The workspace marketplace — published modules (SRS FR-5.4, §6.1).
  *
- * Browsing rules this screen follows:
+ * Laid out as a collection page, because that is what it is: a banner with the totals, a filter rail
+ * on the left, a toolbar, and a grid of items. The rules the earlier table-based version already
+ * followed are kept, because they are about honesty rather than layout:
  *
  * - **Nothing heavy loads unasked.** Cards carry metadata and a badge; the 3D model is fetched only
- *   when someone opens the quick look, one at a time. A grid of live canvases would be a slideshow.
- * - **Filtering is instant and local.** The catalogue is small enough to filter in the browser, so
- *   typing in the search box does not wait on a round trip.
- * - **The licence is the headline.** This is a licensed marketplace, not a file list: token id,
- *   licence type and status sit at the same level as the name.
- * - **Empty is a state, not an accident.** With nothing published, the screen explains why and what
- *   to do next rather than showing a blank grid.
+ *   when someone opens the preview, one at a time. A grid of live canvases would be a slideshow, and
+ *   the bundled whale skeleton alone is 13.6 MB with 28 textures.
+ * - **Filtering is instant and local.** The catalogue is small enough to filter in the browser, so a
+ *   keystroke does not wait on a round trip. A deliberate contrast with the *public* catalogue, which
+ *   re-queries the server because its facet counts must describe the whole collection rather than the
+ *   page in hand.
+ * - **The licence is the headline.** This is a licensed marketplace, not a file list: token id and
+ *   licence state sit at the same level as the name.
+ * - **Counts say what they count.** The API returns a true `total`; anything derived from the loaded
+ *   page says "in view", because a sum over the first hundred rows is not a total.
  */
-import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api';
-import { formatBytes, formatNumber, formatRelative, shortCid } from '../../../lib/format';
+import { formatBytes, formatNumber, formatRelative } from '../../../lib/format';
 import { AssetQuickLook, type QuickLookAsset } from '../../../components/asset-quick-look';
-import { CopyButton } from '../../../components/copy-button';
-import { EmptyState, ErrorNote } from '../../../components/ui-kit';
-import { useToast } from '../../../components/toast';
-import { canPreviewNatively } from '../../../components/model-viewer';
+import {
+  ConsoleBanner,
+  EmptyBlock,
+  FilterRail,
+  ItemCard,
+  StatCell,
+  Toolbar,
+  type RailGroup,
+} from '../../../components/console-kit';
+import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
 
 interface CatalogItem {
   readonly id: string;
@@ -46,57 +56,29 @@ interface CatalogItem {
 
 type SortKey = 'recent' | 'name' | 'polycount';
 
-function Skeleton() {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      {[0, 1, 2, 3, 4, 5].map((key) => (
-        <div key={key} className="vs-card">
-          <div className="vs-card-well vs-skeleton" />
-          <div className="space-y-2 p-3">
-            <div className="vs-skeleton h-4 w-3/4" />
-            <div className="vs-skeleton h-3 w-1/2" />
-            <div className="vs-skeleton h-3 w-2/3" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
+const SORTS: readonly { readonly value: SortKey; readonly label: string }[] = [
+  { value: 'recent', label: 'Recently updated' },
+  { value: 'name', label: 'Name (A–Z)' },
+  { value: 'polycount', label: 'Most detailed first' },
+];
+
+/** Above this an asset needs a decimation pass before it runs on a standalone headset (FR-3.4). */
+const HEAVY_TRIANGLES = 150_000;
+
+type Band = '' | 'light' | 'medium' | 'heavy';
+
+function bandOf(polycount: number | null | undefined): Band {
+  if (polycount === null || polycount === undefined) return '';
+  if (polycount > HEAVY_TRIANGLES) return 'heavy';
+  if (polycount > 50_000) return 'medium';
+  return 'light';
 }
 
-/** A labelled select that keeps its own state simple. */
-function Filter({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly { readonly value: string; readonly label: string }[];
-  onChange: (next: string) => void;
-}) {
-  return (
-    <label className="flex items-center gap-2">
-      <span className="vs-label shrink-0">{label}</span>
-      <select
-        className="vs-select"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-export default function CatalogPage() {
-  const toast = useToast();
+export default function ConsoleCatalogPage() {
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('all');
+  const [category, setCategory] = useState('');
+  const [licence, setLicence] = useState('');
+  const [band, setBand] = useState<Band>('');
   const [sort, setSort] = useState<SortKey>('recent');
   const [preview, setPreview] = useState<CatalogItem | null>(null);
 
@@ -111,7 +93,14 @@ export default function CatalogPage() {
   const items = catalog.data?.items ?? [];
 
   const categories = useMemo(
-    () => [...new Set(items.map((item) => item.category))].sort(),
+    () =>
+      [...new Set(items.map((item) => item.category))]
+        .sort()
+        .map((value) => ({
+          value,
+          label: value,
+          count: items.filter((item) => item.category === value).length,
+        })),
     [items],
   );
 
@@ -119,7 +108,11 @@ export default function CatalogPage() {
     const needle = query.trim().toLowerCase();
 
     const filtered = items.filter((item) => {
-      if (category !== 'all' && item.category !== category) return false;
+      if (category && item.category !== category) return false;
+      if (licence === 'active' && item.license?.status !== 'active') return false;
+      if (licence === 'revoked' && item.license?.status !== 'revoked') return false;
+      if (licence === 'none' && item.license !== null) return false;
+      if (band && bandOf(item.currentVersion?.polycount) !== band) return false;
       if (!needle) return true;
       return (
         item.name.toLowerCase().includes(needle) ||
@@ -135,317 +128,174 @@ export default function CatalogPage() {
       }
       return b.updatedAt.localeCompare(a.updatedAt);
     });
-  }, [items, query, category, sort]);
+  }, [items, query, category, licence, band, sort]);
+
+  const activeLicences = items.filter((item) => item.license?.status === 'active').length;
+  const revokedLicences = items.filter((item) => item.license?.status === 'revoked').length;
+  // Counted once and reused, so the figure and its hint cannot disagree — the hint is the sentence
+  // "1 needs decimation" / "3 need decimation", and a plural computed separately from the number it
+  // describes is how a counter starts reading "1 need".
+  const heavyCount = items.filter(
+    (item) => bandOf(item.currentVersion?.polycount) === 'heavy',
+  ).length;
+  const filtering = Boolean(query || category || licence || band);
+
+  const groups: readonly RailGroup[] = [
+    { title: 'Category', value: category, onChange: setCategory, options: categories },
+    {
+      title: 'Licence',
+      value: licence,
+      onChange: setLicence,
+      options: [
+        { value: 'active', label: 'Active', count: activeLicences },
+        { value: 'revoked', label: 'Revoked', count: revokedLicences },
+        {
+          value: 'none',
+          label: 'Not licensed',
+          count: items.length - activeLicences - revokedLicences,
+        },
+      ],
+    },
+    {
+      title: 'Complexity',
+      value: band,
+      onChange: (next) => setBand(next as Band),
+      options: [
+        { value: 'light', label: 'Under 50k tris' },
+        { value: 'medium', label: '50k – 150k tris' },
+        { value: 'heavy', label: 'Over 150k tris' },
+      ],
+    },
+  ];
+
+  if (catalog.isLoading) return <LoadingBlock label="Loading the marketplace" />;
+  if (catalog.error || !catalog.data) {
+    return <ErrorNote message={(catalog.error as Error)?.message ?? 'The marketplace is unavailable'} />;
+  }
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-3">
+    <div className="space-y-7">
+      <ConsoleBanner
+        eyebrow={`Marketplace · ERC-721 · ${
+          catalog.data.total > items.length
+            ? `showing the first ${items.length} of ${catalog.data.total}`
+            : 'all published modules'
+        }`}
+        title="Published modules"
+        description="Every asset here has passed review and had its licence minted on chain. Open the preview to stream the model from IPFS — nothing is downloaded until you ask for it."
+        stats={
+          <>
+            <StatCell label="Published" value={formatNumber(catalog.data.total)} />
+            <StatCell
+              label="Licences active"
+              value={formatNumber(activeLicences)}
+              hint={revokedLicences > 0 ? `${revokedLicences} revoked` : 'none revoked'}
+              tone="forest"
+            />
+            <StatCell
+              label="Categories in view"
+              value={formatNumber(categories.length)}
+              hint={`${items.length} modules loaded`}
+            />
+            <StatCell
+              label="Heavy for XR"
+              value={formatNumber(heavyCount)}
+              hint={`need${heavyCount === 1 ? 's' : ''} decimation`}
+              tone="honey"
+            />
+          </>
+        }
+      />
+
+      <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <FilterRail groups={groups} />
+
         <div>
-          <h1 className="vs-display text-4xl">Marketplace</h1>
-          <p className="vs-prose mt-1">
-            Published modules, each licensed on-chain. Open any one for an interactive preview — the
-            model is streamed from IPFS only when you ask for it.
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="vs-display vs-num text-2xl">{items.length}</div>
-          <div className="vs-label">modules published</div>
-        </div>
-      </header>
+          <Toolbar
+            search={query}
+            onSearch={setQuery}
+            placeholder="Search by name, category or tag"
+            count={
+              filtering
+                ? `${visible.length} of ${items.length} shown`
+                : `${formatNumber(items.length)} modules`
+            }
+          >
+            <label className="w-auto">
+              <span className="sr-only">Sort by</span>
+              <select
+                value={sort}
+                onChange={(event) => setSort(event.target.value as SortKey)}
+                aria-label="Sort the marketplace"
+              >
+                {SORTS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </Toolbar>
 
-      {/* Controls */}
-      <div className="vs-panel flex flex-wrap items-center gap-3 p-3">
-        <label className="flex min-w-[220px] flex-1 items-center gap-2">
-          <span className="vs-label shrink-0">Search</span>
-          <input
-            className="vs-input"
-            type="search"
-            value={query}
-            placeholder="name, category or tag"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
-
-        <Filter
-          label="Category"
-          value={category}
-          onChange={setCategory}
-          options={[
-            { value: 'all', label: `ALL (${items.length})` },
-            ...categories.map((value) => ({ value, label: value.toUpperCase() })),
-          ]}
-        />
-
-        <Filter
-          label="Sort"
-          value={sort}
-          onChange={(next) => setSort(next as SortKey)}
-          options={[
-            { value: 'recent', label: 'RECENTLY UPDATED' },
-            { value: 'name', label: 'NAME (A–Z)' },
-            { value: 'polycount', label: 'COMPLEXITY (HIGH → LOW)' },
-          ]}
-        />
-
-        <button
-          type="button"
-          className="vs-btn vs-btn-quiet"
-          onClick={() => {
-            setQuery('');
-            setCategory('all');
-            setSort('recent');
-            toast.info('Filters cleared');
-          }}
-        >
-          RESET
-        </button>
-      </div>
-
-      {catalog.isLoading ? <Skeleton /> : null}
-      {catalog.error ? (
-        <ErrorNote message={(catalog.error as Error).message} code="CATALOG_UNAVAILABLE" />
-      ) : null}
-
-      {!catalog.isLoading && items.length === 0 ? (
-        <div className="vs-panel">
-          <EmptyState
-            title="Nothing published yet"
-            hint="AN ASSET APPEARS HERE ONCE IT IS APPROVED AND PUBLISHED — THE LICENCE IS MINTED AT THAT MOMENT"
-          />
-        </div>
-      ) : null}
-
-      {!catalog.isLoading && items.length > 0 && visible.length === 0 ? (
-        <div className="vs-panel">
-          <EmptyState title="No match" hint="TRY A DIFFERENT SEARCH OR CLEAR THE CATEGORY FILTER" />
-        </div>
-      ) : null}
-
-      {/* Grid */}
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {visible.map((item, index) => {
-          // The bento lead: the most recently updated module gets double width, so the grid has a
-          // focal point instead of reading as an even wall of equal tiles.
-          const featured = index === 0;
-          const version = item.currentVersion;
-          const previewable = version?.ipfsCid && canPreviewNatively(version.format);
-          const revoked = item.license && item.license.status !== 'active';
-
-          return (
-            <article
-              key={item.id}
-              className={`vs-card group ${featured ? 'sm:col-span-2 xl:col-span-2' : ''}`}
-            >
-              <div className="vs-card-well">
-                <div className="vs-card-badges">
-                  <span className={`vs-chip ${revoked ? 'vs-chip-danger' : 'vs-chip-live'}`}>
-                    {revoked
-                      ? 'Licence revoked'
-                      : item.license
-                        ? `Token #${item.license.tokenId}`
-                        : 'Unlicensed'}
-                  </span>
-                  <span className="vs-chip">{item.category}</span>
-                </div>
-
-                {/* The well is a button: the whole area is a hit target, and its label says what
-                    will happen rather than relying on the user guessing that a thumbnail is one. */}
-                <Thumbnail
-                  cid={version?.ipfsCid ?? null}
-                  seed={item.id}
-                  alt={`${item.name} — 3D preview`}
-                  muted={!previewable}
-                />
-
-                {previewable ? (
-                  <button
-                    type="button"
-                    onClick={() => setPreview(item)}
-                    className="absolute inset-0 z-[1] flex items-end justify-center pb-10"
-                    aria-label={`Preview ${item.name} in 3D`}
-                  >
-                    <span
-                      className="vs-btn vs-btn-primary opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-visible:opacity-100"
-                      aria-hidden
-                    >
-                      View in 3D
-                    </span>
-                  </button>
-                ) : (
-                  <div className="absolute inset-x-0 bottom-3 z-[1] text-center">
-                    <span className="vs-chip">No browser preview</span>
-                  </div>
-                )}
-
-                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                  <span className="vs-chip">
-                    {version?.polycount ? `${formatNumber(version.polycount)} tris` : '—'}
-                  </span>
-                  <span className="vs-chip">{formatBytes(version?.sizeBytes)}</span>
-                </div>
-              </div>
-
-              <div className="flex flex-1 flex-col p-5">
-                <Link
-                  href={`/console/assets/${item.id}`}
-                  className={`vs-display hover:text-[var(--vs-accent-warm)] ${featured ? 'text-2xl' : 'text-lg'}`}
-                >
-                  {item.name}
-                </Link>
-
-                <div className="vs-card-meta mt-1.5">
-                  {version?.format.toUpperCase() ?? '—'}
-                  {version?.dimensions
-                    ? ` · ${version.dimensions.x} × ${version.dimensions.y} × ${version.dimensions.z} units`
-                    : ''}
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {item.tags.slice(0, featured ? 6 : 4).map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full px-2.5 py-0.5 text-[11px]"
-                      style={{ background: 'var(--vs-surface-2)', color: 'var(--vs-fg-dim)' }}
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-
-                <dl
-                  className="mt-3 space-y-1 border-t pt-2"
-                  style={{ borderColor: 'var(--vs-line)' }}
-                >
-                  <div className="flex justify-between gap-2">
-                    <dt className="vs-label">Content id</dt>
-                    <dd className="vs-data opacity-80">{shortCid(version?.ipfsCid)}</dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="vs-label">Licensed</dt>
-                    <dd className="vs-data opacity-80">
-                      {item.license ? formatRelative(item.license.mintedAt) : '—'}
-                    </dd>
-                  </div>
-                </dl>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {previewable ? (
+          {visible.length === 0 ? (
+            <div className="relative overflow-hidden rounded-card border border-hairline bg-surface shadow-panel mt-6">
+              <EmptyBlock
+                title="Nothing matches those filters"
+                hint="Try a broader search, or click the selected row in the rail to switch that filter off."
+                action={
+                  filtering ? (
                     <button
                       type="button"
-                      className="vs-btn vs-btn-primary"
-                      onClick={() => setPreview(item)}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12"
+                      onClick={() => {
+                        setQuery('');
+                        setCategory('');
+                        setLicence('');
+                        setBand('');
+                      }}
                     >
-                      VIEW IN 3D
+                      Clear filters
                     </button>
-                  ) : null}
-                  <Link href={`/console/assets/${item.id}`} className="vs-btn vs-btn-quiet">
-                    RECORD
-                  </Link>
-                  <CopyButton label="CID" value={version?.ipfsCid} compact />
-                </div>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+                  ) : null
+                }
+              />
+            </div>
+          ) : (
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {visible.map((item) => {
+                const version = item.currentVersion;
+                const heavy = bandOf(version?.polycount) === 'heavy';
 
-      {visible.length > 0 ? (
-        <div className="vs-label">
-          SHOWING {visible.length} OF {items.length}
+                return (
+                  <ItemCard
+                    key={item.id}
+                    assetId={item.id}
+                    name={item.name}
+                    href={`/console/assets/${item.id}`}
+                    collection={item.category}
+                    cid={version?.ipfsCid ?? null}
+                    polycount={version?.polycount ?? null}
+                    sizeBytes={version?.sizeBytes ?? null}
+                    badge={item.license ? `#${item.license.tokenId}` : undefined}
+                    figure={`${formatNumber(version?.polycount ?? null)} tris`}
+                    figureSub={`${formatBytes(version?.sizeBytes ?? 0)} · ${formatRelative(item.updatedAt)}${
+                      heavy ? ' · heavy for XR' : ''
+                    }`}
+                    action={
+                      // A button, not a link: the preview opens in place rather than navigating.
+                      <button type="button" className="rounded-control border border-veil-8 bg-veil-6 px-3 py-1.5 text-[13px] font-semibold text-ink transition-colors duration-150 ease-standard hover:bg-veil-12" onClick={() => setPreview(item)}>
+                        Preview
+                      </button>
+                    }
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
-      ) : null}
+      </div>
 
       {preview ? <AssetQuickLook asset={preview} onClose={() => setPreview(null)} /> : null}
     </div>
-  );
-}
-
-/**
- * Deterministic line art for the card well.
- *
- * Deliberately not a fake render: it is a generated figure derived from the asset id, so cards have
- * visual rhythm without pretending to show geometry the browser has not downloaded. The honest
- * indication of what the model contains is the triangle count and the extent, which are measured.
- */
-function SchematicGlyph({ seed, muted = false }: { seed: string; muted?: boolean }) {
-  const stroke = muted ? 'var(--vs-line-strong)' : 'var(--vs-line-strong)';
-
-  // A cheap deterministic hash: same asset, same figure, every render.
-  let hash = 0;
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) % 100000;
-  }
-
-  const rings = 3 + (hash % 3);
-  const rotation = hash % 45;
-
-  return (
-    <svg
-      width="86"
-      height="86"
-      viewBox="0 0 100 100"
-      fill="none"
-      aria-hidden
-      className="opacity-60 transition-opacity group-hover:opacity-90"
-      style={{ transform: `rotate(${rotation}deg)` }}
-    >
-      {Array.from({ length: rings }, (_, index) => {
-        const size = 18 + index * (58 / rings);
-        return (
-          <rect
-            key={index}
-            x={50 - size / 2}
-            y={50 - size / 2}
-            width={size}
-            height={size}
-            stroke={stroke}
-            strokeWidth={1}
-          />
-        );
-      })}
-      <line x1="50" y1="8" x2="50" y2="92" stroke={stroke} strokeWidth={1} />
-      <line x1="8" y1="50" x2="92" y2="50" stroke={stroke} strokeWidth={1} />
-    </svg>
-  );
-}
-
-/**
- * The card's preview image.
- *
- * Real renders are produced ahead of time by `scripts/render-thumbnails.mjs`; until one exists for
- * an asset the schematic placeholder stands in. The fallback is intentional rather than a broken
- * image icon — a brand-new asset should still look designed while its render is pending.
- */
-function Thumbnail({
-  cid,
-  seed,
-  alt,
-  muted = false,
-}: {
-  cid: string | null;
-  seed: string;
-  alt: string;
-  muted?: boolean;
-}) {
-  const [failed, setFailed] = useState(!cid);
-
-  if (failed || !cid) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center">
-        <SchematicGlyph seed={seed} muted={muted} />
-      </div>
-    );
-  }
-
-  return (
-    // Served by the /thumbnails/[cid] route handler, which reads the render from disk per request.
-    <img
-      src={`/thumbnails/${cid}`}
-      alt={alt}
-      loading="lazy"
-      decoding="async"
-      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.05]"
-      onError={() => setFailed(true)}
-    />
   );
 }

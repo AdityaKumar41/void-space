@@ -3,8 +3,16 @@
 /**
  * Application shell (SRS §6.1).
  *
- * A floating glass header over an atmospheric ground, with the work area in a centred column — the
- * navigation is a layer that hovers above the content rather than a slab bolted to the top edge.
+ * The layout is a marketplace's, because the work is: a sticky top bar with the workspace search,
+ * the chain readout and the account; a row of section tabs under it; then the screen's own banner,
+ * filters and grid. What an operator does all day in this product — find an asset, decide on it,
+ * trace what happened to it — maps onto that shape directly, and it is the shape the audience
+ * already reads fluently.
+ *
+ * Two rows rather than one. OpenSea fits its whole nav and its search into a single bar; with seven
+ * destinations, a search field and three controls, one row would either crush the search or hide
+ * half the destinations behind a chevron. The tabs get their own row, exactly as a collection page's
+ * Items / Activity / Offers tabs do.
  *
  * Navigation is filtered by the §3.6 permission matrix, so a role never sees a door it cannot open.
  * That is courtesy, not security: every endpoint re-checks the caller independently.
@@ -12,13 +20,18 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { Permission } from '@void-space/types';
 
 import { apiFetch } from '../lib/api';
+import { cn } from '../lib/cn';
 import { SessionProvider, useSession } from '../lib/session';
 import type { SessionView } from '../lib/session-types';
-import { ErrorNote } from './ui-kit';
+import { Avatar } from './ui/avatar';
+import { Chip } from './ui/chip';
+import { CubeIcon } from './ui/icons';
+import { BellIcon, SearchIcon } from './console-kit';
+import { ErrorNote } from './ui/feedback';
 
 interface NavItem {
   readonly href: string;
@@ -36,13 +49,25 @@ const NAV: readonly NavItem[] = [
   { href: '/console/admin', label: 'Team', permission: 'tenant:manage-users' },
 ];
 
-/** The wordmark, in one place so the shell and the holding screen cannot drift apart. */
+/**
+ * The wordmark.
+ *
+ * The cube and the type together — the same mark as the storefront, from the same component, so a
+ * visitor moving between the catalogue and the console is visibly in one product. It used to be two
+ * different marks: an ASCII drawing on the storefront and a bare word here.
+ */
 export function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
-    <span className={`vs-display ${compact ? 'text-base' : 'text-lg'}`} style={{ fontWeight: 800 }}>
-      VOID
-      <span className="vs-accent">·</span>
-      SPACE
+    <span className="flex items-center gap-2.5">
+      <CubeIcon className="text-brand" width={compact ? 17 : 20} height={compact ? 17 : 20} strokeWidth={1.3} />
+      <span
+        className={cn(
+          'font-semibold tracking-[-0.02em] text-ink',
+          compact ? 'text-[14px]' : 'text-[15px]',
+        )}
+      >
+        VOID·SPACE
+      </span>
     </span>
   );
 }
@@ -51,15 +76,18 @@ export function Wordmark({ compact = false }: { compact?: boolean }) {
  * First frame of the application.
  *
  * Calm by design: a signed-out visitor is a normal visitor, not an error (this screen replaces the
- * fault panel that used to flash \"SESSION REFUSED … REDIRECTING\" on every signed-out visit).
+ * fault panel that used to flash "SESSION REFUSED … REDIRECTING" on every signed-out visit).
  */
 function HoldingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
+    <div className="flex min-h-screen items-center justify-center bg-base">
       <div className="flex flex-col items-center gap-5">
         <Wordmark />
-        <div className="vs-loader" aria-hidden />
-        <p className="vs-label">Checking your session</p>
+        <div
+          aria-hidden
+          className="h-0.5 w-16 animate-dot-pulse rounded-full bg-brand"
+        />
+        <p className="text-[12.5px] text-ink-faint">Checking your session</p>
       </div>
     </div>
   );
@@ -78,24 +106,58 @@ function NotificationBell() {
   return (
     <Link
       href="/console/notifications"
-      className="relative flex h-9 w-9 items-center justify-center rounded-full transition-colors"
-      style={{ background: 'var(--vs-surface)', border: '1px solid var(--vs-line)' }}
       aria-label={count > 0 ? `${count} unread notifications` : 'Notifications'}
       title="Notifications"
+      className="relative inline-flex h-9 w-9 items-center justify-center rounded-control border border-hairline bg-surface text-ink-dim transition-colors duration-150 ease-standard hover:border-hairline-strong hover:bg-surface-raised hover:text-ink"
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
-        <path d="M18 8a6 6 0 1 0-12 0c0 7-2 8-2 8h16s-2-1-2-8" />
-        <path d="M10.5 20a2 2 0 0 0 3 0" />
-      </svg>
+      <BellIcon />
       {count > 0 ? (
-        <span
-          className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold"
-          style={{ background: 'var(--vs-accent)', color: 'var(--vs-accent-ink)' }}
-        >
+        <span className="absolute -right-1 -top-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full border border-base bg-brand px-1 font-mono text-[10px] text-white">
           {count > 9 ? '9+' : count}
         </span>
       ) : null}
     </Link>
+  );
+}
+
+
+/**
+ * The workspace search.
+ *
+ * It is a real form: pressing Enter navigates to the library with the query in the URL, so the
+ * search is shareable, bookmarkable and works with the back button. A search box that silently
+ * filters a page you are not on is the most common decorative control in a dashboard.
+ */
+function WorkspaceSearch() {
+  const router = useRouter();
+  const inputId = useId();
+  const [value, setValue] = useState('');
+
+  return (
+    <form
+      role="search"
+      className="relative flex h-10 items-center"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const query = value.trim();
+        router.push(query.length > 0 ? `/console/library?q=${encodeURIComponent(query)}` : '/console/library');
+      }}
+    >
+      <span className="pointer-events-none absolute left-3.5 text-ink-faint">
+        <SearchIcon />
+      </span>
+      <label className="sr-only" htmlFor={inputId}>
+        Search assets by name or tag
+      </label>
+      <input
+        id={inputId}
+        type="search"
+        value={value}
+        placeholder="Search assets by name or tag"
+        onChange={(event) => setValue(event.target.value)}
+        className="h-10 w-full rounded-control border border-hairline bg-surface pl-10 pr-3.5 text-[14px] text-ink transition-colors duration-150 ease-standard placeholder:text-ink-faint hover:border-hairline-strong focus:border-brand focus:outline-none"
+      />
+    </form>
   );
 }
 
@@ -108,7 +170,11 @@ function WorkspaceSwitcher() {
   // One workspace means nothing to switch between, so the control stays a readout.
   if (memberships.length <= 1) {
     return (
-      <span className="vs-chip" title={`Workspace: ${session.tenant.name}`}>
+      <span
+        className="inline-flex items-center gap-2 rounded-full border border-hairline-strong bg-surface px-3 py-1.5 font-mono text-[12px] text-ink-dim"
+        title={`Workspace: ${session.tenant.name}`}
+      >
+        <span aria-hidden className="h-1.5 w-1.5 animate-dot-pulse rounded-full bg-state-published" />
         {session.tenant.name}
       </span>
     );
@@ -116,7 +182,6 @@ function WorkspaceSwitcher() {
 
   return (
     <select
-      className="vs-select w-auto py-1.5 text-xs"
       value={session.tenant.id}
       disabled={busy}
       aria-label="Switch workspace"
@@ -128,6 +193,9 @@ function WorkspaceSwitcher() {
           setBusy(false);
         }
       }}
+      className={cn(
+        'h-9 w-auto min-w-[150px] cursor-pointer appearance-none rounded-control border border-hairline bg-surface pl-3 pr-9 text-[13px] text-ink',
+      )}
     >
       {memberships.map((membership) => (
         <option key={membership.id} value={membership.id}>
@@ -138,7 +206,12 @@ function WorkspaceSwitcher() {
   );
 }
 
-/** Avatar + account menu. Keeps sign-out out of the primary navigation. */
+/**
+ * Avatar + account menu. Keeps sign-out out of the primary navigation.
+ *
+ * `tenants.length > 1` decides whether the switcher is offered at all, which is why the account
+ * menu also carries the workspace list as a fallback on narrow screens where the switcher is hidden.
+ */
 function AccountMenu() {
   const { session, signOut } = useSession();
   const router = useRouter();
@@ -146,31 +219,17 @@ function AccountMenu() {
 
   if (!session) return null;
 
-  const initials = session.user.fullName
-    .split(' ')
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
   return (
     <div className="relative">
       <button
         type="button"
-        className="flex items-center gap-2 rounded-full py-1 pl-1 pr-3"
-        style={{ background: 'var(--vs-surface)', border: '1px solid var(--vs-line)' }}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
+        className="inline-flex items-center gap-2.5 rounded-full border border-hairline bg-surface py-1 pl-1 pr-3 text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong"
       >
-        <span
-          className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold"
-          style={{ background: 'rgba(139,108,246,0.22)', color: 'var(--vs-accent-warm)' }}
-        >
-          {initials || '·'}
-        </span>
-        <span className="hidden text-xs font-semibold sm:inline">{session.user.fullName}</span>
+        <Avatar name={session.user.fullName} size="sm" />
+        <span className="hidden text-[13px] font-semibold sm:inline">{session.user.fullName}</span>
       </button>
 
       {open ? (
@@ -178,31 +237,62 @@ function AccountMenu() {
           {/* Click-away layer: closes the menu without stealing focus from the page. */}
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
           <div
-            className="vs-glass absolute right-0 z-50 mt-2 w-64 rounded-2xl p-3"
             role="menu"
+            className="absolute right-0 top-[calc(100%_+_8px)] z-50 w-64 overflow-hidden rounded-card border border-hairline bg-surface shadow-float"
           >
-            <div className="text-sm font-semibold">{session.user.fullName}</div>
-            <div className="vs-data mt-0.5 truncate">{session.user.email}</div>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {session.user.roles.map((role) => (
-                <span key={role} className="vs-chip">
-                  {role}
-                </span>
-              ))}
+            <div className="border-b border-hairline px-4 py-4">
+              <div className="text-[14px] font-semibold text-ink">{session.user.fullName}</div>
+              <div className="mt-0.5 truncate font-mono text-[11.5px] text-ink-faint">
+                {session.user.email}
+              </div>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {session.user.roles.map((role) => (
+                  <Chip key={role}>{role}</Chip>
+                ))}
+              </div>
+              {session.readOnly ? (
+                <div className="mt-2.5 text-[12px] leading-snug text-ink-faint">
+                  Read-only session — write actions are refused by the API, not hidden here.
+                </div>
+              ) : null}
             </div>
-            {session.readOnly ? (
-              <div className="vs-label mt-3">Read-only token</div>
-            ) : null}
-            <button
-              type="button"
-              className="vs-btn vs-btn-quiet mt-3 w-full justify-center"
-              onClick={() => {
-                setOpen(false);
-                void signOut().then(() => router.replace('/login'));
-              }}
-            >
-              Sign out
-            </button>
+
+            <div className="py-1.5">
+              {[
+                { href: '/console/notifications', label: 'Notifications' },
+                { href: '/catalog', label: 'Public catalogue' },
+              ].map((entry) => (
+                <Link
+                  key={entry.href}
+                  href={entry.href}
+                  onClick={() => setOpen(false)}
+                  className="block px-4 py-2 text-[13.5px] text-ink-dim transition-colors duration-150 ease-standard hover:bg-veil-6 hover:text-ink"
+                >
+                  {entry.label}
+                </Link>
+              ))}
+              <a
+                href="/api/v1/docs"
+                target="_blank"
+                rel="noreferrer"
+                className="block px-4 py-2 text-[13.5px] text-ink-dim transition-colors duration-150 ease-standard hover:bg-veil-6 hover:text-ink"
+              >
+                API reference
+              </a>
+            </div>
+
+            <div className="border-t border-hairline py-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  void signOut().then(() => router.replace('/login'));
+                }}
+                className="block w-full px-4 py-2 text-left text-[13.5px] text-state-rejected transition-colors duration-150 ease-standard hover:bg-veil-6"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </>
       ) : null}
@@ -210,60 +300,83 @@ function AccountMenu() {
   );
 }
 
+
+/**
+ * The two rows of navigation.
+ *
+ * The tabs are links, not tabs in the ARIA sense: each is a route, and the browser's own history is
+ * what moves between them. `aria-current="page"` is the correct signal for that, and a
+ * `role="tablist"` here would tell a screen reader to expect arrow-key navigation that does not
+ * exist.
+ */
 function Header() {
   const pathname = usePathname();
   const { can } = useSession();
   const visible = NAV.filter((item) => can(item.permission));
 
   return (
-    <header className="sticky top-0 z-30 px-3 pt-3 sm:px-6 sm:pt-5">
-      <div className="vs-glass mx-auto flex max-w-[1500px] items-center gap-3 rounded-[22px] px-3 py-2.5 sm:px-4">
-        <Link
-          href="/console"
-          className="flex items-center gap-2 pl-1 pr-2"
-          aria-label="VOID·SPACE console home"
-        >
+    <header className="sticky top-0 z-50 border-b border-hairline bg-[rgba(10,10,10,0.94)] backdrop-blur-xl backdrop-saturate-150">
+      <div className="mx-auto flex h-16 w-full max-w-[1560px] items-center gap-4 px-6">
+        <Link href="/console" className="shrink-0" aria-label="VOID·SPACE console home">
           <Wordmark compact />
         </Link>
 
-        <div
-          className="h-6 w-px shrink-0"
-          style={{ background: 'var(--vs-line-strong)' }}
-          aria-hidden
-        />
+        <div className="min-w-0 flex-1 lg:hidden">
+          <WorkspaceSearch />
+        </div>
 
-        {/* Horizontal, scrollable on narrow screens: every destination is reachable by thumb. */}
-        <nav
-          className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
-          aria-label="Primary"
-        >
-          {visible.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="vs-nav-link"
-              data-active={
-                pathname === item.href ||
-                (item.href !== '/console' && pathname.startsWith(`${item.href}/`))
-              }
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <div className="mx-auto hidden w-full max-w-[520px] lg:block">
+          <WorkspaceSearch />
+        </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="hidden lg:inline-flex">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <span className="hidden xl:inline-flex">
             <WorkspaceSwitcher />
           </span>
           <NotificationBell />
           <AccountMenu />
         </div>
       </div>
+
+      <nav aria-label="Sections" className="border-t border-hairline">
+        <div className="mx-auto flex w-full max-w-[1560px] gap-1 overflow-x-auto px-6">
+          {visible.map((item) => {
+            const active =
+              pathname === item.href ||
+              (item.href !== '/console' && pathname.startsWith(`${item.href}/`));
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  // The active marker is a 2px bar on the leading edge, not a filled pill: a nav that
+                  // shouts makes every screen look like a notification.
+                  'relative whitespace-nowrap px-3.5 py-3 text-[13.5px] transition-colors duration-150 ease-standard',
+                  active ? 'font-semibold text-ink' : 'text-ink-dim hover:text-ink',
+                )}
+              >
+                {item.label}
+                {active ? (
+                  <span aria-hidden className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-brand" />
+                ) : null}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </header>
   );
 }
 
+
+/**
+ * The frame around every authenticated screen.
+ *
+ * The main column is capped at 1560px rather than the storefront's 1200: an operator reading a
+ * table of forty audit rows wants the width, and the storefront's measure is about reading prose.
+ */
 function Shell({ children }: { children: React.ReactNode }) {
   const { session, isLoading, error } = useSession();
   const status = (error as { status?: number } | null)?.status;
@@ -281,7 +394,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           code="SESSION_UNAVAILABLE"
           hint="The API may still be starting — retry in a moment, or sign in again."
         />
-        <a className="vs-btn mt-4 inline-flex" href="/login">
+        <a className="h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-4 inline-flex" href="/login">
           Go to sign in
         </a>
       </div>
@@ -289,15 +402,17 @@ function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="relative z-10 flex min-h-screen flex-col">
+    <div className="flex min-h-[100dvh] flex-col bg-base">
       <Header />
-      <main id="main" className="mx-auto w-full max-w-[1500px] flex-1 px-3 py-5 sm:px-6 sm:py-8">
+
+      <main id="main" className="mx-auto w-full max-w-[1560px] flex-1 px-6 py-8">
         {children}
       </main>
-      <footer className="mx-auto w-full max-w-[1500px] px-3 pb-8 pt-2 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4" style={{ borderColor: 'var(--vs-line)' }}>
-          <span className="vs-label">VOID·SPACE · 3D asset lifecycle</span>
-          <span className="vs-label">
+
+      <footer className="border-t border-hairline">
+        <div className="mx-auto flex w-full max-w-[1560px] flex-wrap items-center justify-between gap-3 px-6 py-5 font-mono text-[11.5px] text-ink-faint">
+          <span>VOID·SPACE · 3D asset lifecycle · ERC-721 licence registry</span>
+          <span>
             {session.tenant.name} · {session.user.roles.join(' / ')}
           </span>
         </div>
@@ -320,3 +435,4 @@ export function AppShell({
     </SessionProvider>
   );
 }
+

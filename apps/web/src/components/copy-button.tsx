@@ -6,6 +6,9 @@
  * CIDs, transaction hashes, token ids and addresses are all things people need *out* of the
  * interface — to verify on a block explorer, paste into a bug report, or hand to a modeller. Until
  * now they had to select 60-character strings by hand.
+ *
+ * The confirm state is a word, not a colour: DESIGN.md is explicit that state must never be
+ * signalled by colour alone, and a button that silently turns green is exactly that.
  */
 import { useCallback, useState } from 'react';
 
@@ -45,13 +48,13 @@ export function CopyButton({
   return (
     <button
       type="button"
-      className={compact ? 'vs-btn vs-btn-ghost' : 'vs-btn vs-btn-quiet'}
+      className={compact ? 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 h-8 px-3 text-[13px] text-ink-dim hover:bg-veil-6 hover:text-ink' : 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 border-hairline-strong bg-transparent text-ink-dim hover:bg-veil-6 hover:text-ink'}
       onClick={() => void copy()}
       disabled={!value}
       aria-label={`Copy ${label.toLowerCase()}`}
       title={value ? `Copy ${label.toLowerCase()}` : 'Nothing to copy yet'}
     >
-      {copied ? 'COPIED' : 'COPY'}
+      {copied ? 'Copied' : 'Copy'}
     </button>
   );
 }

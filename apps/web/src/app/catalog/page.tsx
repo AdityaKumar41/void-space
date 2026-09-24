@@ -4,7 +4,7 @@
  * This is a page a visitor navigates *to*, not the company's front door. It held the root URL until
  * now, which made the landing page a wall of customer assets: nobody arriving to find out what the
  * product is should be shown a gallery, and a vendor should not put licensed work on its home page.
- * The root is now the product page; this is one of its features.
+ * The root is the product page; this is one of its features.
  *
  * It does **not** render the application shell and does not ask who is calling — no session check, no
  * holding screen. Rendered per request because it states a live fact, which licences are active right
@@ -14,9 +14,12 @@
  */
 import type { Metadata } from 'next';
 
-import { HeroShowcase } from '../../components/hero-showcase';
+import { HeroStage } from '../../components/hero-showcase';
 import { MarketFooter, MarketHeader } from '../../components/market-shell';
 import { MarketplaceBrowser } from '../../components/marketplace-browser';
+import { CheckIcon } from '../../components/ui/icons';
+import { Container, Section, SectionHead } from '../../components/ui/layout';
+import { Stat, StatGrid } from '../../components/ui/stat';
 import { formatBytes, formatNumber } from '../../lib/format';
 import {
   browseMarketplace,
@@ -38,14 +41,22 @@ interface PageProps {
 }
 
 /** One of the three things that happen to an asset before it is listed. */
-function Step({ index, title, children }: { index: string; title: string; children: React.ReactNode }) {
+function Step({
+  index,
+  title,
+  children,
+}: {
+  index: string;
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <div className="mk-step-index">{index}</div>
-      <h3 className="text-[15px] font-semibold">{title}</h3>
-      <p className="mt-2.5 text-[13.5px] leading-relaxed" style={{ color: 'var(--vs-fg-dim)' }}>
-        {children}
-      </p>
+    <div className="min-w-0">
+      <div className="flex h-8 w-8 items-center justify-center rounded-full border border-hairline bg-base font-mono text-[12px] text-ink-dim">
+        {index}
+      </div>
+      <h3 className="mt-5 text-[16px] font-semibold tracking-[-0.012em] text-ink">{title}</h3>
+      <p className="mt-3 text-[14px] leading-[1.7] text-ink-dim">{children}</p>
     </div>
   );
 }
@@ -54,8 +65,8 @@ export default async function CatalogPage({ searchParams }: PageProps) {
   const category = searchParams.category?.trim() || undefined;
   const tag = searchParams.tag?.trim() || undefined;
   const search = searchParams.q?.trim() || undefined;
-  // Ignore an unknown `?sort=` rather than erroring: a stale bookmark should open the catalogue,
-  // not a validation failure.
+  // Ignore an unknown `?sort=` rather than erroring: a stale bookmark should open the catalogue, not a
+  // validation failure.
   const sort = SORT_OPTIONS.find((option) => option.value === searchParams.sort)?.value ?? 'newest';
 
   // One round trip each, in parallel: the grid, the facet counts and the headline figures.
@@ -66,60 +77,59 @@ export default async function CatalogPage({ searchParams }: PageProps) {
   ]);
 
   return (
-    <div className="mk-page">
+    <div className="flex min-h-[100dvh] flex-col bg-base">
       <MarketHeader current="catalog" />
 
       <main id="main" className="flex-1">
         {/* ------------------------------------------------------------------------ hero */}
-        <section className="mk-hero">
-          <div className="mk-shell">
-            <div className="mk-hero-split">
-              <div>
-                <span className="mk-eyebrow">Licensed catalogue</span>
+        <div className="relative overflow-hidden">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-grid-faint bg-grid-lg [mask-image:radial-gradient(80%_60%_at_50%_0%,#000_0%,transparent_72%)]"
+          />
 
-                <h1 className="mk-h1 mt-5">
-                  Models you can <em>verify</em>, not just download.
-                </h1>
+          <Container className="relative grid gap-12 py-14 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-center lg:gap-16 lg:py-20">
+            <div>
+              <span className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">
+                Licensed catalogue
+              </span>
 
-                <p className="mk-lead mt-6">
-                  Every asset here was reviewed by a person, stored by content hash, and licensed as an
-                  ERC-721 token. The token id, the contract address and the transaction that minted it
-                  are printed on the listing — so provenance is something you check rather than
-                  something you accept.
-                </p>
+              <h1 className="mt-6 text-balance text-[clamp(2rem,3.6vw,2.875rem)] font-semibold leading-[1.08] tracking-[-0.03em] text-ink">
+                Models you can <span className="text-brand">verify</span>, not just download.
+              </h1>
 
-                <dl className="mk-figures-strip">
-                  <div>
-                    <dt>models licensed</dt>
-                    <dd>{formatNumber(stats?.published ?? 0)}</dd>
-                  </div>
-                  <div>
-                    <dt>triangles indexed</dt>
-                    <dd>{formatNumber(stats?.polygons ?? 0)}</dd>
-                  </div>
-                  <div>
-                    <dt>pinned to IPFS</dt>
-                    <dd>{formatBytes(Number(stats?.bytes ?? 0))}</dd>
-                  </div>
-                  <div>
-                    <dt>categories</dt>
-                    <dd>{formatNumber(stats?.categories ?? 0)}</dd>
-                  </div>
-                </dl>
-              </div>
+              <p className="mt-6 max-w-[56ch] text-[16px] leading-[1.7] text-ink-dim">
+                Every model here is addressed by its content hash and licensed as an ERC-721 token. The
+                token id, the contract address and the transaction that minted it are printed on the
+                listing, so provenance is something you check rather than something you accept.
+              </p>
 
-              {/*
-                A real licence, turning, above the fold. The catalogue below is a list of the same
-                kind of thing — this is the one place a visitor can confirm that in a single gesture
-                rather than by taking our word for it.
-              */}
-              <HeroShowcase items={page.items} />
+              {stats ? (
+                <div className="mt-10 overflow-hidden rounded-surface border border-hairline">
+                  {/* Two columns, not four. This grid sits in a hero column about half the page wide,
+                      where four cells gave each figure ~90px and wrapped both the label and the value
+                      onto two lines. The landing page uses four because it has the full width. */}
+                  <StatGrid columns={2}>
+                    <Stat label="Models licensed" value={formatNumber(stats.published)} />
+                    <Stat label="Triangles indexed" value={formatNumber(stats.polygons)} />
+                    <Stat label="Pinned to IPFS" value={formatBytes(Number(stats.bytes))} />
+                    <Stat label="Categories" value={formatNumber(stats.categories)} />
+                  </StatGrid>
+                </div>
+              ) : null}
             </div>
-          </div>
-        </section>
+
+            {/*
+              A real licence, turning, above the fold. The grid below is a list of the same kind of
+              thing — this is the one place a visitor confirms that in a single gesture rather than by
+              taking our word for it.
+            */}
+            <HeroStage items={page.items.slice(0, 4)} />
+          </Container>
+        </div>
 
         {/* ------------------------------------------------------------------- catalogue */}
-        <section className="mk-shell pb-20">
+        <Container className="pb-20">
           <MarketplaceBrowser
             initial={page}
             facets={facets}
@@ -128,38 +138,43 @@ export default async function CatalogPage({ searchParams }: PageProps) {
             initialSearch={search}
             initialSort={sort}
           />
-        </section>
+        </Container>
 
         {/* ------------------------------------------------------------------ provenance */}
-        <section id="provenance" style={{ borderTop: '1px solid var(--vs-line)', background: '#0a0a0c' }}>
-          <div className="mk-shell py-16">
-            <span className="mk-eyebrow">Why these listings can be checked</span>
-            <h2 className="mk-h2 mt-4 max-w-2xl">
-              Three things happen to an asset before it appears here.
-            </h2>
+        <Section band id="provenance">
+          <SectionHead
+            eyebrow="Why these listings can be checked"
+            title="Three things happen to an asset before it appears here."
+          />
 
-            <div className="mk-steps mt-12">
-              <Step index="01" title="A person reviews it">
-                An assessor approves the asset, sends it back for revision, or rejects it — and the
-                decision, the comment and the file version are written to an append-only ledger that no
-                role can edit afterwards.
-              </Step>
-              <Step index="02" title="It is pinned by hash">
-                The file is stored on IPFS and its content address is printed on the listing. The bytes
-                you preview in the viewer are the bytes that address commits to, and the viewer measures
-                the geometry it decoded so you can see the record and the file agree.
-              </Step>
-              <Step index="03" title="Its licence is minted">
-                Publishing mints an ERC-721 licence carrying the content hash and the licence terms. The
-                token id, contract and transaction are on the listing, so the terms travel with the
-                asset instead of living in a database you have to trust.
-              </Step>
-            </div>
+          <div className="mt-14 grid gap-10 md:grid-cols-3">
+            <Step index="01" title="A person reviews it">
+              An assessor approves the asset, sends it back for revision, or rejects it — and the
+              decision, the comment and the file version are written to an append-only ledger that no
+              role can edit afterwards.
+            </Step>
+            <Step index="02" title="It is pinned by hash">
+              The file is stored on IPFS and its content address is printed on the listing. The bytes
+              you preview in the viewer are the bytes that address commits to, and the viewer measures
+              the geometry it decoded so you can see the record and the file agree.
+            </Step>
+            <Step index="03" title="Its licence is minted">
+              Publishing mints an ERC-721 licence carrying the content hash and the licence terms. The
+              token id, contract and transaction are on the listing, so the terms travel with the asset
+              instead of living in a database you have to trust.
+            </Step>
           </div>
-        </section>
+
+          <p className="mt-12 flex items-center gap-2.5 text-[13.5px] text-ink-faint">
+            <CheckIcon width={15} height={15} className="text-brand" />
+            A delisted asset answers 404, the same as one that never existed — so the catalogue cannot
+            be probed for takedowns.
+          </p>
+        </Section>
       </main>
 
       <MarketFooter />
     </div>
   );
 }
+

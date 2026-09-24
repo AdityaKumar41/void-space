@@ -1,12 +1,18 @@
 /**
  * Root layout.
  *
- * One set of typefaces for the whole application, loaded from Google Fonts with `display=swap` and
- * generous system fallbacks: if the network is unavailable the interface degrades to the platform
- * sans rather than blocking a render on a font file.
+ * One set of typefaces for the whole application, self-hosted from `public/fonts` and declared with
+ * `@font-face` in `globals.css`. Deliberately not Google Fonts: a marketplace that renders nothing
+ * until fonts.googleapis.com answers is broken on a locked-down network, and the container build
+ * cannot reach it at all.
  *
- * Plus Jakarta Sans for interface and display (geometric, slightly humanist, and not Inter), JetBrains
- * Mono for identifiers and figures so columns of hashes and counts line up.
+ * Plus Jakarta Sans for interface and display (geometric, slightly humanist, and not Inter — see the
+ * type rules in `DESIGN.md`), JetBrains Mono for the identifiers and figures this product is made of,
+ * so columns of hashes, CIDs and triangle counts line up.
+ *
+ * There is no theme toggle. The system is dark-only by design: heat orange against a near-neutral
+ * ground is the brand, and a light mode would be a second design to maintain rather than an
+ * accessibility win — contrast is held to WCAG AA in the one theme that exists.
  */
 import type { Metadata, Viewport } from 'next';
 
@@ -25,7 +31,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#050506',
+  // The page ground, so a mobile browser's chrome matches the page rather than framing it.
+  themeColor: '#0a0a0a',
   colorScheme: 'dark',
 };
 
@@ -33,11 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="relative min-h-screen">
-        {/* Depth layers: fixed, pointer-events-none, behind everything. */}
-        <div className="vs-atmosphere" aria-hidden />
-        <div className="vs-grain" aria-hidden />
-
-        {/* Keyboard users land here first; the nav is reachable but skippable. */}
+        {/* Keyboard users land here first; the header's destinations are reachable but skippable. */}
         <a href="#main" className="vs-skip-link">
           Skip to content
         </a>

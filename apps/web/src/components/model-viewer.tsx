@@ -760,12 +760,12 @@ function LoadReporter({ onSettled }: { onSettled: () => void }) {
 
   return (
     <div className="studio-loading" role="status" aria-live="polite">
-      <div className="vs-data">Decoding model</div>
+      <div className="font-mono text-[12px] text-ink-dim">Decoding model</div>
       <div className="studio-loading-track">
         <i style={{ width: `${Math.max(4, progress)}%` }} />
       </div>
       {total > 0 ? (
-        <div className="vs-label">
+        <div className="text-[12px] tracking-[0.01em] text-ink-faint">
           {(loaded / 1_048_576).toFixed(1)} of {(total / 1_048_576).toFixed(1)} MB ·{' '}
           {Math.round(progress)}%
         </div>
@@ -806,10 +806,10 @@ class ViewerBoundary extends Component<
     return (
       <div className="studio-fault">
         <div className="studio-fault-inner">
-          <div className="vs-eyebrow" style={{ color: 'var(--vs-rejected)' }}>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-faint" style={{ color: 'var(--vs-rejected)' }}>
             Preview unavailable
           </div>
-          <div className="mk-display mt-2 text-2xl">
+          <div className="font-medium leading-[1.1] tracking-[-0.021em] text-ink mt-2 text-2xl">
             This {this.props.label} could not be drawn here
           </div>
           <p className="mt-3 text-[13px] leading-relaxed" style={{ color: 'var(--vs-fg-dim)' }}>
@@ -820,7 +820,7 @@ class ViewerBoundary extends Component<
           <code>{this.state.message}</code>
           {this.props.sourceUrl ? (
             <a
-              className="vs-btn mt-4 inline-flex"
+              className="h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-4 inline-flex"
               href={this.props.sourceUrl}
               target="_blank"
               rel="noreferrer"
@@ -1076,7 +1076,7 @@ function StatsPanel({
             <StatRow label="Animation clips" value={formatCount(clips.names.length)} />
             <div className="mt-1 flex flex-wrap gap-1">
               {clips.names.map((name) => (
-                <span className="vs-chip" key={name}>
+                <span className="chip" key={name}>
                   {name}
                 </span>
               ))}
@@ -1545,9 +1545,9 @@ export function ModelViewer({
   if (!previewable || !url) {
     return (
       <div className="studio" style={{ background: BACKDROPS[backdrop] }}>
-        <div className="mk-stage-empty">
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-7 text-center">
           <div>
-            <div className="mk-display text-xl">
+            <div className="font-medium leading-[1.1] tracking-[-0.021em] text-ink text-xl">
               {previewable ? 'No pinned content to preview' : `${format.replace(/^\./, '').toUpperCase()} has no browser preview`}
             </div>
             <p className="mt-2 text-[13px]" style={{ color: 'var(--vs-fg-dim)' }}>
@@ -1556,7 +1556,7 @@ export function ModelViewer({
                 : 'This asset has no content-addressed copy yet.'}
             </p>
             {url ? (
-              <a className="vs-btn mt-4 inline-flex" href={url} download>
+              <a className="h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-4 inline-flex" href={url} download>
                 Download the file
               </a>
             ) : null}

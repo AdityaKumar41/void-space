@@ -4,9 +4,14 @@
  * Asset intake (SRS FR-3.1, FR-3.2, FR-3.3, NFR-SEC.3).
  *
  * The client enforces the same rules the API does — allowed extension, 200 MB ceiling, and the
- * tenant's allowed categories (FR-14.3) — so an operator gets told *before* a 200 MB upload
- * starts rather than after it fails. The server re-validates everything regardless: this is
- * feedback, not a security boundary.
+ * tenant's allowed categories (FR-14.3) — so an operator gets told *before* a 200 MB upload starts
+ * rather than after it fails. The server re-validates everything regardless: this is feedback, not a
+ * security boundary.
+ *
+ * The form is a marketplace's "list an item" panel: a large drop target first, then the metadata, then
+ * one primary action. Cancelling is not offered, because an unsubmitted form costs nothing — the file
+ * only reaches the server when the button is pressed, and the progress bar exists because a 200 MB
+ * stream with no feedback looks like a hang.
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
@@ -14,7 +19,7 @@ import { ALLOWED_ASSET_EXTENSIONS, MAX_ASSET_SIZE_BYTES, SOURCE_TOOLS } from '@v
 
 import { ApiRequestError, apiUpload } from '../lib/api';
 import { formatBytes } from '../lib/format';
-import { ErrorNote } from './ui-kit';
+import { ErrorNote } from './ui/feedback';
 
 const EXTENSIONS: readonly string[] = ALLOWED_ASSET_EXTENSIONS;
 
@@ -43,13 +48,18 @@ export function UploadPanel({ categories }: { categories: readonly string[] }) {
 
     const extension = `.${next.name.split('.').pop()?.toLowerCase() ?? ''}`;
     if (!EXTENSIONS.includes(extension)) {
-      setError({ message: `Unsupported type ${extension}. Allowed: ${EXTENSIONS.join(', ')}`, code: 'VALIDATION_ERROR' });
+      setError({
+        message: `Unsupported type ${extension}. The importer accepts ${EXTENSIONS.join(', ')}.`,
+        code: 'VALIDATION_ERROR',
+      });
       setFile(null);
       return;
     }
     if (next.size > MAX_ASSET_SIZE_BYTES) {
       setError({
-        message: `File is ${formatBytes(next.size)}; the ceiling is ${formatBytes(MAX_ASSET_SIZE_BYTES)}`,
+        message: `That file is ${formatBytes(next.size)}; the ceiling is ${formatBytes(
+          MAX_ASSET_SIZE_BYTES,
+        )}.`,
         code: 'PAYLOAD_TOO_LARGE',
       });
       setFile(null);
@@ -95,44 +105,63 @@ export function UploadPanel({ categories }: { categories: readonly string[] }) {
   }
 
   return (
-    <div className="p-3">
-      <div
-        className="border border-dashed p-4"
-        style={{ borderColor: file ? 'var(--vs-accent)' : 'var(--vs-line-strong)' }}
+    <div className="px-5 py-5">
+      <label
+        className="block cursor-pointer rounded-[var(--vs-radius)] border border-dashed px-6 py-8 text-center transition-colors"
+        style={{
+          borderColor: file ? 'var(--fc-heat-40)' : 'var(--vs-line-strong)',
+          background: file ? 'var(--fc-heat-4)' : 'var(--fc-bg-lighter)',
+        }}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
           event.preventDefault();
           chooseFile(event.dataTransfer.files[0] ?? null);
         }}
       >
-        <div className="vs-label">Drop a model here, or</div>
+        <span className="mt-0 block text-[13px] leading-relaxed text-ink-faint">
+          Drop a model here, or choose a file. It is streamed to disk and measured on the way in —
+          nothing is buffered whole in memory.
+        </span>
+
         <input
           ref={inputRef}
           type="file"
           accept={EXTENSIONS.join(',')}
-          className="vs-data mt-2 block w-full text-[11px]"
+          className="font-mono text-[12px] text-ink-dim mx-auto mt-4 block w-full max-w-md text-[11px]"
           onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
         />
-        <div className="vs-label mt-2">
-          {EXTENSIONS.join(' ')} / MAX {formatBytes(MAX_ASSET_SIZE_BYTES)}
-        </div>
-        {file ? (
-          <div className="vs-data mt-3 flex justify-between">
-            <span className="truncate">{file.name}</span>
-            <span>{formatBytes(file.size)}</span>
-          </div>
-        ) : null}
-      </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <span className="font-mono text-[11.5px] tracking-[0.01em] tabular-nums text-ink-faint mt-3 block">
+          {EXTENSIONS.join(' · ')} · max {formatBytes(MAX_ASSET_SIZE_BYTES)}
+        </span>
+
+        {file ? (
+          <span className="mt-4 flex items-center justify-center gap-3">
+            <span className="font-mono text-[12px] text-ink-dim truncate">{file.name}</span>
+            <span className="chip">{formatBytes(file.size)}</span>
+          </span>
+        ) : null}
+      </label>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
         <label className="block md:col-span-2">
-          <span className="vs-label">Name</span>
-          <input className="vs-input mt-1" value={name} onChange={(event) => setName(event.target.value)} />
+          <span className="text-[12px] tracking-[0.01em] text-ink-faint">Name</span>
+          <input
+            className="h-10 w-full rounded-control border border-hairline bg-surface px-3 text-[15px] text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong focus:border-brand focus:outline-none mt-1.5"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
         </label>
 
         <label className="block">
-          <span className="vs-label">Category {categories.length > 0 ? '(tenant-restricted)' : ''}</span>
-          <select className="vs-select mt-1" value={category} onChange={(event) => setCategory(event.target.value)}>
+          <span className="text-[12px] tracking-[0.01em] text-ink-faint">
+            Category{categories.length > 0 ? ' · restricted by this workspace' : ''}
+          </span>
+          <select
+            className="h-10 w-full cursor-pointer appearance-none rounded-control border border-hairline bg-surface px-3 text-[14px] text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong focus:border-brand focus:outline-none mt-1.5"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+          >
             {(categories.length > 0 ? categories : ['Other']).map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -142,8 +171,12 @@ export function UploadPanel({ categories }: { categories: readonly string[] }) {
         </label>
 
         <label className="block">
-          <span className="vs-label">Source tool</span>
-          <select className="vs-select mt-1" value={sourceTool} onChange={(event) => setSourceTool(event.target.value)}>
+          <span className="text-[12px] tracking-[0.01em] text-ink-faint">Source tool</span>
+          <select
+            className="h-10 w-full cursor-pointer appearance-none rounded-control border border-hairline bg-surface px-3 text-[14px] text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong focus:border-brand focus:outline-none mt-1.5"
+            value={sourceTool}
+            onChange={(event) => setSourceTool(event.target.value)}
+          >
             {SOURCE_TOOLS.map((tool) => (
               <option key={tool} value={tool}>
                 {tool}
@@ -153,45 +186,70 @@ export function UploadPanel({ categories }: { categories: readonly string[] }) {
         </label>
 
         <label className="block md:col-span-2">
-          <span className="vs-label">Tags (comma separated)</span>
-          <input className="vs-input mt-1" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="helmet, safety, ppe" />
+          <span className="text-[12px] tracking-[0.01em] text-ink-faint">Tags · comma separated</span>
+          <input
+            className="h-10 w-full rounded-control border border-hairline bg-surface px-3 text-[15px] text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong focus:border-brand focus:outline-none mt-1.5"
+            value={tags}
+            onChange={(event) => setTags(event.target.value)}
+            placeholder="helmet, safety, ppe"
+          />
         </label>
 
-        <label className="vs-data flex items-center gap-2 md:col-span-2">
+        <label className="flex items-center gap-2.5 md:col-span-2">
           <input
             type="checkbox"
             checked={submitForReview}
             onChange={(event) => setSubmitForReview(event.target.checked)}
           />
-          SUBMIT FOR REVIEW ON UPLOAD
+          <span className="text-[13.5px]">
+            Submit for review on upload
+            <span className="text-[12px] tracking-[0.01em] text-ink-faint block">
+              Unchecked, the asset is saved as a draft only you can submit.
+            </span>
+          </span>
         </label>
       </div>
 
       {error ? (
-        <div className="mt-3">
+        <div className="mt-4">
           <ErrorNote message={error.message} code={error.code} />
         </div>
       ) : null}
 
-      {done ? <div className="vs-data vs-signal mt-3">&gt;&gt;&gt; {done}</div> : null}
+      {done ? (
+        <div className="mt-4 flex items-center gap-3" role="status">
+          <span className="inline-flex items-center gap-2 rounded-full border border-state-published bg-veil-4 px-2.5 py-[3px] text-[11.5px] text-state-published">
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
+            Ingested
+          </span>
+          <span className="font-mono text-[12px] text-ink-dim">{done}</span>
+        </div>
+      ) : null}
 
       {progress !== null ? (
-        <div className="mt-3">
-          <div className="vs-label">Uploading {progress}%</div>
-          <div className="mt-1 h-1 w-full" style={{ background: 'var(--vs-line-strong)' }}>
-            <div className="h-1" style={{ width: `${progress}%`, background: 'var(--vs-accent)' }} />
+        <div className="mt-4">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[12px] tracking-[0.01em] text-ink-faint">Uploading…</span>
+            <span className="font-mono text-[12px] text-ink-dim">{progress}%</span>
+          </div>
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-veil-8">
+            <span
+              className="block h-full rounded-full bg-brand transition-[width] duration-200 ease-standard"
+              style={{ width: `${progress}%` }}
+            />
           </div>
         </div>
       ) : null}
 
       <button
         type="button"
-        className="vs-btn vs-btn-primary mt-4 w-full justify-center"
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm mt-5 w-full justify-center"
         disabled={!file || progress !== null || name.trim().length === 0}
         onClick={() => void upload()}
       >
-        {progress !== null ? 'TRANSMITTING…' : 'INGEST ASSET'}
+        {progress !== null ? 'Uploading…' : 'Ingest asset'}
       </button>
     </div>
   );
 }
+
