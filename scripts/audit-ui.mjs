@@ -141,9 +141,23 @@ async function publishedAssetIds() {
  * a media query, so a hidden-by-`!important` element is almost always a mistake rather than a
  * breakpoint.
  */
+/**
+ * Selectors that must be visible wherever they appear.
+ *
+ * `.vs-stat-strip` is listed by its *behavioural* name rather than its appearance: it is the layout
+ * that carries the headline figures on Overview, the review queue, Administration and the asset
+ * console. It was briefly disabled by a global `display: none !important` rule — a cleanup pass had
+ * read the old class name as decorative — which emptied four screens of every number they display
+ * while every route still answered 200. That is the failure this list exists to catch.
+ */
 const MUST_BE_VISIBLE = ['[class*=vs-stat-strip]', '.mk-card', '.vs-panel', 'main h1'];
 
 async function visibilityProblems(page) {
+  // The selector list has to be passed as the argument to `evaluate`, not closed over: the callback
+  // runs in page context and cannot see this module's scope. It was previously called with no
+  // argument at all, so the loop threw on `undefined`, the caller's `.catch(() => [])` swallowed the
+  // TypeError, and the check silently reported zero problems on every route — a detector that always
+  // passes is worse than no detector, because it is believed.
   return page.evaluate((selectors) => {
     const problems = [];
     for (const selector of selectors) {
@@ -162,7 +176,7 @@ async function visibilityProblems(page) {
       }
     }
     return problems;
-  }, selectors);
+  }, MUST_BE_VISIBLE);
 }
 
 async function auditPage(page, entry) {
@@ -207,7 +221,10 @@ async function auditPage(page, entry) {
     const text = (await page.locator('body').innerText().catch(() => '')).toLowerCase();
     record.faultText = FAULT_MARKERS.filter((marker) => text.includes(marker));
     record.bodyLength = text.length;
-    record.invisibleContent = await visibilityProblems(page).catch(() => []);
+    // No `.catch(() => [])` here on purpose. Swallowing this failure is exactly how the check above
+    // spent several runs reporting zero problems while doing nothing: a broken detector that reports
+    // success is worse than no detector, because its output is believed.
+    record.invisibleContent = await visibilityProblems(page);
 
     if (SHOTS) {
       const slug = `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
@@ -292,7 +309,6 @@ async function main() {
 
     // Detail pages with a session, which exercises the authenticated viewer path.
     if (roleName === 'creator' && assetIds[0] && shouldRun('Console asset detail')) {
-      const first = assetIds[0];
       const response = await fetch(`${API}/assets?limit=1`, { headers: { cookie: cookies.map((c) => `${c.name}=${c.value}`).join('; ') } }).catch(() => null);
       const assetId = response?.ok ? (await response.json()).items?.[0]?.id : null;
       if (assetId) {
