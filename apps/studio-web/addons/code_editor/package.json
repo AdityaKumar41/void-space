@@ -1,0 +1,7 @@
+{
+  "name": "@void-studio/addon-code-editor",
+  "type": "module",
+  "dependencies": {
+    "monaco-editor": "^0.22.3"
+  }
+}

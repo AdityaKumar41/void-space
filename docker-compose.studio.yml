@@ -1,0 +1,204 @@
+# ---------------------------------------------------------------------------
+# VOID·STUDIO — own local stack (VS2-SRS-1.0 §9.2)
+#
+#   pnpm studio:dev:up    -> studio-postgres, studio-redis, studio-ipfs, studio-nginx
+#   pnpm studio:dev       -> studio-api + studio-worker in watch mode (native, via turbo)
+#   pnpm studio:dev:down  -> tear it down
+#
+# Separate from `docker-compose.yml` on purpose (§9.1): an engineer must be able to develop the
+# editor and its AI/generative pipelines **without a running VOID·SPACE instance**. The two products
+# have separate databases and separate Redis instances by requirement (§3.1, §5.3) — sharing them
+# would let a VOID·STUDIO migration break VOID·SPACE, which is what the product boundary exists to
+# prevent.
+#
+# Every host port is offset from VOID·SPACE's so both stacks can run at once:
+#   postgres 5433 (vs 5432) · redis 6380 (vs 6379) · ipfs 5002 (vs 5001) · edge 8443 (vs 443)
+#
+# The data tier and the edge carry no profile, so `studio:dev:up` brings up something that actually
+# runs today. The application tier is not listed yet — see the note at the bottom for why.
+# ---------------------------------------------------------------------------
+name: void-studio
+
+x-restart: &default-restart
+  restart: unless-stopped
+
+x-studio-db-env: &studio-db-env
+  POSTGRES_USER: ${STUDIO_POSTGRES_USER:-voidstudio}
+  POSTGRES_PASSWORD: ${STUDIO_POSTGRES_PASSWORD:-voidstudio_pw}
+  POSTGRES_DB: ${STUDIO_POSTGRES_DB:-voidstudio}
+  POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+
+services:
+  # ------------------------------------------------------------------ data tier
+  #
+  # VOID·STUDIO's system of record (§5): projects, scenes, versions, Copilot sessions. No table here
+  # is shared with VOID·SPACE, and the only cross-product data path is the REST call in §3.5.2 plus
+  # the opaque `publish_records.voidspace_asset_id` (§5.3).
+  studio-postgres:
+    <<: *default-restart
+    image: postgres:16-alpine
+    environment:
+      <<: *studio-db-env
+    ports:
+      # 5433, not 5432: a Studio migration must not be able to run against VOID·SPACE's database
+      # because someone forgot which stack was up.
+      - "${STUDIO_POSTGRES_PORT:-5433}:5432" # dev only (§9.2)
+    volumes:
+      - studio-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${STUDIO_POSTGRES_USER:-voidstudio} -d ${STUDIO_POSTGRES_DB:-voidstudio}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # Queue backend for AI copilot calls, generative jobs, CSG offload, export/convert and the publish
+  # handoff (§3.1 "everything slow is a job"), plus cache and Phase-2 presence state.
+  studio-redis:
+    <<: *default-restart
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    ports:
+      - "${STUDIO_REDIS_PORT:-6380}:6379" # dev only (§9.2)
+    volumes:
+      - studio-redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # VOID·STUDIO's own Kubo node (§3.6). In-progress mesh/texture blobs are content-addressed here
+  # for free deduplication and a tamper-evident fingerprint before anything reaches VOID·SPACE.
+  #
+  # It is *not* a second gateway for published assets: on publish the exported GLB is uploaded fresh
+  # through VOID·SPACE's REST API, which pins it on its own node (VS-SRS-2.0 FR-8.1). The Studio's
+  # copy stays the private working-file record.
+  studio-ipfs:
+    <<: *default-restart
+    image: ipfs/kubo:latest
+    ports:
+      - "${STUDIO_IPFS_API_PORT:-5002}:5001" # API — used by the workers, not the browser
+      - "${STUDIO_IPFS_GATEWAY_PORT:-8081}:8080" # gateway — used by the editor's /ipfs route
+    volumes:
+      - studio-ipfsdata:/data/ipfs
+    healthcheck:
+      test: ["CMD-SHELL", "ipfs id >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # ---------------------------------------------------------------------- edge
+  #
+  # TLS on 8443. The editor fork expects cross-origin isolation (COOP/COEP) because it
+  # uses SharedArrayBuffer — see apps/studio-web/VENDOR.md. Those headers have to be set here rather
+  # than in Next.js, because they must also cover the IPFS gateway responses.
+  #
+  # The config is mounted read-only; until the app tier lands it is a placeholder that serves a
+  # health response, which is enough to confirm the port and TLS are wired up correctly.
+  studio-nginx:
+    <<: *default-restart
+    image: nginx:alpine
+    ports:
+      - "${STUDIO_EDGE_PORT:-8443}:8443"
+    volumes:
+      - ./docker/studio/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/certs:/etc/nginx/certs:ro
+    depends_on:
+      studio-ipfs:
+        condition: service_started
+
+  # ------------------------------------------------------------------ app tier
+  #
+  # §9.2's studio-api. Enable it with:
+  #
+  #   docker compose -f docker-compose.studio.yml --profile app up -d studio-api
+  #
+  # studio-web and studio-worker have no image yet — see the note at the bottom.
+  studio-api:
+    <<: *default-restart
+    build:
+      context: .
+      dockerfile: docker/studio-api.Dockerfile
+    profiles: ["app"]
+    depends_on:
+      studio-postgres:
+        condition: service_healthy
+      studio-redis:
+        condition: service_healthy
+    ports:
+      # The host-published port, so the editor's dev server (5007) can reach the API directly as
+      # well as through the 8443 edge. Dev only, exactly like the data tier's ports above.
+      - "${STUDIO_API_PORT:-4100}:4100"
+    extra_hosts:
+      # `host.docker.internal` is defined by Docker Desktop but not by Docker on Linux, where it
+      # needs this mapping. The live bridge below uses that name, so it works on both.
+      - "host.docker.internal:host-gateway"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      STUDIO_API_PORT: "4100"
+      # Service names on *this* project's network. `localhost:5433` from .env is the host-published
+      # port and is not what a sibling container sees — the same mistake the 5432/5433 offset exists
+      # to make impossible, one layer up.
+      STUDIO_DATABASE_URL: postgresql://voidstudio_app:${STUDIO_APP_DB_PASSWORD:-voidstudio_app_pw}@studio-postgres:5432/${STUDIO_POSTGRES_DB:-voidstudio}?schema=public
+      STUDIO_PLATFORM_DATABASE_URL: postgresql://voidstudio_platform:${STUDIO_PLATFORM_DB_PASSWORD:-voidstudio_platform_pw}@studio-postgres:5432/${STUDIO_POSTGRES_DB:-voidstudio}?schema=public
+      STUDIO_REDIS_URL: redis://studio-redis:6379
+      STUDIO_IPFS_API_URL: http://studio-ipfs:5001
+      # Same secret VOID·SPACE signs with, so a VOID·SPACE-issued token verifies here (§3.5.1). The
+      # shared-secret cost is recorded in docs/VOID-STUDIO.md §2.3.
+      STUDIO_JWT_ACCESS_SECRET: ${STUDIO_JWT_ACCESS_SECRET:-dev-only-access-secret-change-me}
+      # Served same-origin by the edge, which proxies /studio/api/ — see docker/studio/nginx.conf.
+      STUDIO_CORS_ORIGINS: ${STUDIO_CORS_ORIGINS:-https://localhost:8443}
+      STUDIO_MAX_UPLOAD_BYTES: ${STUDIO_MAX_UPLOAD_BYTES:-230686720}
+      # `live` by default, like the service's own default: a container that silently simulated a
+      # publish would be the worst failure this service could have. `mock` is the §9.1 simulator and
+      # needs no VOID·SPACE at all.
+      VOIDSPACE_CLIENT_MODE: ${VOIDSPACE_CLIENT_MODE:-live}
+      STUDIO_VOIDSPACE_API_BASE_URL: ${STUDIO_DOCKER_VOIDSPACE_API_BASE_URL:-https://host.docker.internal}
+      STUDIO_VOIDSPACE_API_KEY: ${STUDIO_VOIDSPACE_API_KEY:-}
+      VOIDSPACE_CONSOLE_URL: ${VOIDSPACE_CONSOLE_URL:-https://localhost}
+      STUDIO_PUBLISH_POLL_INTERVAL_MS: ${STUDIO_PUBLISH_POLL_INTERVAL_MS:-30000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    restart: unless-stopped
+    # Reaching a *live* VOID·SPACE from here needs one more step, because the two products are
+    # separate Compose projects on separate networks and the dev certificate's SAN covers
+    # `localhost`/`*.localhost` only:
+    #
+    #   a) join VOID·SPACE's network and use its service name —
+    #      docker network connect void-space_default void-studio-studio-api-1
+    #      STUDIO_DOCKER_VOIDSPACE_API_BASE_URL=https://nginx
+    #   b) or add the container's name to the dev certificates (docker/scripts/gen-dev-certs.sh)
+    #      and keep `https://host.docker.internal`.
+    #
+    # Neither is needed for VOIDSPACE_CLIENT_MODE=mock, which is what makes the §4.14 publish flow
+    # exercisable in a container with no second product running — and what this service falls back
+    # to saying, in a sentence naming the fix, when its key or URL is missing.
+
+
+# -----------------------------------------------------------------------------
+# App tier — what is still absent, and why
+# -----------------------------------------------------------------------------
+#
+# §9.2 reserves four services here. One now exists (`studio-api`, above, under the `app` profile);
+# two do not, and are absent rather than stubbed because Compose fails the whole project on a missing
+# build context, so listing them would make `studio:dev:up` unusable instead of incomplete:
+#
+#   studio-web     needs the FaberLeaf fork to build, which means emsdk + cmake + ninja + clang for
+#                  sculptcore (see apps/studio-web/VENDOR.md) — a several-GB toolchain image. Until it
+#                  exists, run the editor natively: `pnpm studio:fork:install && pnpm studio:fork:dev`
+#                  (port 5007), which reaches the API on 4100 because STUDIO_CORS_ORIGINS allows it.
+#   studio-worker  arrives with apps/studio-worker (BullMQ, §3.1).
+#
+# (Phase 2's studio-collab is the fourth; it is a §10.1 deliverable like the other two.)
+#
+# The default `studio:dev:up` deliberately still brings up only the data tier and the edge, so the
+# documented one-command path stays fast; `--profile app` is the containerized alternative to
+# `pnpm studio:dev`, mirroring the split docker-compose.yml already uses.
+
+volumes:
+  studio-pgdata:
+  studio-redisdata:
+  studio-ipfsdata:
+

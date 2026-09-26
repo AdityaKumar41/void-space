@@ -1,0 +1,47 @@
+{
+  "name": "@void-space/studio-db",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "VOID·STUDIO's own Prisma schema, Row-Level Security policies and tenant-scoped client (VS2-SRS-1.0 §5). Separate database, separate roles, no table shared with VOID·SPACE (§5.3).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts",
+    "./env": "./src/env.ts"
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "migrate:dev": "node scripts/prisma-migrate.mjs migrate dev",
+    "migrate:deploy": "node scripts/prisma-migrate.mjs migrate deploy",
+    "migrate:create": "node scripts/prisma-migrate.mjs migrate dev --create-only",
+    "rls:apply": "node scripts/apply-rls.mjs",
+    "reset": "node scripts/prisma-migrate.mjs migrate reset --force --skip-seed",
+    "studio": "node scripts/prisma-migrate.mjs studio",
+    "build": "prisma generate && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "turbo": {
+    "tasks": {
+      "build": {
+        "outputs": [
+          "generated/**"
+        ]
+      }
+    }
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "prisma": "^6.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

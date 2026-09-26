@@ -1,0 +1,11 @@
+{
+  "id": "api_consumer",
+  "name": "API Consumer",
+  "version": "0.1.0",
+  "author": "VOID·STUDIO refactor tests",
+  "entry": "src/main.ts",
+  "dependencies": ["leafmesh"],
+  "description": "Smoke-test addon that imports from @addon/leafmesh/api via the runtime resolver.",
+  "buildMode": "prebuilt",
+  "defaultEnabled": false
+}

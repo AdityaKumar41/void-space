@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>VOID·STUDIO</title>
+
+  <link rel="icon" href="../assets/brand/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/brand/favicon-32.png" sizes="32x32">
+  <style>
+      body {
+          overflow : hidden;
+      }
+  </style>
+  <script type="module">
+    window.haveNwjs = true;
+    window.__baseModulePath = "../scripts";
+
+    // Crashpad is enabled by NW.js itself: a hard C++ crash in the sculptcore
+    // .node writes a minidump to the renderer's Crashpad dir. NW.js 0.112 has NO
+    // nw.App.setCrashDumpDir (the documented API is stale), so the location is
+    // the default: %LOCALAPPDATA%\<manifest-name>\User Data\Crashpad\reports\.
+    // The crash-dump toolkit (sculptcore/crash/dump.mjs) reads from there. See
+    // documentation/plans/crashpad.md.
+
+    // NW.js merges the Node + browser contexts, so there is no separate main
+    // process: drive the window straight from the renderer. The manifest starts
+    // the window hidden (show:false); reveal it unless --apptest-headless, and
+    // open devtools unless --apptest-headless / --no-devtools (NW.js does not
+    // auto-open them). NOTE: we use --apptest-headless, not --headless, because
+    // --headless is a real Chromium switch that NW.js intercepts (it never
+    // reaches nw.App.argv and breaks the window model).
+    const argv = (globalThis.nw && nw.App.argv) || [];
+    const hasFlag = (name) => argv.some((a) => a === "--" + name || a.startsWith("--" + name + "="));
+
+    // --debug-events: path.ux's polyfill wraps every listener and records the
+    // full pointer/mouse/click sequence; read it back with eventDebugModule.dump()
+    if (hasFlag("debug-events")) {
+      window._debug_event_listeners = true;
+    }
+    if (globalThis.nw) {
+      const win = nw.Window.get();
+      if (!hasFlag("apptest-headless")) {
+        win.show();
+        win.focus();
+        if (!hasFlag("no-devtools")) {
+          win.showDevTools();
+        }
+      }
+    }
+
+    // JS-layer crash net. Crashpad only fires on hard process crashes; route
+    // JS-level failures through console.error so they interleave with the
+    // sc_napi native logs in DevTools (CDP-readable). See crashpad.md §3.
+    window.addEventListener("error", (e) => {
+      console.error("[jscrash] uncaught error", e.error || e.message, e.filename, e.lineno);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      console.error("[jscrash] unhandled rejection", e.reason);
+    });
+    if (globalThis.process && typeof process.on === "function") {
+      process.on("uncaughtException", (err) => console.error("[jscrash] uncaughtException", err));
+    }
+
+    let start;
+
+    import('../build/entry_point.js').then((app) => {
+      start = () => {
+        console.log("init!", app);
+        app.init();
+      }
+    });
+
+    window.oninit = function() {
+      let timer = window.setInterval(() => {
+        if (start) {
+          window.clearInterval(timer);
+
+          start();
+        }
+      }, 25)
+    }
+  </script>
+</head>
+<body onload='oninit()'>
+<img id="iconsheet" style="display:none" src="../assets/iconsheet.svg"></img>
+</body>
+</html>

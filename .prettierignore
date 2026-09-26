@@ -1,0 +1,33 @@
+# Build outputs and generated code — never formatted, because reformatting them
+# would either be undone by the next build or hide a real change in the diff.
+node_modules
+dist
+build
+.next
+out
+.turbo
+coverage
+playwright-report
+test-results
+.thumbnails
+.audit
+.screenshots
+packages/db/generated
+packages/contracts/out
+packages/contracts/cache
+packages/contracts/lib
+DESIGN.md
+
+# ---------------------------------------------------------------------------
+# The vendored editor fork (apps/studio-web).
+#
+# Excluded because it is formatted to its own `.prettierrc` — upstream's settings,
+# not this repo's. `pnpm format` targets `{apps,packages,scripts,docker}/**`, which
+# includes this directory, and without this line a single `pnpm format` would
+# rewrite all ~400 of its files into this repo's style. Beyond the huge diff, that
+# would make `git diff faber-leaf/master..HEAD -- apps/studio-web` — the command
+# VENDOR.md documents for seeing what we changed — unreadable.
+#
+# Its own formatting is `pnpm --dir apps/studio-web format`.
+# ---------------------------------------------------------------------------
+apps/studio-web

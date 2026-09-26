@@ -1,0 +1,12 @@
+[submodule "apps/studio-web/vendor/nstructjs"]
+	path = apps/studio-web/vendor/nstructjs
+	url = https://github.com/joeedh/STRUCT.git
+[submodule "apps/studio-web/sculptcore"]
+	path = apps/studio-web/sculptcore
+	url = https://github.com/joeedh/sculptcore.git
+[submodule "apps/studio-web/scripts/mathl"]
+	path = apps/studio-web/scripts/mathl
+	url = https://github.com/joeedh/mathl.git
+[submodule "apps/studio-web/scripts/path.ux"]
+	path = apps/studio-web/scripts/path.ux
+	url = https://github.com/joeedh/path.ux

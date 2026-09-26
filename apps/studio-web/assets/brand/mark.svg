@@ -1,0 +1,16 @@
+<!--
+  VOID·SPACE mark — the cube.
+
+  Geometry is copied verbatim from `CubeIcon` in apps/web/src/components/ui/icons.tsx so the Studio
+  and the marketplace show the same object rather than two similar ones. Keep them in step: if the
+  icon changes there, change it here.
+
+  `currentColor` on the stroke (not a literal) is deliberate — this is inlined into the shell and
+  tinted by whatever context it sits in, exactly as the React component is. That means it must not be
+  used as a favicon; a favicon has no `currentColor` to inherit, which is why `favicon.svg` exists.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" aria-hidden="true">
+  <path d="M12 2.6 21 7.5v9L12 21.4 3 16.5v-9z"/>
+  <path d="M3 7.5l9 4.9 9-4.9M12 12.4v9"/>
+</svg>

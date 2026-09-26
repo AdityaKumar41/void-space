@@ -1,0 +1,79 @@
+
+
+<!-- toc -->
+
+- [Data Graph](#data-graph)
+  * [Declaration](#declaration)
+  * [Cycles](#cycles)
+  * [Data Blocks](#data-blocks)
+  * [Zombie Nodes](#zombie-nodes)##NL##<!-- regenerate with pnpm markdown-toc -->
+
+<!-- tocstop -->
+
+# Data Graph
+
+The data graph is a generic execution graph.  It's used for (some) event handling,
+scene dependency relationships, shader nodes, the render engine pass compositing system,
+etc.  Each of these use the data graph in a slightly different way.
+
+The data graph is a DAG solver with optional support for cyclic graphs.
+
+## Declaration
+Dag nodes are declared by subclassing from graph.Node.  Each subclass should implementation
+an exec method and the static nodedef method, like so:
+
+```typescript
+class MyNode extends Node {
+  mysetting = 0
+
+  static nodedef() {
+    return {
+      uiname : "My Node",
+      name   : "MyNode",
+      inputs : {
+        ...super.nodedef().inputs,
+        myinput : new FloatSocket()
+      },
+      outputs : {
+        ...super.nodedef().outputs,
+        myoutput : new FloatSocket()
+      }
+    }
+  }
+
+  static STRUCT = nstructjs.inlineRegister(this, `
+  MyNode {
+    mysetting : int;
+  }`)
+
+  //ctx is the argument passed to Graph.prototype.exec
+  exec(ctx) {
+    this.outputs.myoutput.setValue(this.inputs.myinput.getValue());
+
+    //note that child nodes aren't executed unless you call .update() on output sockets
+    //except for shader nodes, which don't use .exec methods at all
+    this.outputs.myoutput.update();
+  }
+}
+```
+
+## Cycles
+
+If cycles are enable, the DAG will try to solve the graph until all inputs/outputs stop changing
+in value.  There are various methods in nodeSocketType for this, the most important of which is cmpValue
+and diffValue (which returns a number representing "change" between two instances of a socket).
+
+## Data Blocks
+Data blocks inherit from Node.  Unlike normal nodes, they are not saved inside of Graph.nodes;
+instead a special ProxyNode is create on file save, and on load the ProxyNode is swapped with the
+original data block.  This is to allow saving/loading of data blocks individually, without having to
+save/load the entire Graph structure (this is useful for linking different files together, e.g. file A can
+load parts of file B).
+
+## Zombie Nodes
+Zombie nodes are created by the UI for event handling; the graph automatically deletes them on file load.
+Zombie nodes are created by adding NodeFlags.ZOMBIE to node.graph_flag:
+
+```
+node.graph_flag |= NodeFlags.ZOMBIE;
+```

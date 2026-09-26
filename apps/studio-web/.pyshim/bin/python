@@ -1,0 +1,35 @@
+#!/bin/sh
+# macOS `python` compatibility shim for the sculptcore WASM build.
+#
+# Why this exists:
+#   sculptcore/build_files/WASM.cmake pins the compiler launcher to the bare
+#   name `python`:
+#       set(CMAKE_C_COMPILER python ".../build_files/emsdk_env.py" ... emcc)
+#   That resolves on Linux and Windows, but modern macOS ships only `python3`
+#   (and no `python`), so CMake configure dies with:
+#       /bin/sh: python: command not found
+#
+#   `emsdk_env.py` is Python 3 source (`import emsdk`, `print(...)`), so
+#   forwarding to a Python 3 interpreter is correct.
+#
+#   Preferred interpreter is emsdk's own bundled Python (the one emscripten is
+#   tested against); falls back to whatever `python3` is on PATH.
+#
+# Prepending this directory to PATH on macOS is enough to make the build work
+# without patching the pinned submodule.
+set -e
+
+SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# SELF_DIR = <fork>/.pyshim/bin  ->  up two levels reaches <fork>
+EMSDK_PY="$SELF_DIR/../../sculptcore/emsdk/python/3.13.3_64bit/bin/python3"
+
+if [ -x "$EMSDK_PY" ]; then
+  exec "$EMSDK_PY" "$@"
+fi
+
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$@"
+fi
+
+echo "pyshim: no python3 found (looked for emsdk bundled python3 and PATH python3)" >&2
+exit 1

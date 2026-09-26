@@ -1,0 +1,22 @@
+{
+  "extends": "../tsconfig.paths.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "target": "es2022",
+    "module": "es2022",
+    "lib": ["dom", "scripthost", "esnext", "ESNext.Disposable"],
+    "pretty": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "noEmitOnError": false,
+    "declaration": false,
+    "noEmit": true,
+    "noImplicitThis": true,
+    "listEmittedFiles": false,
+    "outDir": "types",
+    "types": ["node", "jest"],
+  },
+  "include": ["**/*.ts"]
+}

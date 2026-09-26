@@ -107,6 +107,16 @@ export const SOURCE_TOOLS = [
   'Sketchfab',
   'Poly Pizza',
   'Meshy AI',
+  /**
+   * VOID·STUDIO is a first-class origin, not an `Other` (VS2-SRS-1.0 FR-14.2).
+   *
+   * Publish hands VOID·SPACE an asset authored in the Studio, and the Marketplace shows this
+   * value to buyers — collapsing it into `Other` would make an asset's own provenance the one
+   * thing the catalogue cannot tell you. Added here rather than forked into a Studio-local list
+   * because `@void-space/types` is the shared contract both products validate against
+   * (VS2-SRS-1.0 §3.7: shared packages are extended, not forked).
+   */
+  'VOID·STUDIO',
   'Other',
 ] as const;
 export type SourceTool = (typeof SOURCE_TOOLS)[number];

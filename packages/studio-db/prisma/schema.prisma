@@ -1,0 +1,706 @@
+// ---------------------------------------------------------------------------
+// VOID·STUDIO — Prisma schema (VS2-SRS-1.0 §5.1 "Core Entities", §5.2
+// "Key Relationships", §5.3 "Data Ownership Boundary")
+//
+// This is a **separate database** from VOID·SPACE's, per §5: the Studio "persists
+// to its own PostgreSQL database (Prisma), entirely separate from VOID·SPACE's".
+// Prisma cannot carry two datasources in one schema, so the generated client is
+// separate too — which is why this lives in its own package rather than being
+// appended to `packages/db`. See docs/VOID-STUDIO.md for the deviation record.
+//
+// §5.3 boundary, enforced by construction: no table here is shared with, or
+// directly written by, VOID·SPACE. The only cross-product data path is the REST
+// call in §3.5.2 plus `publish_records.voidspace_asset_id`, which is an **opaque
+// foreign reference, not a foreign key into another database** — hence a plain
+// String, deliberately not a relation.
+//
+// Multi-tenancy mirrors VOID·SPACE's approach exactly (§5.2): shared database,
+// shared schema, one `tenant_id` column on every tenant-scoped table, enforced
+// twice — application-layer checks *and* PostgreSQL Row-Level Security
+// (prisma/sql/rls.sql). Same session variable name (`app.current_tenant_id`), so
+// the two codebases' tenant helpers read identically.
+//
+// Models keep §5.1's entity names. That is safe here rather than sloppy: no
+// module imports both Prisma clients, because §5.3 forbids the Studio API from
+// reading VOID·SPACE's tables at all.
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("STUDIO_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------- enums
+
+/// §5.1 Project.status.
+enum ProjectStatus {
+  active
+  archived
+}
+
+/// Where a project's *authoring* state lives.
+///
+/// This is the schema's expression of the product's central rule: VOID·STUDIO is a
+/// local-first authoring client, and nothing a Creator does is mirrored into a
+/// server database (or a chain) as a matter of course. The document, meshes and
+/// textures live in the browser and on the Studio's own local IPFS node (§3.6); the
+/// server holds only what has to be shared, which is identity, the project index,
+/// publish lineage and the AI audit trail.
+///
+/// `local` is the default, and the default is the point: a Creator who never asks
+/// for cloud sync never uploads anything, and `cloud` is an explicit opt-in per
+/// project rather than a platform-wide setting someone else makes for them.
+///
+/// The consequence for the rest of this schema: `Scene`, `SceneObject`,
+/// `ProjectVersion` and the asset tables are the *optional* cloud-sync surface, not
+/// the system of record. When `storageMode` is `local` they stay empty — which is a
+/// supported state, not an oversight.
+enum StorageMode {
+  local
+  cloud
+}
+
+/// FR-13.2 distinguishes an explicit Save from an autosave snapshot, and FR-13.3
+/// gives the two different retention rules: *all* explicit versions are kept, only
+/// the last 50 autosaves are. Without this column that requirement is
+/// unenforceable, because the two kinds would be indistinguishable rows.
+enum VersionKind {
+  autosave
+  explicit
+}
+
+/// §5.1 MeshAsset.sourceType — and FR-11.6, which requires an AI-generated mesh to
+/// be "clearly tagged as AI-generated pending Creator review".
+enum SourceType {
+  authored
+  imported
+  ai_generated
+}
+
+/// §5.1 TextureAsset.kind.
+enum TextureKind {
+  albedo
+  normal
+  roughness
+  metallic
+  ao
+  emissive
+}
+
+/// FR-14.3's downstream vocabulary, deliberately the *same six* values as
+/// VOID·SPACE's `AssetStatus` (VS-SRS-2.0 §5.1) minus its internal `draft`.
+/// The two are mapped 1:1 when a publish status is polled, so a status the Studio
+/// cannot represent cannot be silently dropped; it fails a test instead.
+enum PublishStatus {
+  pending
+  needs_manual_review
+  approved
+  rejected
+  revision
+  published
+}
+
+/// §5.1 CopilotMessage.role.
+enum CopilotRole {
+  user
+  assistant
+  tool
+}
+
+/// §5.1 Job.status — deliberately the same vocabulary as VOID·SPACE's JobStatus so
+/// the polling API (FR-6.5) reads the same on both sides.
+enum JobStatus {
+  queued
+  active
+  completed
+  failed
+  delayed
+}
+
+/// §3.1 "everything slow is a job". Named for the Studio's own workloads rather
+/// than reusing VOID·SPACE's queue names, which describe different work.
+enum StudioJobQueue {
+  copilot
+  generative
+  csg
+  export
+  autosave
+  publish
+}
+
+// ------------------------------------------------------------- tenancy & auth
+
+/// §5.1 Tenant — "Mirrored on first federated login; not independently created."
+///
+/// `id` is the VOID·SPACE tenant id, so the two products agree on tenancy without
+/// a mapping table. `storageQuotaBytes` and `aiFeatureFlags` are Studio-side
+/// policy (FR-2.4, §7.5) that VOID·SPACE has no opinion about.
+model Tenant {
+  id                String   @id @db.Uuid
+  name              String   @db.VarChar(120)
+  /// FR-2.4 — per-tenant project/storage quota, enforced before an upload starts.
+  storageQuotaBytes BigInt   @map("storage_quota_bytes")
+  /// §7.5 — which AI features this tenant may use. Read per request, never cached
+  /// across a session, so disabling a feature takes effect on the next call.
+  aiFeatureFlags    Json     @default("{}") @map("ai_feature_flags")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// FR-1.4 — last time the mirror was reconciled with VOID·SPACE's claims.
+  lastSyncedAt      DateTime @default(now()) @map("last_synced_at") @db.Timestamptz(6)
+
+  users           User[]
+  projects        Project[]
+  meshAssets      MeshAsset[]
+  materialAssets  MaterialAsset[]
+  textureAssets   TextureAsset[]
+  jobs            Job[]
+  copilotSessions CopilotSession[]
+
+  @@map("tenants")
+}
+
+/// §5.1 User — "Read-mostly cache of claims from the federated JWT."
+///
+/// `id` is the VOID·SPACE user id. There is no password column and there never
+/// should be: FR-1.1 makes VOID·SPACE the only place a credential exists (§3.5.1 —
+/// "it does not store the VOID·SPACE credential itself").
+///
+/// `lastSeenRole` is a cache with an explicit staleness rule rather than a source
+/// of truth. FR-1.3 forbids caching a stale role across a VOID·SPACE-side change,
+/// so authorization reads the claim from the live session JWT; this column exists
+/// for display and audit ("who was this when they acted"), refreshed on every
+/// session exchange.
+model User {
+  id           String   @id @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  displayName  String   @map("display_name") @db.VarChar(200)
+  email        String?  @db.VarChar(320)
+  /// The role name from the last authenticated session. VS-SRS-2.0 §3.6's role
+  /// names verbatim — no parallel role system (§3.5.1).
+  lastSeenRole String   @map("last_seen_role") @db.VarChar(40)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownedProjects   Project[]        @relation("ProjectOwner")
+  versions        ProjectVersion[] @relation("VersionAuthor")
+  publishRecords  PublishRecord[]  @relation("PublishAuthor")
+  copilotSessions CopilotSession[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ------------------------------------------------------------------ projects
+
+/// FR-2.2 — "organize projects into folders". §5.1 lists `Project.folderId` but no
+/// Folder entity, so the ERD implies one without naming it; this is that entity.
+/// Self-referential, so nesting works without a second table (and no cycles are
+/// possible in a single-parent tree).
+model Folder {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  parentId  String?  @map("parent_id") @db.Uuid
+  name      String   @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  parent   Folder?   @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[]  @relation("FolderTree")
+  projects Project[]
+
+  @@index([tenantId, parentId])
+  @@map("folders")
+}
+
+/// §5.1 Project — "The top-level unit of work; one project may map to zero or one
+/// published VOID·SPACE asset lineage."
+model Project {
+  id        String        @id @default(uuid()) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  ownerId   String        @map("owner_id") @db.Uuid
+  name      String        @db.VarChar(200)
+  /// FR-2.2's search/filter surface. Free-form so a Creator is not constrained to
+  /// a fixed taxonomy the marketplace does not share.
+  tags      String[]      @default([])
+  folderId  String?       @map("folder_id") @db.Uuid
+  status    ProjectStatus @default(active)
+  /// Local-first by default — see the `StorageMode` doc comment. `cloud` is opt-in.
+  storageMode StorageMode @default(local) @map("storage_mode")
+  /// FR-2.6 — a project with a live publish link is *archived*, never hard-deleted.
+  /// Set when the first PublishRecord is created; checked before any delete.
+  archivedAt DateTime?    @map("archived_at") @db.Timestamptz(6)
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner    User           @relation("ProjectOwner", fields: [ownerId], references: [id])
+  folder   Folder?        @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  scenes   Scene[]
+  versions ProjectVersion[]
+  publishes PublishRecord[]
+  copilotSessions CopilotSession[]
+  jobs     Job[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, folderId])
+  @@index([tenantId, updatedAt])
+  @@map("projects")
+}
+
+/// §5.1 Scene — "A project may contain multiple scenes in later phases; MVP is one
+/// scene per project."
+///
+/// **Deviation, recorded rather than hidden.** §5.1 names the field
+/// `yjsSnapshotRef` because §3.4 makes a Yjs document the live source of truth.
+/// The Editor Engine is a fork whose document is serialized with `nstructjs`/
+/// STRUCT (see docs/VOID-STUDIO.md §1), so the field is `documentRef` and a
+/// `documentFormat` column says what is actually in it. That keeps the schema
+/// honest *and* forward-compatible: moving to Yjs later becomes a new
+/// `documentFormat` value plus a migration of the referenced blobs, not a column
+/// rename that lies about its contents in the interim.
+model Scene {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  name      String   @db.VarChar(200)
+  /// Content-addressed pointer to the persisted document — a CID on the Studio's
+  /// own IPFS node (§3.6). Nullable because a project may exist before its first
+  /// autosave.
+  documentRef    String? @map("document_ref") @db.VarChar(120)
+  /// Which serializer produced `documentRef`. `struct` today; `yjs` is the value
+  /// §3.4 would require if the engine is moved onto it.
+  documentFormat String  @default("struct") @map("document_format") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  objects SceneObject[]
+
+  @@index([tenantId, projectId])
+  @@map("scenes")
+}
+
+/// §5.1 SceneObject — "Mirrors the live Yjs node shape for query/reporting; the Yjs
+/// doc remains the live editing source of truth."
+///
+/// Written by the editor bridge on save (§3.7's `src/voidspace/`). It is a
+/// *reporting* projection, never the thing the editor reads back to open a file —
+/// that is `Scene.documentRef`. Treating this as a second source of truth would
+/// create exactly the divergence §3.4's single-source-of-truth rule exists to
+/// prevent, so nothing but the bridge should write it.
+model SceneObject {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @map("tenant_id") @db.Uuid
+  sceneId  String  @map("scene_id") @db.Uuid
+  parentId String? @map("parent_id") @db.Uuid
+  /// The engine's own node type name (`LiteMesh`, `Empty`, …), kept as a string so
+  /// a new engine-side type needs no migration.
+  type String  @db.VarChar(60)
+  name String? @db.VarChar(200)
+  /// The node's local transform, in the engine's own shape. JSON because the fork
+  /// stores a matrix plus TRS components and a future engine would store something
+  /// else; pinning a column set here would freeze the engine's transform model.
+  transform       Json
+  meshAssetId     String? @map("mesh_asset_id") @db.Uuid
+  materialAssetId String? @map("material_asset_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  scene    Scene          @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  parent   SceneObject?   @relation("ObjectTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children SceneObject[]  @relation("ObjectTree")
+  mesh     MeshAsset?     @relation(fields: [meshAssetId], references: [id], onDelete: SetNull)
+  material MaterialAsset? @relation(fields: [materialAssetId], references: [id], onDelete: SetNull)
+  clips    AnimationClip[]
+
+  @@index([tenantId, sceneId])
+  @@index([tenantId, parentId])
+  @@map("scene_objects")
+}
+
+// -------------------------------------------------------------------- assets
+//
+// §3.6 — "every imported or AI-generated mesh/texture blob is content-addressed and
+// stored there [the Studio's own IPFS node], giving free deduplication … and a
+// tamper-evident fingerprint for every asset before it ever reaches VOID·SPACE."
+//
+// Deduplication is why the unique key is `(tenant_id, ipfs_cid)` rather than an id
+// alone: the same texture reused across ten projects is one row, not ten, so
+// FR-2.4's quota measures real bytes rather than a reference count.
+
+/// §5.1 MeshAsset.
+model MeshAsset {
+  id         String     @id @default(uuid()) @db.Uuid
+  tenantId   String     @map("tenant_id") @db.Uuid
+  /// Nullable: an asset can exist in the tenant library (FR-6.2) before, or
+  /// without, being placed in a scene.
+  projectId  String?    @map("project_id") @db.Uuid
+  name       String     @db.VarChar(200)
+  ipfsCid    String     @map("ipfs_cid") @db.VarChar(120)
+  sizeBytes  BigInt     @map("size_bytes")
+  polycount  Int
+  format     String     @db.VarChar(10)
+  sourceType SourceType @map("source_type")
+  /// FR-11.6 — an AI-generated mesh must be marked pending Creator review, so the
+  /// flag is recorded rather than inferred from `sourceType` (a mesh can be
+  /// AI-generated *and* already accepted).
+  reviewPending Boolean @default(false) @map("review_pending")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  objects SceneObject[]
+
+  @@unique([tenantId, ipfsCid])
+  @@index([tenantId, projectId])
+  @@map("mesh_assets")
+}
+
+/// §5.1 TextureAsset.
+model TextureAsset {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String      @map("tenant_id") @db.Uuid
+  projectId String?     @map("project_id") @db.Uuid
+  name      String      @db.VarChar(200)
+  ipfsCid   String      @map("ipfs_cid") @db.VarChar(120)
+  sizeBytes BigInt      @map("size_bytes")
+  kind      TextureKind
+  width     Int
+  height    Int
+  /// FR-11.7 — a generative PBR set is one prompt; this groups its maps so they can
+  /// be replaced together rather than one at a time.
+  generationSetId String?  @map("generation_set_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  materials MaterialTexture[]
+
+  @@unique([tenantId, ipfsCid])
+  @@index([tenantId, projectId])
+  @@map("texture_assets")
+}
+
+/// §5.1 MaterialAsset — "Backs the material library (FR-6.2)."
+model MaterialAsset {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  projectId String?  @map("project_id") @db.Uuid
+  name      String   @db.VarChar(200)
+  /// FR-6.1's simple PBR parameter set, as the engine's own shape.
+  pbrParams Json     @map("pbr_params")
+  /// FR-6.4/§10.2 — the node graph is Phase 2 and therefore nullable; a material
+  /// that has one is the only case where glTF export compatibility can be at risk.
+  nodeGraph Json?    @map("node_graph")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  textures MaterialTexture[]
+  objects  SceneObject[]
+
+  @@index([tenantId, projectId])
+  @@map("material_assets")
+}
+
+/// §5.2 "MaterialAsset 0—* TextureAsset" — the join, because §5.1's `kind` column
+/// means one texture row is one *map*, and a material references up to six.
+///
+/// Carries its own `tenant_id` even though both parents have one. That is a
+/// deliberate denormalisation: RLS policies read a column on the row being
+/// protected, so a join table without one cannot be scoped, and the audit in
+/// `test/rls-schema-audit.test.ts` would have to carry an exception for it. One
+/// extra UUID against a uniform rule is the better trade.
+model MaterialTexture {
+  materialId String      @map("material_id") @db.Uuid
+  textureId  String      @map("texture_id") @db.Uuid
+  tenantId   String      @map("tenant_id") @db.Uuid
+  kind       TextureKind
+  /// UV channel / tiling, engine-defined.
+  uvSettings Json?       @map("uv_settings")
+
+  material MaterialAsset @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  texture  TextureAsset  @relation(fields: [textureId], references: [id], onDelete: Cascade)
+
+  @@id([materialId, textureId, kind])
+  @@index([tenantId])
+  @@map("material_textures")
+}
+
+/// §5.1 AnimationClip. Phase 2 (§10.2, §4.9) — modelled now because
+/// `SceneObject`'s relationship depends on it and adding a relation later is a
+/// migration on a populated table, but nothing writes it yet.
+model AnimationClip {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  sceneObjectId String   @map("scene_object_id") @db.Uuid
+  name          String   @db.VarChar(200)
+  /// FR-9.4 — stored in glTF-native animation shape so export is lossless.
+  gltfAnimation Json     @map("gltf_animation")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  object SceneObject @relation(fields: [sceneObjectId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, sceneObjectId])
+  @@map("animation_clips")
+}
+
+// ------------------------------------------------------------------ versions
+
+/// §5.1 ProjectVersion — "Backs FR-13.2 version history and restore."
+///
+/// Also carries §7.3's readiness report, because §7.3 requires the report to be
+/// *stored against the `ProjectVersion`* rather than recomputed at publish time:
+/// publishing must be judged on the state the Creator actually reviewed, and a
+/// score recomputed on a later scene would describe a different asset.
+///
+/// `exportMetadata` holds the FR-10.4 export candidate's measurements. They are
+/// recorded rather than re-derived so a publish attempted days after the export can
+/// still be gated against the file that exists, not against a fresh guess — and so
+/// a rejection can be explained from what was actually submitted.
+model ProjectVersion {
+  id            String      @id @default(uuid()) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  projectId     String      @map("project_id") @db.Uuid
+  /// Per-project sequential, so history reads "v12" rather than a UUID. Assigned by
+  /// the service inside the same transaction that inserts the row.
+  versionNumber Int         @map("version_number")
+  label         String?     @db.VarChar(200)
+  kind          VersionKind @default(autosave)
+
+  /// Content-addressed pointer to the persisted document (§3.6).
+  documentRef    String? @map("document_ref") @db.VarChar(120)
+  documentFormat String  @default("struct") @map("document_format") @db.VarChar(20)
+  /// FR-13.2 — "preview (thumbnail)".
+  thumbnailCid String? @map("thumbnail_cid") @db.VarChar(120)
+
+  /// §7.3's Readiness Score. An indexed `Int` rather than a key inside the report
+  /// JSON so "which versions are below threshold" is a query, and so the stored
+  /// number cannot drift from the report it came from.
+  readinessScore     Int?      @map("readiness_score")
+  readinessThreshold Int?      @map("readiness_threshold")
+  readinessPassed    Boolean?  @map("readiness_passed")
+  /// The full `ReadinessReport` (§7.3), including per-issue detail and the
+  /// model's narrative.
+  readinessReport    Json?     @map("readiness_report")
+  readinessRunAt     DateTime? @map("readiness_run_at") @db.Timestamptz(6)
+
+  /// The `ExportCandidate` measured by the engine's exporter (FR-10.3/FR-10.4).
+  exportMetadata Json? @map("export_metadata")
+
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User            @relation("VersionAuthor", fields: [createdById], references: [id])
+  publishes PublishRecord[]
+
+  @@unique([projectId, versionNumber])
+  @@index([tenantId, projectId, createdAt])
+  @@index([tenantId, projectId, kind])
+  @@map("project_versions")
+}
+
+// ------------------------------------------------------------------- publish
+
+/// §5.1 PublishRecord — "The link record described in Section 3.5.2."
+///
+/// This is the whole of the cross-product relationship (§5.3): `voidspaceAssetId` is
+/// an **opaque foreign reference, not a foreign key into another database**, which
+/// is why it is a plain `String` here and there is no `@@relation` to fetch it
+/// through. Everything about the asset's approval, licensing and publication lives
+/// in VOID·SPACE and is read back over REST (§3.5.2).
+///
+/// `status` mirrors VOID·SPACE's own asset status 1:1. §4.14's FR-14.3 lists
+/// exactly the six values, and the Studio keeps no independent idea of "approved":
+/// a second opinion about that would compete with VOID·SPACE's human review, which
+/// §3.5.2 forbids ("no parallel approval path").
+model PublishRecord {
+  id               String  @id @default(uuid()) @db.Uuid
+  tenantId         String  @map("tenant_id") @db.Uuid
+  projectId        String  @map("project_id") @db.Uuid
+  /// The version that was submitted, **when the project syncs to the cloud**.
+  ///
+  /// Nullable because the default project is `local`: its authoring state never
+  /// reaches this database, so there is no `ProjectVersion` row to point at. The
+  /// evidence FR-14.1's gate needs is therefore recorded on this record directly
+  /// (below) rather than by reference — otherwise the gate could only be enforced for
+  /// Creators who had opted into cloud storage, which would make local-first a
+  /// second-class path.
+  projectVersionId String? @map("project_version_id") @db.Uuid
+
+  /// SHA-256 of the exact bytes uploaded, computed by the API before the handoff.
+  ///
+  /// This is what ties a `PublishRecord` to a submitted artifact without storing the
+  /// artifact: the GLB goes to VOID·SPACE (§3.5.2), and the Studio keeps the
+  /// fingerprint. It also makes "was the thing I reviewed the thing I published?"
+  /// answerable, which an id alone cannot do.
+  exportSha256 String? @map("export_sha256") @db.VarChar(64)
+  exportSizeBytes BigInt? @map("export_size_bytes")
+
+  /// The returned VOID·SPACE asset id — the opaque reference (§5.3).
+  voidspaceAssetId String @map("voidspace_asset_id") @db.VarChar(120)
+  /// FR-14.4 — a re-publish creates a new AssetVersion on the *same* asset
+  /// (VS-SRS-2.0 FR-3.4). Null on a first publish.
+  voidspaceAssetVersionId String? @map("voidspace_asset_version_id") @db.VarChar(120)
+
+  status          PublishStatus @default(pending)
+  /// The raw upstream string, kept verbatim beside the mapped enum. FR-14.3 says to
+  /// mirror the status; recording the source value means a status VOID·SPACE adds
+  /// later is visible in the data rather than collapsed into a wrong enum member.
+  voidspaceRawStatus String?   @map("voidspace_raw_status") @db.VarChar(60)
+  lastSyncedAt    DateTime      @default(now()) @map("last_synced_at") @db.Timestamptz(6)
+  /// Set when a poll failed, so the UI can say "last known status" instead of
+  /// presenting a stale value as current.
+  syncError       String?       @map("sync_error") @db.VarChar(500)
+
+  // --- FR-14.5: the review decision, surfaced where the Creator works -------------
+  /// One of `approved` / `rejected` / `revision` — the decision members of the same
+  /// vocabulary, because FR-14.3's status list *is* the decision list plus the two
+  /// in-flight states. A separate enum would be a second name for the same thing.
+  reviewDecision   PublishStatus? @map("review_decision")
+  reviewComments   Json?          @map("review_comments")
+  reviewDecisionAt DateTime?      @map("review_decision_at") @db.Timestamptz(6)
+
+  // --- FR-11.10: publishing below the recommended score, on the record ------------
+  acknowledgedById    String?   @map("acknowledged_by_id") @db.Uuid
+  acknowledgedAt      DateTime? @map("acknowledged_at") @db.Timestamptz(6)
+  acknowledgedScore   Int?      @map("acknowledged_score")
+  /// The publish gate's warnings at the moment of publishing, so a publish that went
+  /// ahead on an acknowledgment is distinguishable from an ordinary one afterwards.
+  warnings            Json      @default("[]") @map("warnings")
+
+  // --- §7.3/FR-14.1 gate evidence, carried by the request -------------------------
+  //
+  // In local-first mode the readiness report is produced inside the editor (the score
+  // is computed locally by design — see docs/VOID-STUDIO.md §2) and travels with the
+  // publish request. Recording it here is what makes the gate *auditable*: a later
+  // reader can see the score and issues the publish was judged on. Omitting it would
+  // mean the gate existed only as a client-side check, which is to say not a gate.
+  readinessScore   Int?  @map("readiness_score")
+  readinessPassed  Boolean? @map("readiness_passed")
+  readinessReport  Json? @map("readiness_report")
+  /// The FR-10.4 export-validation result as evaluated server-side, not as claimed by
+  /// the client.
+  exportValidation Json? @map("export_validation")
+
+  /// §5.2 — "one active record per published lineage, historical records retained".
+  /// Set when a later publish supersedes this record; the active link is the newest
+  /// row where this is null.
+  supersededAt DateTime? @map("superseded_at") @db.Timestamptz(6)
+
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectVersion ProjectVersion? @relation(fields: [projectVersionId], references: [id], onDelete: Cascade)
+  createdBy      User            @relation("PublishAuthor", fields: [createdById], references: [id])
+
+  @@index([tenantId, projectId, createdAt])
+  @@index([tenantId, voidspaceAssetId])
+  @@map("publish_records")
+}
+
+// ------------------------------------------------------------------- copilot
+
+/// §5.1 CopilotSession — "One per continuous Copilot conversation."
+model CopilotSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  projectId String    @map("project_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  /// FR-11.1's panel needs something to label a conversation with after a reload.
+  title     String?   @db.VarChar(200)
+  startedAt DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  endedAt   DateTime? @map("ended_at") @db.Timestamptz(6)
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User             @relation(fields: [userId], references: [id])
+  messages CopilotMessage[]
+
+  @@index([tenantId, projectId, startedAt])
+  @@map("copilot_sessions")
+}
+
+/// §5.1 CopilotMessage — "Full auditable trace per FR-11.4."
+///
+/// The AI columns are `AiInvocationLog` (§7.5) flattened rather than tucked into a
+/// JSON blob: §7.5 makes invocation logging a *requirement*, and a requirement
+/// satisfied by a key inside an opaque column cannot be queried, alerted on or
+/// indexed. `usage` and `redacted` stay JSON because they are genuinely open-shaped.
+///
+/// `appliedCommandIds` is FR-11.4's link from a model decision to the undoable
+/// commands it produced. It is what makes "the AI changed this, and here is the undo
+/// step" true rather than aspirational, so it is a real column and not a log line.
+model CopilotMessage {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String      @map("tenant_id") @db.Uuid
+  sessionId String      @map("session_id") @db.Uuid
+  role      CopilotRole
+  /// The user's instruction, the assistant's text, or a tool result.
+  content   String      @db.Text
+  /// The tool calls the model proposed, each with its validation outcome (FR-11.3).
+  /// Rejected calls are recorded too — §7.2 requires a rejection to be *explained*,
+  /// which means it has to survive the turn.
+  toolCalls Json        @default("[]") @map("tool_calls")
+  /// FR-11.4 — the undoable command ids this message's accepted calls produced.
+  appliedCommandIds Json @default("[]") @map("applied_command_ids")
+
+  // --- §7.5 invocation log ------------------------------------------------------
+  provider      String?  @db.VarChar(30)
+  model         String?  @db.VarChar(120)
+  promptVersion String?  @map("prompt_version") @db.VarChar(60)
+  durationMs    Int?     @map("duration_ms")
+  ok            Boolean?
+  failureKind   String?  @map("failure_kind") @db.VarChar(60)
+  usage         Json?
+  redacted      Json?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session CopilotSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, sessionId, createdAt])
+  @@map("copilot_messages")
+}
+
+// ---------------------------------------------------------------------- jobs
+
+/// §5.1 Job — "Mirrors VOID·SPACE's Job model for the polling API (Section 3.2)."
+///
+/// `bullJobId` is what makes a row and its queue entry the same thing; without it
+/// `GET /studio/api/v1/jobs/{id}` could only report what it was told at enqueue time
+/// and not what the worker actually did.
+model Job {
+  id        String         @id @default(uuid()) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  projectId String?        @map("project_id") @db.Uuid
+  userId    String?        @map("user_id") @db.Uuid
+  queue     StudioJobQueue
+  status    JobStatus      @default(queued)
+  bullJobId String?        @map("bull_job_id") @db.VarChar(120)
+  payload   Json           @default("{}")
+  result    Json?
+  error     String?        @db.VarChar(2000)
+  attempts  Int            @default(0)
+  /// FR-14.3's publish polling is scheduled from here, so a job that is merely
+  /// waiting is distinguishable from one that is stuck.
+  runAt     DateTime?      @map("run_at") @db.Timestamptz(6)
+  startedAt DateTime?      @map("started_at") @db.Timestamptz(6)
+  endedAt   DateTime?      @map("ended_at") @db.Timestamptz(6)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@index([tenantId, projectId, createdAt])
+  @@index([bullJobId])
+  @@map("jobs")
+}

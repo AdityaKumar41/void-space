@@ -30,26 +30,59 @@ web app, API, workers, database, cache, IPFS node and blockchain — runs locall
 ```
 void-space/
 ├─ apps/
-│  ├─ web/        Next.js UI (Creator / Assessor / Admin)
-│  ├─ api/        Fastify REST API  →  /api/v1
-│  └─ worker/     BullMQ processors (AI, IPFS, Blender, chain, XR, notify)
+│  ├─ web/          Next.js UI (Creator / Assessor / Admin)
+│  ├─ api/          Fastify REST API  →  /api/v1
+│  ├─ worker/       BullMQ processors (AI, IPFS, Blender, chain, XR, notify)
+│  ├─ studio-api/   VOID·STUDIO's control plane  →  /studio/api/v1
+│  └─ studio-web/   VOID·STUDIO's editor (vendored fork, own install — see VENDOR.md)
 ├─ packages/
 │  ├─ db/         Prisma schema, migrations, RLS policies, seed, tenant context
 │  ├─ contracts/  Foundry: AssetLicenseRegistry.sol + tests + deploy scripts
 │  ├─ types/      Shared DTOs, Zod schemas, RBAC matrix, queue contracts, generated ABI
 │  ├─ ui/         Shared shadcn/ui-based components
-│  └─ config/     Shared Tailwind preset and ESLint baseline
+│  ├─ config/     Shared Tailwind preset and ESLint baseline
+│  ├─ studio-db/        VOID·STUDIO's own schema, RLS policies, tenant-scoped client
+│  ├─ studio-engine/    Copilot tool catalogue, command contract, publish gate
+│  ├─ studio-ai/        Claude Copilot loop, readiness audit, Meshy generative tools
+│  └─ voidspace-client/ The typed SDK the Studio uses to reach this API
 ├─ docker/        Dockerfiles, nginx templates, IPFS entrypoint, cert script
 ├─ docs/          SRS + generated data-model / design notes
 ├─ models/        Bundled demo scans, seeded + pinned + licensed (see below)
 ├─ scripts/       dev-up.sh, dev-down.sh
-└─ docker-compose.yml
+├─ docker-compose.yml
+└─ docker-compose.studio.yml   VOID·STUDIO's own stack (offset ports, separate database)
 ```
 
 **Package strategy:** internal packages (`types`, `ui`, `db`) export TypeScript **source** and are
 consumed directly (`transpilePackages` in Next, `tsx` in the API/worker). This removes a build step
 from the inner dev loop while keeping one source of truth for every shared contract. `db` runs
 `prisma generate` as its build step; `contracts` is built by Foundry.
+
+## VOID·STUDIO
+
+`apps/studio-web` and `apps/studio-api` are **VOID·STUDIO**, the authoring client that publishes into this
+marketplace. It is a second product with its own database, its own Redis and its own edge, sharing none of
+them — a Studio migration must not be able to damage VOID·SPACE, which is what §3.1's separation and §5.3's
+data-ownership boundary exist to enforce. Nothing a Creator does in the editor is mirrored here unless they
+explicitly publish.
+
+| Command | What it does |
+|---|---|
+| `pnpm studio:dev:up` | The Studio's data tier + edge: postgres 5433, redis 6380, ipfs 5002, nginx 8443 |
+| `pnpm studio:dev` | `apps/studio-api` in watch mode on :4100 (`studio:api:dev` for just that app) |
+| `pnpm studio:db:migrate` / `pnpm studio:db:rls` | Migrate the Studio schema, then apply its RLS policies |
+| `pnpm studio:test` | The Studio's suites — engine, SDK, AI, db, api. No database and no VOID·SPACE required |
+| `pnpm studio:fork:install` / `:setup` / `:dev` | The editor: its own install, then a native toolchain, then serve it |
+
+`apps/studio-web` is a vendored fork of FaberLeaf and is deliberately **not** a workspace member (see the
+comment in `pnpm-workspace.yaml`), so a root `pnpm install` does not touch it and root tooling does not lint
+or format it. `apps/studio-web/VENDOR.md` records its provenance, every deviation from upstream, and the two
+constraints its renderer imposes: WebGPU only, and cross-origin isolation required.
+
+Every integration point is one of two things — a VOID·SPACE-issued session coming in, or an explicit publish
+going out — and both cross through `packages/voidspace-client` alone. Read
+[`docs/VOID-STUDIO.md`](docs/VOID-STUDIO.md) for what is implemented, what deliberately is not, and every
+place the implementation diverges from `docs/VOID-STUDIO_SRS_v1.0.docx`.
 
 ## Prerequisites
 

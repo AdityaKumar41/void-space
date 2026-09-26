@@ -1,0 +1,273 @@
+# Brush system (TS ↔ sculptcore)
+
+Sculpt brushes run across two layers. The **TS bridge** turns the UI's
+`SculptBrush` + a pointer stroke into calls on the **C++ sculptcore engine**,
+which owns the actual per-vertex math. The engine runs behind the
+backend-agnostic `IWasmInterface` (WASM in the browser, native N-API in
+NW.js — see [native-napi-electron.md](native-napi-electron.md)).
+
+The realtime sculpt path is **CPU** (`CommandExecutor`). The WGSL/GPU brush
+kernels exist for a future GPU stroke dispatch and for the `sbrush-verify`
+CPU-vs-GPU parity gate; the app does not use them.
+
+## Files
+
+| File | Purpose |
+|---|---|
+| `scripts/editors/view3d/tools/sculptcore_ops.ts` | `SculptPaintOp` — the modal stroke op. Per dab: ray-cast, filter nodes, push device inputs, run the brush program, regen. |
+| `scripts/editors/view3d/tools/sculptcore_bindings.ts` | The bridge: `builSculptcoreBrush` (sync props + construct executor), `buildBrushProgram` (autosmooth), `configureToolUniforms` (plane/falloff), `configureBrushDynamics` / `pushBrushDeviceInputs` (pen), `TOOL_TO_SCULPTBRUSH`. |
+| `sculptcore/source/brush/brush.h` | `Brush` — cached scalar fields the kernels read, plus the `props` (`StructProp`) authored layer and `deviceInputCtx`. `falloffDist`/`falloffEval`. |
+| `sculptcore/source/brush/brush_executor.h` | `CommandExecutor` (`execBrush`, `execProgram`) + `BrushProgram` (the composite command list). |
+| `sculptcore/source/brush/brush_command.h` | `CommandCtx` (the `strength(co)` intrinsic, `sampleBrushTex`) + `BrushCommandDef`. |
+| `sculptcore/source/brush/kernels/*.sbrush` | Brush kernels in the sbrush DSL → `kernels/generated/*.brush.gen.h` (+ WGSL/SPIR-V/…). |
+| `sculptcore/source/brush/brushes/types.h` | The `SculptBrushes` enum (kernel selector), bound + mirrored in TS. |
+
+## Per-dab flow (`on_pointermove_intern`)
+
+1. Ray-cast the mesh → surface point `p` + normal `n`.
+2. `getBrush(e)` → `builSculptcoreBrush`: (re)constructs the `Brush` + `CommandExecutor`
+   on the first dab, syncs scalar props, runs `configureToolUniforms`, and on a
+   fresh brush `configureBrushDynamics`.
+3. `mesh.spatial.filterNodes(p, radius, nodes)` — the BVH nodes the dab touches.
+4. Set per-dab `strength`/`radius`, `writeProps()`, `pushBrushDeviceInputs`.
+5. `buildBrushProgram` → `executor.execProgram(prog, nodes, p, n)`.
+6. `mesh.regenTreeBatch()`.
+
+`strength(co)` (the falloff strength kernels start from) is
+`brush.strength * falloffEval(t)`, where `t = 1 − min(falloffDist(co −
+surfacePos), 1)`. **Radius is _not_ baked into strength** — the `strength`
+intrinsic is purely `strength · falloff`, and each kernel multiplies by
+`radius` itself only when the displacement should scale with brush size
+(`draw`/`inflate`/`pinch` use `… * radius * 0.5`; `smooth`/`sharp`/`mask` are
+relative or radius-independent and don't; the `plane` family is naturally
+radius-proportional through its `planeoff · radius` plane offset, so it doesn't
+multiply again). Because radius is no longer folded into `strength`, there is
+**no per-dab pre-scale** anymore — the bridge sets `wasmBrush.strength =
+brush.strength` directly (`SculptPaintOp` in `sculptcore_ops.ts`). Net effect:
+strokes are considerably stronger than under the old pre-baked path — that is
+intentional.
+
+## Tool dispatch
+
+`TOOL_TO_SCULPTBRUSH` maps the TS `SculptTools` enum → `SculptBrushes` kernel.
+Wired: DRAW, SMOOTH (→ the boundary-aware `BSMOOTH` kernel — see below), INFLATE,
+SHARP, PINCH, MASK_PAINT, COLOR, POLYGROUP, and the plane family
+CLAY/SCRAPE/FILL/WING_SCRAPE. Tools with no equivalent (Grab, Snake, Paint, …)
+are absent → the op warns and skips the dab.
+The base kernels read `strength` (via the `strength` intrinsic) and, where the
+displacement should scale with brush size, the `radius` uniform directly
+(`draw`/`inflate`/`pinch`; `smooth`/`sharp`/`mask` don't); plane/wing read
+extra uniforms (below).
+
+## Invert, mask gating, color
+
+- **Invert** flows TS → C++ as the `invert` bool prop: `getInvertFromEvent`
+  (stroke_paint_op.ts) XORs ctrl with `BrushFlags.INVERT`, the bridge sets
+  `wasmBrush.invert`, `writeProps()` stores it, and the executor's per-command
+  `loadCommonProps` re-reads it (unless a command sets `overrideInvert`, as
+  autosmooth's BSMOOTH entry does to pin `false`). Bool props go through
+  `prop_coerce.h`, which dispatches `Prop::BOOL`/`BoolProp` like the numeric
+  types — it didn't originally, which silently reset `invert` to its default
+  before every dab. Smooth-family tools ignore invert: the host suppresses it
+  for any kernel whose queried `BrushDefFlags.relaxesBase` (`@relaxation`) is set.
+- **Mask** gates vertex displacement: every displacing kernel scales by
+  `(1.0 - v.mask)`. With no mask painted this is an exact `×1.0`, so unmasked
+  results are bit-identical. MASK_PAINT paints the mask; inverted MASK_PAINT
+  erases it.
+- **Color** paint reads the `brushColor` uniform (piped from TS `brush.color`),
+  not a hardcoded value.
+
+Default-on `ACCUMULATE` brushes: smooth, bsmooth, paint-smooth, inflate, clay
+(see `accumulable` in the kernels / brush defaults in `scripts/brush/brush.ts`).
+
+## Boundary-aware smoothing (bsmooth replaces smooth)
+
+All smoothing in the app is boundary-aware: the SMOOTH tool routes to the
+`BSMOOTH` kernel, the autosmooth command chains `BSMOOTH` (below), and dyntopo's
+tangential smoothing pins feature verts (`dyntopo.h` `smoothTangent` returns
+`false` on boundary/non-manifold edges and the caller additionally skips
+`feat.isFeatureVert` verts when the feature set is active). There is no plain
+`SMOOTH` kernel reachable from the app — `bsmooth.sbrush` is the one smoothing
+kernel.
+
+`bsmooth` reads `.boundary.vert.class` per vertex: a boundary vertex averages
+only neighbors that share a boundary type (`(vc & nb.vclass) == 0` → weight 0)
+and projects its displacement into the tangent plane, so marked seams / sharp
+edges / polygroup borders are preserved instead of being pulled across. (Seams
+and sharp edges are flagged with the interactive marking tools — see
+[feature-marking.md](feature-marking.md).) With no
+boundaries marked it reduces to a plain Laplacian, so it's a transparent drop-in
+for the old smooth brush. Consumers must run `boundary::recomputeDirty` first;
+the executor's `refreshBoundaryClassForBSmooth` does this on the first command of
+a step when `m->boundaryDirty`. Because smoothing diverges when inverted, the
+smooth kernels are tagged `@relaxation` and the host drops invert for them
+(`resolveToolDabPolicy(...).ignoresInvert`).
+
+## Composite brushes / autosmooth (`BrushProgram`)
+
+A `BrushProgram` is an ordered list of sub-commands run over the **same** node
+set per dab. Autosmooth is `[mainBrush, BSMOOTH]`: each command resolves the
+brush's props (with sparse overrides applied), then runs like a standalone
+brush. The chained `BSMOOTH` is a second `exec()` whose Jacobi `co_prev` snapshot
+is re-taken *after* the main pass mutated positions, so it smooths the result. A
+future dyntopo pass is just an entry prepended to `commands` — no API change.
+
+The `BSMOOTH` entry is appended by `buildBrushProgram` whenever `brush.autosmooth
+> 0 && radius > 0`, with command strength = `brush.autosmooth` and invert pinned
+`false` (autosmooth always smooths forward, even under an inverted main brush).
+Using the boundary-aware kernel means autosmooth preserves marked seams just like
+the smooth brush. `builSculptcoreBrush` calls `setNeighborMode(1)` (CSR ring-1)
+so the chained smooth finds neighbors on a fresh `LiteMesh`. This is the **only**
+smoothing path — there is no TS-side smoothing — so it works identically on both
+backends (the executor is shared; WGSL dispatch will inherit the same command
+list).
+
+Sparse overrides (`setCommandFloat`) are keyed by an **int `BrushProp` id**, not
+a name (see gotchas).
+
+Verified by the `autosmooth` case in `tests/integration/sculptcore_brushes.test.ts`
+(both backends): the same accumulating DRAW at two symmetric octant points, once
+with `autosmooth=0` and once high. A pure DRAW moves verts only along the dab
+normal, so its **perpendicular** displacement is ~0; the chained SMOOTH moves
+verts toward neighbor averages, driving `meanPerp` clearly positive — the
+decisive proof the autosmooth command ran (`maxDisp` barely moves because a
+radial DRAW bump is already smooth).
+
+The bsmooth routing is additionally guarded by the boundary-constraint test
+(`tests/integration/sculptcore_boundary.test.ts`): a SMOOTH-tool stroke over a
+marked seam junction with dyntopo OFF leaves the constraint graph byte-for-byte
+unchanged (frozen topology + tangent-plane projection ⇒ no edge added, dropped,
+or re-flagged).
+
+## Falloff
+
+`FalloffKind` (Smoothstep/Linear/Gaussian/Curve) × `FalloffShape`
+(Spherical/Cube/Linear/**Box**) are orthogonal. `Box` is an oriented cuboid:
+max-norm in an orthonormal frame built from `falloff_dir` (primary axis = stroke
+tangent) with per-axis `falloff_extent`. `configureToolUniforms` sets `Box` for
+SQUARE-flagged brushes; the executor sets `falloff_dir = strokeDir` per dab so
+the cuboid follows the stroke. The CPU `falloffDist` (brush.h) and the WGSL
+mirror (`compiler/emit_wgsl.cc` + the `ComputeBrushUniforms` std140 mirror in
+`compute_layout.h`) must stay bit-identical.
+
+## Plane brushes (clay family)
+
+`plane.sbrush` serves Clay/Scrape/Fill via two uniforms the bridge sets per tool:
+plane point `P = surfacePos + surfaceNo·(planeoff·radius)`, height
+`h = dot(v.co − P, surfaceNo)`, move when `h·planeSide < 0`:
+
+- **Clay** — plane above (`planeoff>0`), `planeSide=+1` → pull verts below up (build up).
+- **Scrape** — plane below (`planeoff<0`), `planeSide=−1` → pull verts above down (cut).
+- **Fill** — plane at surface (`planeoff≈0`), `planeSide=+1` → fill cavities.
+
+`surfaceNo` is whatever normal TS passes to `execProgram` — the kernel doesn't
+care where it came from. `brush.planeNormalMode` (`PlaneNormalModes`, default
+`VIEW`) selects it per dab via `resolvePlaneDabNormal`
+(`scripts/brush/brush_enums.ts`, unit-tested in
+`tests/unit/plane_normal.test.ts`): `VIEW` projects onto a viewport-facing
+plane (`-viewvec` normalized, object-local — same vector the dab raycast used,
+negated so `planeSide` semantics match the surface convention); `SURFACE` uses
+the raycast hit normal. Clay/Scrape/Fill only — WING_SCRAPE's wings stay
+anchored to the surface frame.
+
+`wingscrape.sbrush` has a `host` stage (Rodrigues) computing two wing normals
+from `surfaceNo` rotated ±`wingAngle` about `strokeDir`; the vertex stage picks
+a wing by the lateral side of the stroke. `strokeDir` is set host-side by the
+executor from the previous dab center (needs ≥2 dabs).
+
+## Grab brushes (kelvinlet / grab / snakehook)
+
+Grab-style brushes displace the region under the dab in the stroke-movement
+direction. They read two bound `Brush` members from `ctx.brush` — `grabFrom`
+(force application point) and `grabTo` (displacement vector) — that TS sets per
+dab before `execProgram` (these brushes take **no** TS-passed normal for the
+force). The queried policy gates this — `resolveDabPolicy(...).isGrab`, i.e. the
+kernel is `@incremental` or `@grabmode` (`sculptcore_bindings.ts`); `applyGrabDabState`
+(`sculptcore_ops.ts`) writes `grabFrom = dab center` and `grabTo = dab − prevDab`
+(zero on the first dab, so the brush is a no-op until it moves). The interactive
+op (`applyDab`) and the headless driver (`runSculptcoreStroke`) share that
+helper, so a scripted moving stroke deforms identically. The TS bridge re-filters
+the affected nodes each dab, so the grabbed region follows the cursor.
+
+- **`kelvinlet.sbrush`** — elastic-field grab (de Goes & James 2017): a
+  regularized Kelvinlet centered at `grabFrom` with force `grabTo`, shaped by
+  `mu`/`nu`. Tool `SculptTools.KELVINLET`, icon `SCULPT_KELVINLET`.
+- **`grab.sbrush`** — direct translation: `v.co += grabTo · falloff`. Tool
+  `SculptTools.GRAB`, icon `SCULPT_GRAB`.
+- **`snakehook.sbrush`** — drag like grab, then gather toward the advancing
+  center (`grabFrom + grabTo`) so geometry pulls into a thin hook. Tool
+  `SculptTools.SNAKE`, icon `SCULPT_SNAKE`.
+
+All three are guarded per-backend by the `kelvinlet`/`grab`/`snakehook` cases in
+`tests/integration/sculptcore_brushes.test.ts` (moving stroke → +X pull,
+bounded). `grab`/`snakehook` reuse the already-bound `grabFrom`/`grabTo` members
+(no new `Brush` fields).
+
+## Device (pen) dynamics
+
+Every float prop carries a `Dynamics` stack (`prop_dynamics.h`). Per stroke,
+`configureBrushDynamics` translates each TS `BrushDynChannel` (with
+`useDynamics`) into a PRESSURE device whose `Curve1D` is baked into a table. Per
+dab, `pushBrushDeviceInputs` fills `deviceInputCtx` (only PRESSURE is consumed
+today; tilt/twist ride along inert); `loadProps()` threads `&deviceInputCtx`
+internally and applies `value = device.apply(value)` (curve(deviceValue) combined
+per `BasicMix`). Mouse reads as full pressure.
+
+## Property inheritance (bounded)
+
+`StructDef` has a `parent` pointer; `lookup` falls back to it for unset keys.
+`Brush::setPropsParent(StructProp*)` links a child to a category-default brush's
+`props` (`resolveStruct`). The C++ infrastructure is in place; the TS category
+layer is a hook, not yet wired.
+
+## Binding gotchas (these compile + pass genTS, then fail/no-op at runtime)
+
+- **No JS strings to bound methods.** A `util::string` param can't be marshaled
+  from a JS string. Pass an **int id** and map it to a name C++-side (e.g. the
+  `BrushProp` enum for `setCommandFloat`/`addPropDynamic`/`setPropDynamicSample`).
+- **No assigning `float3`/embedded-struct members from TS** ("Setting embedded
+  struct values is not supported"). Set such state C++-side (the executor writes
+  `falloff_dir`/`strokeDir`) or use scalars + a setter.
+- **`defineBindings` must not reference its own type** (a `Brush*` param on
+  `Brush`) — it re-enters `defineBindings` forever and hangs genTS. Take a
+  different already-bound type (`setPropsParent(StructProp*)`).
+- **SMOOTH needs CSR neighbor mode.** A fresh LiteMesh keeps no live disk links,
+  so LiveDisk `for_neighbor` finds nothing and smooth no-ops. The bridge calls
+  `executor.setNeighborMode(1)` (CSR `ring1`). Smooth is imperceptible on a
+  low-curvature dab — that's correct, not a bug.
+
+## Adding a brush
+
+1. Author `kernels/<name>.sbrush`. New `uniform`/`ctx` fields resolve to
+   `ctx.brush.<X>` automatically — add the field to `Brush` (brush.h). New
+   `CommandCtxBase` builtins would need a 3-site compiler edit; avoid by putting
+   stroke state on `Brush` (e.g. `strokeDir`).
+2. `node sculptcore/make.mjs codegen` (builds `sbrushc`, regenerates + commits
+   `kernels/generated/<name>.brush.gen.h` and the GPU backends).
+3. `#include` it in `brushes/all.h`; add an enum entry to **both** lists in
+   `brushes/types.h`; add a `createCommand` case in `brush_executor.h`.
+4. Map the TS tool in `TOOL_TO_SCULPTBRUSH`; set any per-tool uniforms in
+   `configureToolUniforms`.
+
+## Build / verify
+
+- WASM (+ regenerates the TS binding interfaces via genTS): `node make.mjs build wasm`.
+- Native N-API addon: `node make.mjs build node`. App bundle: `pnpm build` (repo root).
+- Typecheck: `npx tsgo --noEmit` (baseline 106 errors).
+- Cross-backend: `node make.mjs sbrush-validate wgsl` (each kernel compiles to
+  valid WGSL) and `node make.mjs sbrush-verify` (CPU vs GPU bit-identical;
+  `--regen` rewrites `sculptcore/tests/golden/` after a deliberate behavior
+  change). On Windows the verify reconfigure needs `tint` — `configureEnv.mjs`
+  rebuilds PATH from vcvars, so point `SBRUSH_TOOL_PATH` at the tint dir (e.g.
+  `SBRUSH_TOOL_PATH='C:\dev\tint'`). The `smooth`/`smooth_csr`
+  `/spatial/leaf_count` cpp-vs-wgsl mismatch (7 vs 8) is pre-existing,
+  unrelated to brushes.
+- Behavior (end-to-end, both backends): `tests/integration/sculptcore_brushes.test.ts`
+  boots the NW.js harness with `--eval "__brushTest()"`
+  (`scripts/lite-mesh/litemesh_brushtest_support.ts`) and asserts invert
+  direction, draw-sharp boundedness, mask gating + inverted-mask erase,
+  brush.color piping, accumulate defaults, and no NaN/Inf. The driver reads
+  GPU buffers by concatenating **all** same-named per-batch buffers, and runs
+  a zero-strength warmup stroke first (the first stroke re-batches and changes
+  buffer totals).
+- A C++ binding change requires rebuilding **both** WASM (for genTS) and native.

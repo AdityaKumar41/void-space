@@ -1,0 +1,37 @@
+{
+  "extends": "./tsconfig.paths.json",
+  "compilerOptions": {
+    "allowJs"          : true,
+    "resolveJsonModule": true,
+    "target"           : "es6",
+    "module"           : "es2022",
+    "lib"              : ["dom", "scripthost", "esnext", "ESNext.Disposable"],
+    "pretty"           : true,
+    "esModuleInterop"  : true,
+    "isolatedModules"  : true,
+    "strictNullChecks" : true,
+    "skipLibCheck"     : true,
+    "noEmitOnError"    : false,
+    "declaration"      : false,
+    "noEmit"           : true,
+    "noImplicitThis"   : true,
+    "listEmittedFiles" : false,
+    "outDir"           : "types",
+    "types"            : ["node", "jest"],
+  },
+  // `include`, not `files`: with an entry-point list, an addon source file only
+  // enters the program if the entry happens to import it, so a type error in an
+  // addon can go unnoticed (success criterion 0c). Sibling workspaces
+  // (sculptcore/, tests/, scripts/path.ux, scripts/mathl) have their own
+  // programs and are checked by their own `turbo typecheck` tasks.
+  // `exclude` is inherited from tsconfig.paths.json, which generates it: an
+  // addon that is not in this build has to drop out of the program, and a child
+  // config's `exclude` replaces its base's rather than adding to it.
+  "include": [
+    "playwright.config.ts",
+    "scripts/**/*.ts",
+    "addons/**/*.ts",
+    "distributions/**/*.ts",
+    "tools/**/*.mjs", "tools/eslint.mts",
+  ],
+}

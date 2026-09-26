@@ -1,0 +1,32 @@
+{
+  "name": "@void-space/studio-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "VOID·STUDIO's control-plane API behind /studio/api/v1 (VS2-SRS-1.0 §6.4): federated sessions, the project index, the VOID·SPACE bridge and the publish handoff (§3.5.2, FR-14.x).",
+  "main": "./src/server.ts",
+  "scripts": {
+    "dev": "NODE_EXTRA_CA_CERTS=../../docker/certs/void-space.crt tsx watch src/server.ts",
+    "start": "NODE_EXTRA_CA_CERTS=../../docker/certs/void-space.crt tsx src/server.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "@fastify/jwt": "^8.0.1",
+    "@fastify/multipart": "^8.3.1",
+    "@void-space/studio-db": "workspace:*",
+    "@void-space/studio-engine": "workspace:*",
+    "@void-space/types": "workspace:*",
+    "@void-space/voidspace-client": "workspace:*",
+    "fastify": "^4.29.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

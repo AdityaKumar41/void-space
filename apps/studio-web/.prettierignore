@@ -1,0 +1,27 @@
+node_modules
+build
+dist
+**/dist/
+patches/
+**/*.min.js
+
+# Submodules — each carries its own prettier config and formats in its own repo.
+# Checking them from here means the parent gate fails on a diff this repo cannot
+# land.
+.quickbuild/
+sculptcore/
+scripts/path.ux/
+scripts/mathl/
+vendor/
+emsdk/
+
+# Rescued-but-dead code. It is kept to be read and ported, not to be
+# maintained; formatting it would churn a tree nobody edits.
+archive/
+
+# Vendored third-party sources, generated output, scratch.
+scripts/extern/
+scripts/data_api/generated/
+types/
+esdocs/
+tools/.tmp/

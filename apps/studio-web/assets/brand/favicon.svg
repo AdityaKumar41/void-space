@@ -1,0 +1,22 @@
+<!--
+  VOID·STUDIO favicon.
+
+  A standalone file rather than a reuse of `mark.svg`, for two reasons:
+
+   1. `mark.svg` strokes with `currentColor`, which has nothing to inherit in a browser tab. A
+      favicon must carry its own colours.
+   2. A tab is 16px. The bare cube at that size disappears against a light tab bar, so the mark is
+      set on the graphite ground with the heat accent — the same pairing the product uses, reduced to
+      the two colours that survive the size.
+
+  Colours are the live tokens from apps/web/src/app/globals.css: `--vs-bg` ground, `--fc-heat`
+  accent. Written literally because an external SVG cannot read the app's custom properties.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="7" fill="#08080a"/>
+  <g transform="translate(5 5)" fill="none" stroke="#fa5d19" stroke-width="1.5"
+     stroke-linejoin="round" stroke-linecap="round">
+    <path d="M11 1.9 20 6.8v9.4L11 21.1 2 16.2V6.8z"/>
+    <path d="M2 6.8l9 4.9 9-4.9M11 11.7v9.4"/>
+  </g>
+</svg>

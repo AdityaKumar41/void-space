@@ -35,6 +35,7 @@ packages/contracts/.contracts-state.json
 
 # generated artifacts (regenerated from source of truth: prisma schema / forge abi)
 packages/db/generated/
+packages/studio-db/generated/
 packages/types/src/contracts/*.abi.json
 
 # editors / os
@@ -70,3 +71,86 @@ packages/db/check-shapes.mts
 # Local design reference material. Not part of the product, not referenced by any code, and not ours
 # to redistribute — kept out of the repository but left on disk for design work.
 DESIGN.md
+
+# ---------------------------------------------------------------------------
+# VOID·STUDIO (apps/studio-web)
+#
+# The editor is a vendored fork of FaberLeaf and is excluded from this pnpm
+# workspace, so its build inputs and outputs are listed here rather than in a
+# .gitignore of its own. One place to look is the point: a second ignore file
+# inside apps/studio-web would be a second answer to "what is tracked", and the
+# two would drift.
+#
+# The general patterns above (node_modules/, dist/, build/, .turbo/, coverage/,
+# test-results/, playwright-report/) already cover the common cases at any
+# depth. What follows is only what is specific to the fork.
+# ---------------------------------------------------------------------------
+apps/studio-web/keys/
+apps/studio-web/electron/arguments.txt
+apps/studio-web/scripts/config/config_local.js
+apps/studio-web/.quickbuild/
+apps/studio-web/.sculptcore/
+apps/studio-web/app.zip
+apps/studio-web/gemini.txt
+apps/studio-web/myicon2.png
+# NOTE: sculptcore/, scripts/path.ux/, scripts/mathl/ and vendor/nstructjs/ are git
+# submodules. Their contents are NOT visible to this repository — the parent tracks
+# only the pinned commit — so an ignore rule naming a path inside one is inert
+# (`git check-ignore` answers "is in submodule"). Their own .gitignore files govern
+# their build output, and they already ignore it.
+# Report output from its own Playwright config, which this repo's does not drive.
+apps/studio-web/blob-report/
+apps/studio-web/playwright/.cache/
+# Tool caches the fork's own lint scripts write.
+apps/studio-web/.eslintcache
+apps/studio-web/.nyc_output/
+apps/studio-web/lib-cov/
+apps/studio-web/.grunt/
+apps/studio-web/bower_components/
+apps/studio-web/jspm_packages/
+apps/studio-web/typings/
+apps/studio-web/.npm/
+apps/studio-web/.node_repl_history
+apps/studio-web/.yarn-integrity
+apps/studio-web/*.tgz
+apps/studio-web/pids
+apps/studio-web/*.pid
+apps/studio-web/*.seed
+apps/studio-web/*.pid.lock
+
+# ---------------------------------------------------------------------------
+# Generated, not source — checked by reading each file's own header or asking
+# its generator. Both of these are rewritten by `pnpm studio:fork:paths`
+# (`tools/gen-datapaths.mjs` + `tools/gen-tsconfig-paths.mjs`), which the fork's
+# own `typecheck` runs before compiling, so tracking them would mean every
+# `gen:paths` showed up as a diff.
+# ---------------------------------------------------------------------------
+apps/studio-web/tsconfig.paths.json
+apps/studio-web/scripts/data_api/generated/
+
+# ---------------------------------------------------------------------------
+# Upstream sample and scratch data that no code path reads.
+#
+# Each name was searched for across scripts/, tests/, tools/, addons/ and
+# distributions/ before being listed here — "no code reads it" is the claim, so
+# it is worth being able to re-check. They are ignored rather than deleted: the
+# files stay on disk for reference, they simply are not part of the product.
+#
+# Deliberately NOT listed: `examples/sculpt test.wproj`, which
+# tests/e2e/load_wproj.e2e.ts loads by URL. It is a test input, not a sample.
+# ---------------------------------------------------------------------------
+# A 23 MB generated scene the addon authors; referenced only in planning prose.
+apps/studio-web/examples/brush_asymmetric_toolstack.wproj
+# Scratch binaries left by upstream's own experiments.
+apps/studio-web/assets/fbxtest.blend
+apps/studio-web/assets/widgetshapes.blend
+apps/studio-web/assets/test.fbx
+# A sample model from upstream's asset library.
+apps/studio-web/resources/models/stanford_bunny_reduced.obj
+apps/studio-web/resources/models/stanford_bunny_reduced.mtl
+apps/studio-web/resources/models/stanford_bunny_reduced.ply
+
+# NOTE: `assets/iconsheet*.{svg,png}` also look generated — `tools/iconsheet.mjs`
+# writes them — and they are committed on purpose. `index.html` fetches
+# `assets/iconsheet.svg` at runtime and no build step regenerates it, so ignoring
+# them would ship an editor with no icons at all.

@@ -1,3 +1,17 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # VOID·STUDIO's editor is a fork of FaberLeaf (see apps/studio-web/VENDOR.md) and is
+  # deliberately NOT a member of this workspace. Two hard blockers, not preferences:
+  #
+  #   1. It resolves its own third-party code via `nstructjs: "workspace:*"`, which only
+  #      resolves inside apps/studio-web/pnpm-workspace.yaml — whose member list includes
+  #      the four vendored git submodules. pnpm ignores nested workspace definitions, so
+  #      evaluated from here that reference is unresolvable and the whole root
+  #      `pnpm install` fails rather than skipping one package.
+  #   2. Its devDependencies pull `nw@0.112.0-sdk` (the NW.js desktop shell, a ~300MB
+  #      download) and a preview TypeScript 6 toolchain. Neither belongs in VOID·SPACE's
+  #      install graph, and neither can be deduped against the TS 5.6 this repo uses.
+  #
+  # It keeps its own lockfile and is driven by the root `studio:web:*` scripts instead.
+  - "!apps/studio-web"
