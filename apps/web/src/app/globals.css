@@ -908,23 +908,15 @@ body {
 }
 
 /*
- * The toolbar wraps by default, and with twenty-odd controls in a column narrower than the page that
- * meant three rows of chrome — 130px of buttons stacked above a 347px canvas. Chrome taller than the
- * thing it controls is the opposite of an inspection tool.
- *
- * A single row that scrolls is the honest fix: every control stays exactly one click away and in the
- * same place, and the canvas keeps its height. Scrollbars are hidden because the row is discoverable
- * by drag and by keyboard, and a visible scrollbar under a toolbar reads as a defect.
+ * The studio toolbar: wraps smoothly without horizontal scroll drift or swinging.
+ * Controls stay dockable, stable, and completely discoverable without trackpad jank.
  */
 .studio-top {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-
-.studio-top::-webkit-scrollbar {
-  display: none;
+  flex-wrap: wrap;
+  overflow-x: visible;
+  overflow-y: visible;
+  row-gap: 5px;
+  column-gap: 5px;
 }
 
 /* Denser controls, still above the 4.5:1 contrast floor set earlier for these labels. */

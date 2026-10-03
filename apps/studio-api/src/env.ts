@@ -7,6 +7,7 @@
  * Publish press into a confusing 500 after a Creator had already been told their work
  * was ready.
  */
+import { DEFAULT_AI_POLICY, DEFAULT_CLAUDE_MODEL } from '@void-space/studio-ai';
 import { z } from 'zod';
 
 /**
@@ -130,6 +131,42 @@ export const envSchema = z.object({
     .min(1_000)
     .max(3_600_000)
     .default(30_000),
+
+  // --- the AI subsystem (§7.5, FR-18.1) --------------------------------------
+  /**
+   * The Anthropic credential. Absent is a **supported state**, not a misconfiguration: §7.5 requires
+   * the entire modeling and editing toolset to function with every AI feature disabled, and FR-11.10
+   * makes the readiness audit a prerequisite for publishing — so this deployment has to be able to
+   * score an asset and publish it with no provider configured at all. The audit falls back to its
+   * deterministic measurements; only the Copilot and the audit's narrative need a model.
+   *
+   * Server-side only. A model credential in the browser would be every Creator's to spend.
+   */
+  ANTHROPIC_API_KEY: optionalString,
+  /** Pinned to a dated snapshot rather than a floating alias — see `DEFAULT_CLAUDE_MODEL`. */
+  ANTHROPIC_MODEL: z.string().default(DEFAULT_CLAUDE_MODEL),
+  /**
+   * §7.5's hard timeout, raised from the package default because §7.2 asks the model to reason over a
+   * scene summary and emit several tool calls; a tight ceiling times out on exactly the multi-object
+   * instructions the Copilot exists for.
+   */
+  ANTHROPIC_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(600_000)
+    .default(DEFAULT_AI_POLICY.timeoutMs),
+  /**
+   * §7.5's per-tenant rate limit, expressed per minute because that is the unit an operator reasons
+   * in. Enforced per *tenant* rather than globally, so one tenant looping cannot consume another's
+   * budget — which is the outcome §7.5 states the limit is for.
+   */
+  STUDIO_AI_RATE_LIMIT_PER_MINUTE: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(10_000)
+    .default(DEFAULT_AI_POLICY.maxRequestsPerWindow),
 });
 
 export type StudioApiEnv = z.infer<typeof envSchema>;

@@ -33,6 +33,7 @@ import { jobRoutes } from './modules/jobs/routes';
 import { licensingRoutes } from './modules/licensing/routes';
 import { notificationRoutes } from './modules/notifications/routes';
 import { publicRoutes } from './modules/public/routes';
+import { socialRoutes } from './modules/social/routes';
 import { reviewRoutes } from './modules/review/routes';
 import { toolsRoutes } from './modules/tools/routes';
 import { authRoutes } from './modules/auth/routes';
@@ -188,7 +189,17 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   // and lose the `code`, `details` and `requestId` that clients branch on.
 
   app.setNotFoundHandler((request, reply) => {
-    reply.status(404).send(errorBody(request, 404, 'NOT_FOUND', 'Route not found', `${request.method} ${request.url} is not a known route`));
+    reply
+      .status(404)
+      .send(
+        errorBody(
+          request,
+          404,
+          'NOT_FOUND',
+          'Route not found',
+          `${request.method} ${request.url} is not a known route`,
+        ),
+      );
   });
 
   /**
@@ -218,23 +229,25 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
     }
 
     if (error instanceof ZodError) {
-      reply
-        .status(400)
-        .send(
-          errorBody(request, 400, 'VALIDATION_ERROR', 'Request validation failed', {
-            issues: error.issues.map((issue) => ({
-              path: issue.path.join('.'),
-              message: issue.message,
-            })),
-          }),
-        );
+      reply.status(400).send(
+        errorBody(request, 400, 'VALIDATION_ERROR', 'Request validation failed', {
+          issues: error.issues.map((issue) => ({
+            path: issue.path.join('.'),
+            message: issue.message,
+          })),
+        }),
+      );
       return;
     }
 
     // Fastify's own errors (body parse failures, rate limit, validation plugin).
     const statusCode = error.statusCode ?? 500;
     const code =
-      statusCode === 429 ? 'RATE_LIMITED' : statusCode < 500 ? (error.code ?? 'BAD_REQUEST') : 'INTERNAL_ERROR';
+      statusCode === 429
+        ? 'RATE_LIMITED'
+        : statusCode < 500
+          ? (error.code ?? 'BAD_REQUEST')
+          : 'INTERNAL_ERROR';
 
     if (statusCode >= 500) {
       request.log.error({ err: error }, 'unhandled error');
@@ -243,7 +256,13 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
     reply
       .status(statusCode)
       .send(
-        errorBody(request, statusCode, code, statusCode >= 500 ? 'Internal server error' : error.message, undefined),
+        errorBody(
+          request,
+          statusCode,
+          code,
+          statusCode >= 500 ? 'Internal server error' : error.message,
+          undefined,
+        ),
       );
   });
 
@@ -271,6 +290,9 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   // §6.1 Public Catalog — the only unauthenticated surface, and the only one reading the
   // cross-tenant projection rather than tenant-scoped tables.
   await app.register(publicRoutes, { prefix: '/api/v1' });
+  // Registering after `publicRoutes` keeps the catalog routes declared together in the OpenAPI
+  // document, since these extend the same public surface rather than forming a second one.
+  await app.register(socialRoutes, { prefix: '/api/v1' });
 
   return app;
 }

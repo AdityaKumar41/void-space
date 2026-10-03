@@ -48,7 +48,11 @@ export class UnauthenticatedError extends AppError {
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message = 'You do not have permission to perform this action', code = 'FORBIDDEN', details?: unknown) {
+  constructor(
+    message = 'You do not have permission to perform this action',
+    code = 'FORBIDDEN',
+    details?: unknown,
+  ) {
     super(message, { statusCode: 403, code, details });
   }
 }
@@ -76,6 +80,20 @@ export class ConflictError extends AppError {
 export class UpstreamError extends AppError {
   constructor(message: string, details?: unknown) {
     super(message, { statusCode: 502, code: 'UPSTREAM_FAILURE', details });
+  }
+}
+
+/**
+ * A capability this deployment does not have configured.
+ *
+ * 503 rather than 501 or 500: the route exists and works, and would work here if the missing
+ * setting were filled in. `expose: true` is deliberate and load-bearing — the default rule for a
+ * 5xx masks the message, which is right for an upstream driver string but exactly wrong for this,
+ * whose entire value is naming the setting to add. See the error handler in `app.ts`.
+ */
+export class UnavailableError extends AppError {
+  constructor(message: string, code: string, details?: unknown) {
+    super(message, { statusCode: 503, code, details, expose: true });
   }
 }
 

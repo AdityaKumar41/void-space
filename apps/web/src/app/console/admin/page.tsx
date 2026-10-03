@@ -16,8 +16,10 @@ import { useState } from 'react';
 import { ROLES, type Role } from '@void-space/types';
 
 import { ApiRequestError, apiFetch } from '../../../lib/api';
+import { cn } from '../../../lib/cn';
 import { formatNumber, formatRelative } from '../../../lib/format';
 import { Panel } from '../../../components/ui/card';
+import { SparklesIcon } from '../../../components/ui/icons';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
 import { RequirePermission } from '../../../components/permission-gate';
 import {
@@ -53,6 +55,43 @@ interface TenantDetail {
   readonly counts: { users: number; assets: number; licenses: number; pendingReview: number };
 }
 
+interface ToggleSwitchProps {
+  readonly label: string;
+  readonly description: string;
+  readonly checked: boolean;
+  readonly onChange: (val: boolean) => void;
+  readonly disabled?: boolean;
+}
+
+function ToggleSwitch({ label, description, checked, onChange, disabled }: ToggleSwitchProps) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-3 border-b border-hairline last:border-b-0">
+      <div>
+        <div className="text-[13px] font-semibold text-ink">{label}</div>
+        <div className="text-[11.5px] text-ink-dim leading-relaxed mt-0.5">{description}</div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={cn(
+          'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 mt-0.5',
+          checked ? 'bg-brand' : 'bg-surface-raised border border-hairline',
+        )}
+      >
+        <span
+          className={cn(
+            'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+            checked ? 'translate-x-4' : 'translate-x-0',
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
 /**
  * Permission check happens here, above the queries, not after they fail: a role the §3.6 matrix
  * excludes never sends a request this screen would be refused for.
@@ -70,6 +109,9 @@ function TeamAdministration() {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+  const [copilotEnabled, setCopilotEnabled] = useState(true);
+  const [generativeEnabled, setGenerativeEnabled] = useState(true);
+  const [auditRequired, setAuditRequired] = useState(false);
 
   const tenant = useQuery<TenantDetail>({
     queryKey: ['tenant'],
@@ -259,6 +301,38 @@ function TeamAdministration() {
             ) : (
               <LoadingBlock label="Loading policy" />
             )}
+          </Panel>
+
+          <Panel title="AI & Studio Policies" right="FR-18.1">
+            <div className="px-5 py-2">
+              <ToggleSwitch
+                label="Void Studio AI Copilot"
+                description="Allow team members to use natural language assistance and semantic scene operations in the 3D authoring environment."
+                checked={copilotEnabled}
+                onChange={(val) => {
+                  setCopilotEnabled(val);
+                  setNotice(`AI Copilot policy updated to: ${val ? 'Enabled' : 'Disabled'}`);
+                }}
+              />
+              <ToggleSwitch
+                label="Generative Text-to-3D Synthesis"
+                description="Enable prompt-to-mesh generative AI models inside Void Studio."
+                checked={generativeEnabled}
+                onChange={(val) => {
+                  setGenerativeEnabled(val);
+                  setNotice(`Generative 3D synthesis updated to: ${val ? 'Enabled' : 'Disabled'}`);
+                }}
+              />
+              <ToggleSwitch
+                label="Enforce Pre-Publish Quality Audit"
+                description="Require all scenes authored in Void Studio to pass automated quality thresholds (score ≥ 80) before publishing."
+                checked={auditRequired}
+                onChange={(val) => {
+                  setAuditRequired(val);
+                  setNotice(`Readiness audit requirement updated to: ${val ? 'Enforced' : 'Optional'}`);
+                }}
+              />
+            </div>
           </Panel>
 
           <Panel

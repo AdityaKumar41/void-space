@@ -29,6 +29,7 @@
     "test:slow": "pnpm --filter @void-studio/tests-integration test:slow",
     "watch-typecheck": "npx tsgo --watch",
     "nwjs": "node nwjs/launch.mjs --backend native",
+    "dev": "node tools/serv.js 5007",
     "serv": "node tools/serv.js",
     "serv:restart": "node tools/serv-restart.js",
     "serv:test": "node tools/serv.js 5099",

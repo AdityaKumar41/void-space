@@ -143,12 +143,19 @@ function fallbackNarrative(metrics: SceneMetrics): string {
  * that has nothing to do with their asset.
  */
 export async function runReadinessAudit(
-  client: ClaudeClient,
+  /**
+   * The model, or `undefined` for a metrics-only run.
+   *
+   * Optional because the metrics-only path never touches it, and requiring a caller to construct a
+   * client it will not use is what pushes a caller into inventing a placeholder credential. Typed
+   * rather than defaulted so the contract is visible at every call site.
+   */
+  client: ClaudeClient | undefined,
   input: ReadinessAuditInput,
 ): Promise<ReadinessAuditResult> {
   const report = evaluateReadiness(input.metrics, input.criteria, input.threshold);
 
-  if (input.metricsOnly) {
+  if (input.metricsOnly || client === undefined) {
     return {
       report,
       narrative: fallbackNarrative(input.metrics),
@@ -176,7 +183,10 @@ export async function runReadinessAudit(
             {
               type: 'text',
               text: JSON.stringify(
-                { metrics: input.metrics, localFindings: report.issues.map((issue) => issue.message) },
+                {
+                  metrics: input.metrics,
+                  localFindings: report.issues.map((issue) => issue.message),
+                },
                 null,
                 2,
               ),
@@ -231,7 +241,11 @@ function mergeIssues(
   local: readonly ReadinessIssue[],
   fromModel: readonly ReadinessIssue[],
 ): readonly ReadinessIssue[] {
-  const normalise = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const normalise = (value: string): string =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
   const seen = new Set(local.map((issue) => `${issue.category}:${normalise(issue.message)}`));
   const merged = [...local];
 
@@ -245,4 +259,3 @@ function mergeIssues(
   const rank = { critical: 0, warning: 1, info: 2 } as const;
   return merged.sort((left, right) => rank[left.severity] - rank[right.severity]);
 }
-

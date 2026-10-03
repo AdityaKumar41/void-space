@@ -16,6 +16,7 @@
     "@fastify/cors": "^9.0.1",
     "@fastify/jwt": "^8.0.1",
     "@fastify/multipart": "^8.3.1",
+    "@void-space/studio-ai": "workspace:*",
     "@void-space/studio-db": "workspace:*",
     "@void-space/studio-engine": "workspace:*",
     "@void-space/types": "workspace:*",

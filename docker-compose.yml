@@ -161,7 +161,14 @@ services:
     volumes:
       - ./packages/contracts:/contracts
       - contractsdata:/shared
-    entrypoint: ["/bin/sh", "/contracts/scripts/docker-deploy.sh"]
+    # `bash`, not `/bin/sh`. The script is `#!/usr/bin/env bash` and uses
+    # `set -euo pipefail`, but passing it to `/bin/sh` bypasses the shebang entirely:
+    # dash has no `pipefail`, so the very first `set` aborts with
+    # "Illegal option -o pipefail" and the contract never deploys — while the health
+    # endpoint still reports the contract as "up" because it only echoes the address
+    # it was configured with. That combination is the worst kind: a green check over a
+    # silently empty chain, which is exactly what `eth_getCode` revealed.
+    entrypoint: ["bash", "/contracts/scripts/docker-deploy.sh"]
     restart: "no"
 
   # ------------------------------------------------------- application tier

@@ -70,6 +70,19 @@ GRANT SELECT, INSERT ON TABLE audit_logs TO void_app;
 -- @statement
 -- Tenant isolation on every tenant-scoped table (§5.3). FORCE makes the owner
 -- subject to the policy too, so accidental owner-context reads cannot leak.
+--
+-- Three tables are deliberately ABSENT from this list, and the reason is the same for
+-- all three: they are public by construction. `public_catalog_entries` is the marketplace
+-- projection (§6.1), and `asset_likes` / `asset_comments` are the engagement written
+-- against it. A visitor in one workspace has to be able to like or discuss an asset
+-- belonging to another — that is what a marketplace is — so a `tenant_id` policy would
+-- make the feature impossible rather than safe. Their `tenant_id` columns record the
+-- ACTOR's workspace for attribution and abuse handling; they are not isolation keys.
+--
+-- Adding either engagement table to the array below would break cross-workspace
+-- engagement with a silent failure (an insert rejected by WITH CHECK) rather than an
+-- obvious one. The compensating control is in code, not here: the API takes the actor
+-- from the authenticated session and never from the request body.
 DO $$
 DECLARE
   target_table text;

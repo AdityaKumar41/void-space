@@ -71,7 +71,10 @@ export function permissionsForRoles(roles: readonly Role[]): Permission[] {
   return [...permissions];
 }
 
-export function sessionFromClaims(claims: VoidSpaceTokenClaims, displayName: string): StudioSession {
+export function sessionFromClaims(
+  claims: VoidSpaceTokenClaims,
+  displayName: string,
+): StudioSession {
   const roles = claims.roles.filter(isRole);
   return {
     userId: claims.sub,
@@ -140,7 +143,11 @@ async function mirrorIdentity(claims: VoidSpaceTokenClaims): Promise<string> {
       // 10 GiB default: a Studio project's *documents* are small next to the meshes it
       // references, and FR-2.4 lets a TenantAdmin change it — so the default should not
       // be the thing that blocks a first upload.
-      create: { id: claims.tid, name: `Tenant ${claims.tid.slice(0, 8)}`, storageQuotaBytes: 10n * 1024n ** 3n },
+      create: {
+        id: claims.tid,
+        name: `Tenant ${claims.tid.slice(0, 8)}`,
+        storageQuotaBytes: 10n * 1024n ** 3n,
+      },
       update: { lastSyncedAt: new Date() },
     });
 

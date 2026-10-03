@@ -248,4 +248,48 @@ export async function authRoutes(
     clearOnboardingCookie(reply, secure);
     return completeAuth(reply, result, 201);
   });
+
+  // ----------------------------------------------------------- studio-token handoff
+  /**
+   * Mints or exchanges the active session for a short-lived bearer token
+   * to launch and authenticate VOID·STUDIO (VS2-SRS-1.0 §3.5.1).
+   */
+  app.post('/studio-token', async (request, reply) => {
+    await app.authenticate(request);
+    const principal = request.principal;
+    if (!principal) return reply.status(401).send({ code: 'UNAUTHENTICATED' });
+
+    const accessToken = app.signAccessToken({
+      sub: principal.userId,
+      tid: principal.tenantId,
+      roles: [...principal.roles],
+      perms: [...principal.permissions],
+      amr: principal.authMethod === 'apikey' ? 'apikey' : 'password',
+      typ: 'access',
+    });
+
+    const studioUrl =
+      process.env.VOID_STUDIO_URL ||
+      process.env.STUDIO_URL ||
+      'https://localhost:8443';
+
+    return reply.status(200).send({
+      accessToken,
+      token: accessToken,
+      tokenType: 'Bearer',
+      expiresIn: accessMaxAgeSeconds,
+      studioUrl,
+      user: {
+        id: principal.userId,
+        fullName: principal.fullName,
+        email: principal.email,
+        roles: [...principal.roles],
+      },
+      tenant: {
+        id: principal.tenantId,
+        name: principal.tenantName,
+        slug: principal.tenantSlug,
+      },
+    });
+  });
 }

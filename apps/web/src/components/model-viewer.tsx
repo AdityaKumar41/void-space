@@ -96,7 +96,7 @@ const SHADE_MODES: readonly ModeSpec[] = [
   },
   {
     id: 'wireframe',
-    label: 'Wireframe',
+    label: 'Wire',
     key: '3',
     hint: 'Topology only — the fastest way to spot n-gons and stray triangles',
   },
@@ -147,7 +147,7 @@ const VIEW_DIRECTIONS: Record<CameraView, readonly [number, number, number]> = {
  * only way to see whether a base has been hollowed out.
  */
 const VIEW_BUTTONS: readonly { id: CameraView; label: string; key: string }[] = [
-  { id: 'iso', label: 'Isometric', key: '0' },
+  { id: 'iso', label: 'Iso', key: '0' },
   { id: 'front', label: 'Front', key: 'F' },
   { id: 'back', label: 'Back', key: 'B' },
   { id: 'left', label: 'Left', key: 'L' },
@@ -1227,6 +1227,8 @@ export interface ModelViewerProps {
    * ability to drag it. Everything else stays one click away on the model page.
    */
   readonly presentation?: boolean;
+  /** Emits decoded geometry and scene summary to the parent component for external inspection panels */
+  readonly onGeometryDecoded?: (decoded: DecodedGeometry, summary: SceneSummary) => void;
 }
 
 export function ModelViewer({
@@ -1241,6 +1243,7 @@ export function ModelViewer({
   autoRotate = false,
   presentation = false,
   onReady,
+  onGeometryDecoded,
 }: ModelViewerProps) {
   const previewable = canPreviewNatively(format);
   const url = cid ? `/ipfs/${cid}` : null;
@@ -1289,6 +1292,15 @@ export function ModelViewer({
     setReadyKey((value) => value + 1);
   }, []);
   const handleSummary = useCallback((next: SceneSummary) => setSummary(next), []);
+
+  const onGeometryDecodedRef = useRef(onGeometryDecoded);
+  onGeometryDecodedRef.current = onGeometryDecoded;
+
+  useEffect(() => {
+    if (decoded) {
+      onGeometryDecodedRef.current?.(decoded, summary);
+    }
+  }, [decoded, summary]);
 
   /**
    * `onReady` is held in a ref so the callback can change identity without re-running the camera rig.

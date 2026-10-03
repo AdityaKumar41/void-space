@@ -61,6 +61,12 @@ declare module 'fastify' {
   interface FastifyInstance {
     /** Resolves the caller; throws 401 when absent/invalid. */
     authenticate: (request: FastifyRequest) => Promise<void>;
+    /**
+     * Resolves the caller when a token is present, and leaves the request anonymous when it is not.
+     *
+     * A present-but-invalid token still throws, so an expired session cannot masquerade as a stranger.
+     */
+    optionalAuth: (request: FastifyRequest) => Promise<void>;
     /** preHandler factory enforcing one §3.6 permission. */
     requirePermission: (permission: Permission) => (request: FastifyRequest) => Promise<void>;
     /** Signs a short-lived access token with the configured TTL (FR-2.3). */
@@ -69,7 +75,11 @@ declare module 'fastify' {
      * FR-2.2 — a 30-minute proof-of-Google-identity carried in an httpOnly cookie
      * while a first-time SSO user decides how to join the platform.
      */
-    signOnboardingToken: (identity: { email: string; fullName: string; googleId: string }) => string;
+    signOnboardingToken: (identity: {
+      email: string;
+      fullName: string;
+      googleId: string;
+    }) => string;
     verifyOnboardingToken: (
       token: string | undefined,
     ) => { email: string; fullName: string; googleId: string } | null;
@@ -209,10 +219,7 @@ export const authPlugin = fp<AuthPluginOptions>(
     app.decorate(
       'signOnboardingToken',
       (identity: { email: string; fullName: string; googleId: string }) =>
-        app.jwt.sign(
-          { ...identity, typ: 'onboarding' as const },
-          { expiresIn: '30m' },
-        ),
+        app.jwt.sign({ ...identity, typ: 'onboarding' as const }, { expiresIn: '30m' }),
     );
 
     app.decorate(
@@ -220,9 +227,12 @@ export const authPlugin = fp<AuthPluginOptions>(
       (token: string | undefined): { email: string; fullName: string; googleId: string } | null => {
         if (!token) return null;
         try {
-          const payload = app.jwt.verify<{ typ?: string; email?: string; fullName?: string; googleId?: string }>(
-            token,
-          );
+          const payload = app.jwt.verify<{
+            typ?: string;
+            email?: string;
+            fullName?: string;
+            googleId?: string;
+          }>(token);
           if (payload.typ !== 'onboarding' || !payload.email || !payload.googleId) return null;
           return {
             email: payload.email,
@@ -265,7 +275,26 @@ export const authPlugin = fp<AuthPluginOptions>(
           assertPermission(principal, permission, request.method);
         },
     );
+
+    /**
+     * Populates `request.principal` when a valid token is present, and does nothing when there is none.
+     *
+     * The asymmetry between the two failure modes is deliberate and is the reason this is not just
+     * `try { await authenticate() } catch {}`:
+     *
+     *   - **No token** is a supported state — the caller is a stranger, and the route answers with the
+     *     public view.
+     *   - **A bad token is a 401**, not a silent downgrade to anonymous. An expired access token is
+     *     ordinary, and swallowing it would show a signed-in Creator "not liked" and then fail their
+     *     click one request later, in the write — a place that cannot explain why.
+     *
+     * Implemented by delegating to `authenticate`, so a present token is verified exactly once and
+     * exactly as it is on a protected route. There is no second verification path to keep in step.
+     */
+    app.decorate('optionalAuth', async (request: FastifyRequest): Promise<void> => {
+      if (!extractToken(request)) return;
+      await app.authenticate(request);
+    });
   },
   { name: 'void-space-auth' },
 );
-

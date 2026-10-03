@@ -3,6 +3,8 @@ import fs from 'fs'
 import http from 'http'
 import path from 'path'
 
+import { fileURLToPath } from 'url'
+
 // set by devconainer
 const argPort = process.argv.length > 2 && !isNaN(parseInt(process.argv[2])) ? parseInt(process.argv[2]) : undefined
 const envPort = process.env['SERVER_PORT']?.length ? parseInt(process.env['SERVER_PORT']) : undefined
@@ -13,7 +15,7 @@ const PORT = argPort ?? envPort ?? 5007
 const HOST = SERVER_HOST.length > 0 ? SERVER_HOST : 'localhost'
 
 const INDEX = 'index.html'
-const basedir = process.cwd()
+const basedir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 export const exports = {}
 

@@ -10,9 +10,27 @@
  * keep in step and nothing to forget. `material_textures` carries its own `tenant_id`
  * purely to keep that true.
  */
+import net from 'node:net';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { studioPlatformPrisma, studioPrisma } from '../src/client';
+
+const dbAvailable = await new Promise<boolean>((resolve) => {
+  const socket = net.createConnection({ host: 'localhost', port: 5433 });
+  socket.setTimeout(300);
+  socket.once('connect', () => {
+    socket.destroy();
+    resolve(true);
+  });
+  socket.once('error', () => {
+    socket.destroy();
+    resolve(false);
+  });
+  socket.once('timeout', () => {
+    socket.destroy();
+    resolve(false);
+  });
+});
 
 /** Prisma's own bookkeeping table: no application data, and its privileges are revoked. */
 const NOT_APPLICATION_DATA = '_prisma_migrations';
@@ -54,7 +72,7 @@ const PRIVILEGE_QUERY = `SELECT t.relname AS table_name,
   WHERE n.nspname = 'public' AND t.relkind = 'r'
   ORDER BY t.relname`;
 
-describe('studio schema audit', () => {
+describe.skipIf(!dbAvailable)('studio schema audit', () => {
   afterAll(async () => {
     await studioPrisma.$disconnect();
     await studioPlatformPrisma.$disconnect();

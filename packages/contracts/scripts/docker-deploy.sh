@@ -24,6 +24,12 @@ cast block-number --rpc-url "${RPC_URL}" >/dev/null
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# The chain id decides which broadcast log to read. Pinning it beats globbing
+# `*/run-latest.json`, which would silently pick an arbitrary chain's log once a
+# developer has deployed against more than one.
+CHAIN_ID="${ANVIL_CHAIN_ID:-31337}"
+BROADCAST_LOG="broadcast/Deploy.s.sol/${CHAIN_ID}/run-latest.json"
+
 # Anvil's first deterministic test account is used as the platform signer for
 # local development (§3.9.3) — never for anything of value.
 DEPLOYER_KEY="${PLATFORM_SIGNER_SEED:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
@@ -40,11 +46,23 @@ forge script script/Deploy.s.sol:Deploy \
   --broadcast \
   --slow
 
-CONTRACT_ADDRESS="$(jq -r '.transactions[0].contractAddress // empty' \
-  broadcast/Deploy.s.sol/*/run-latest.json 2>/dev/null || true)"
+CONTRACT_ADDRESS="$(node -e '
+  // Parsed with node rather than jq: the foundry image does not ship jq, so the
+  // original `jq -r … || true` produced an empty string on every run and the script
+  // exited 1 *after* a successful deployment — a failed deploy that had actually
+  // worked, which is the most confusing possible outcome.
+  const fs = require("fs");
+  const log = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+  // The last CREATE that carries an address: a script may deploy more than one
+  // contract, and the registry is not guaranteed to be first forever.
+  const creates = (log.transactions || []).filter((tx) => tx.contractAddress);
+  const last = creates[creates.length - 1];
+  process.stdout.write(last ? last.contractAddress : "");
+' "${BROADCAST_LOG}" 2>/dev/null || true)"
 
 if [ -z "${CONTRACT_ADDRESS}" ] || [ "${CONTRACT_ADDRESS}" = "null" ]; then
-  echo "[deploy] ERROR: could not read the deployed address from the broadcast log" >&2
+  echo "[deploy] ERROR: could not read the deployed address from ${BROADCAST_LOG}" >&2
+  echo "[deploy]        The transaction may still have succeeded — check ${BROADCAST_LOG}" >&2
   exit 1
 fi
 

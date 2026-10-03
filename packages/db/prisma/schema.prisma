@@ -570,10 +570,107 @@ model PublicCatalogEntry {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
+  /// Engagement written by visitors. Relations rather than loose ids on purpose: taking an
+  /// entry down deletes its likes and comments with it, so a delisted asset cannot leave an
+  /// orphaned thread pointing at nothing (§3.9.2's takedown, FR-9.5).
+  likes    AssetLike[]
+  comments AssetComment[]
+
   @@index([publishedAt])
   @@index([category, publishedAt])
   @@index([tenantId])
   @@map("public_catalog_entries")
+}
+
+// ------------------------------------------------------------------ engagement
+//
+// The social layer (§6.1's Public Catalog, made social). Two things about where these
+// tables sit are deliberate and worth reading before adding a third.
+//
+// **They are outside the tenant boundary, like `public_catalog_entries`.** A visitor in one
+// workspace has to be able to like an asset belonging to another — that is what a
+// marketplace *is* — so tenant-scoped RLS would make the feature impossible rather than
+// safe. `tenant_id` here is the *actor's* workspace: attribution and abuse handling, never
+// an isolation key. The isolation this gives up is exactly the isolation the public catalog
+// already gave up, and it covers no data the public catalog does not already show: a like is
+// a count, and a comment is text the author chose to publish.
+//
+// **Nothing is written from public input without an authenticated actor.** The routes take
+// `userId` and `tenantId` from the session and never from the body, because the one thing
+// that would turn "no RLS" into a real hole is a caller who can claim to be someone else.
+
+/// One visitor's like on a published asset.
+///
+/// The unique key is `(assetId, userId)`, which is what makes the like idempotent: pressing the
+/// button twice is one row, so a double-click or a retried request cannot inflate a count. Unlike a
+/// counter column, that also means "did *I* like this" is a lookup rather than a second table.
+model AssetLike {
+  id      String   @id @default(uuid()) @db.Uuid
+  assetId String   @map("asset_id") @db.Uuid
+  /*
+   * The liker's workspace, named explicitly rather than `tenantId`.
+   *
+   * Everywhere else in this schema `tenant_id` IS the isolation key, so a column of that name here
+   * would read as one — and someone reaching for it as a scope would be using the *actor's* workspace
+   * as if it identified the data. It records attribution; it does not isolate anything.
+   */
+  likerTenantId String @map("liker_tenant_id") @db.Uuid
+  userId        String @map("user_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  asset PublicCatalogEntry @relation(fields: [assetId], references: [assetId], onDelete: Cascade)
+
+  @@unique([assetId, userId])
+  @@index([assetId])
+  @@index([userId, createdAt])
+  @@map("asset_likes")
+}
+
+/// A comment on a published asset.
+///
+/// Hidden rather than deleted, and that is a moderation decision rather than a soft-delete habit:
+/// an author removing their own comment should leave nothing behind, but a *moderator* removing
+/// someone else's has to leave a record of having done so, or abuse handling becomes unaccountable.
+/// `hiddenAt` is what the public read filters on; the row stays for the audit trail.
+model AssetComment {
+  id       String @id @default(uuid()) @db.Uuid
+  assetId  String @map("asset_id") @db.Uuid
+  /// The author's workspace, named explicitly rather than `tenantId` — see the note on `AssetLike`.
+  authorTenantId String @map("author_tenant_id") @db.Uuid
+  authorId       String @map("author_id") @db.Uuid
+
+  /*
+   * The author's display name and workspace name, snapshotted at write time.
+   *
+   * Denormalized for exactly the reason `PublicCatalogEntry.tenantName` is: `users` is protected by
+   * tenant-scoped RLS, so a visitor in one workspace reading a comment left by another cannot join to
+   * it. Without this column the thread would have to render anonymous authors or issue a query that
+   * RLS is designed to refuse.
+   *
+   * It is a snapshot rather than a derived value, with the consequence that a rename does not
+   * retroactively rewrite old comments. That is the normal trade for a public projection, and the
+   * alternative — a name that changes under a comment someone already replied to — is worse.
+   */
+  authorName       String @map("author_name") @db.VarChar(120)
+  authorTenantName String @map("author_tenant_name") @db.VarChar(120)
+
+  body String @db.VarChar(2000)
+
+  /// Null while visible. Set by the author (self-delete) or by the asset's owning workspace.
+  hiddenAt     DateTime? @map("hidden_at") @db.Timestamptz(6)
+  hiddenById   String?   @map("hidden_by_id") @db.Uuid
+  /// Why it was hidden, when a moderator did it. Shown to the author, so a removal is explained.
+  hiddenReason String?   @map("hidden_reason") @db.VarChar(200)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  asset PublicCatalogEntry @relation(fields: [assetId], references: [assetId], onDelete: Cascade)
+
+  /// Ascending with the asset, because a thread is read oldest-first.
+  @@index([assetId, createdAt])
+  @@index([authorId, createdAt])
+  @@map("asset_comments")
 }
 
 /// §5.1 APIKey — only a salted hash is persisted; the raw key is shown once

@@ -10,7 +10,9 @@ import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../src/env';
 import { STUDIO_TEST_ENV } from './harness';
 /** A complete, valid environment, with one field overridable per test. */
-function env(overrides: Record<string, string | undefined> = {}): Record<string, string | undefined> {
+function env(
+  overrides: Record<string, string | undefined> = {},
+): Record<string, string | undefined> {
   const merged: Record<string, string | undefined> = { ...STUDIO_TEST_ENV, ...overrides };
   for (const [key, value] of Object.entries(overrides)) {
     if (value === undefined) delete merged[key];
@@ -97,5 +99,43 @@ describe('Studio API environment', () => {
 
   it('names the file to check against in the failure message', () => {
     expect(() => loadEnv(env({ STUDIO_DATABASE_URL: 'not-a-url' }))).toThrow(/\.env\.example/);
+  });
+
+  it('treats a blank AI key as “no provider”, not as a credential', () => {
+    // The supported-deployment case: `ANTHROPIC_API_KEY=` in a .env file is how an operator writes
+    // "I am not using the AI features", and it must degrade rather than fail the boot.
+    const parsed = loadEnv(env({ ANTHROPIC_API_KEY: '' }));
+
+    expect(parsed.ANTHROPIC_API_KEY).toBeUndefined();
+    // The rest of the AI settings still resolve, so the audit path can read them.
+    expect(parsed.ANTHROPIC_TIMEOUT_MS).toBe(60_000);
+    expect(parsed.STUDIO_AI_RATE_LIMIT_PER_MINUTE).toBe(30);
+  });
+
+  it('defaults the model to a dated snapshot, not a floating alias', () => {
+    // §7.5's reproducibility guarantee rests on this: an alias means the Copilot's behaviour changes
+    // without a commit, and a stored CopilotMessage can no longer be replayed.
+    expect(loadEnv(env({ ANTHROPIC_MODEL: undefined })).ANTHROPIC_MODEL).toBe(
+      'claude-sonnet-4-5-20250929',
+    );
+    // An operator may still pin their own, which is why this is a setting rather than a constant.
+    expect(loadEnv(env({ ANTHROPIC_MODEL: 'claude-haiku-4-5-20251001' })).ANTHROPIC_MODEL).toBe(
+      'claude-haiku-4-5-20251001',
+    );
+  });
+
+  it('refuses an AI timeout too tight to complete a multi-object instruction', () => {
+    // §7.2 asks the model to reason over a scene summary and emit several tool calls, so a
+    // sub-second ceiling times out on exactly the instructions the Copilot exists for. Refused at
+    // boot rather than discovered as a mystery failure.
+    expect(() => loadEnv(env({ ANTHROPIC_TIMEOUT_MS: '50' }))).toThrow(/ANTHROPIC_TIMEOUT_MS/);
+  });
+
+  it('refuses a per-tenant AI rate limit below one', () => {
+    // Zero would read as "no AI" while leaving the feature enabled — a kill switch with the wrong
+    // label. Disabling a feature is FR-18.1's flag, not a rate limit of zero.
+    expect(() => loadEnv(env({ STUDIO_AI_RATE_LIMIT_PER_MINUTE: '0' }))).toThrow(
+      /STUDIO_AI_RATE_LIMIT_PER_MINUTE/,
+    );
   });
 });

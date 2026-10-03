@@ -30,8 +30,11 @@ if [ ! -f docker/certs/void-space.crt ]; then
 fi
 
 # --- 2. containers ----------------------------------------------------------
-info "starting infra + edge (postgres, redis, ipfs, anvil, nginx)"
+info "starting VOID·SPACE infra + edge (postgres, redis, ipfs, anvil, nginx)"
 docker compose --profile infra --profile edge up -d
+
+info "starting VOID·STUDIO infra + edge (studio-postgres, studio-redis, studio-ipfs, studio-nginx)"
+docker compose -f docker-compose.studio.yml up -d
 
 # --- 3. readiness -----------------------------------------------------------
 wait_for_service() {
@@ -47,19 +50,43 @@ wait_for_service() {
   fail "${service} did not become ready in time"
 }
 
+wait_for_studio_service() {
+  local service="$1" probe="$2" attempts="${3:-60}"
+  info "waiting for studio ${service} to become ready"
+  for _ in $(seq 1 "${attempts}"); do
+    if docker compose -f docker-compose.studio.yml exec -T "${service}" sh -c "${probe}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  docker compose -f docker-compose.studio.yml logs --tail=40 "${service}" || true
+  fail "${service} did not become ready in time"
+}
+
 wait_for_service postgres "pg_isready -U ${POSTGRES_USER:-voidspace} -d ${POSTGRES_DB:-voidspace}"
 wait_for_service redis "redis-cli ping"
 wait_for_service anvil "cast block-number --rpc-url http://localhost:8545"
+wait_for_studio_service studio-postgres "pg_isready -U ${STUDIO_POSTGRES_USER:-voidstudio} -d ${STUDIO_POSTGRES_DB:-voidstudio}"
+wait_for_studio_service studio-redis "redis-cli ping"
 
-# --- 4. database ------------------------------------------------------------
-info "generating Prisma client"
+# --- 4. databases -----------------------------------------------------------
+info "generating VOID·SPACE Prisma client"
 pnpm --silent db:generate
 
-info "applying database migrations"
+info "applying VOID·SPACE database migrations"
 pnpm --silent db:migrate
 
-info "applying Row-Level Security policies and grants"
+info "applying VOID·SPACE Row-Level Security policies and grants"
 pnpm --silent db:rls
+
+info "generating VOID·STUDIO Prisma client"
+pnpm --silent studio:db:generate
+
+info "applying VOID·STUDIO database migrations"
+pnpm --silent studio:db:migrate
+
+info "applying VOID·STUDIO Row-Level Security policies and grants"
+pnpm --silent studio:db:rls
 
 # --- 5. smart contract ------------------------------------------------------
 CONTRACT_STATE="${ROOT_DIR}/packages/contracts/.contracts-state.json"
@@ -98,13 +125,18 @@ fi
 
 cat <<'EOF'
 
-  ✔ local stack is up.
+  ✔ local stack is up (VOID·SPACE & VOID·STUDIO).
 
-    next:  pnpm dev         # api + worker + web in watch mode
+    next:  pnpm dev         # starts VOID·SPACE + VOID·STUDIO together in watch mode
            pnpm db:seed     # demo tenant, users and sample assets
 
-    edge:  https://localhost            (self-signed certificate)
-           https://localhost/api/v1/health
-    ipfs:  http://localhost:8080/ipfs/<cid>   (cached by nginx)
+    VOID·SPACE:
+      web:   http://localhost:3000   (or https://localhost)
+      api:   http://localhost:4000   (or https://localhost/api/v1/health)
+      ipfs:  http://localhost:8080/ipfs/<cid>
+
+    VOID·STUDIO:
+      web:   http://localhost:5007   (or https://localhost:8443)
+      api:   http://localhost:4100/studio/api/v1/health
 
 EOF

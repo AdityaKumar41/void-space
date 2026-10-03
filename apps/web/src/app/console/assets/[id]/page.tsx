@@ -26,6 +26,8 @@ import {
   shortId,
 } from '../../../../lib/format';
 import { ModelViewer } from '../../../../components/model-viewer';
+import { AssetIntegrityPanel } from '../../../../components/asset-integrity-panel';
+import { type DecodedGeometry, type SceneSummary } from '../../../../lib/geometry';
 import { CopyButton } from '../../../../components/copy-button';
 import { useToast } from '../../../../components/toast';
 import { Panel } from '../../../../components/ui/card';
@@ -33,6 +35,7 @@ import { StatusChip, Tag } from '../../../../components/ui/chip';
 import { ErrorNote, LoadingBlock } from '../../../../components/ui/feedback';
 import { BackLink } from '../../../../components/ui/layout';
 import { StatCell, StatRow, PersonCell } from '../../../../components/console-kit';
+import { VoidStudioLaunchButton } from '../../../../components/studio-launch';
 
 interface AssetDetailView {
   readonly id: string;
@@ -154,6 +157,8 @@ export default function AssetConsolePage() {
   const [licenseType, setLicenseType] = useState('Commercial-Use');
   const [petition, setPetition] = useState<{ key: string; label: string } | null>(null);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+  const [liveGeometry, setLiveGeometry] = useState<DecodedGeometry | null>(null);
+  const [liveSummary, setLiveSummary] = useState<SceneSummary | null>(null);
 
   const query = useQuery<AssetDetailView>({
     queryKey: ['asset', assetId],
@@ -232,113 +237,60 @@ export default function AssetConsolePage() {
             <span className="chip">Updated {formatRelative(asset.updatedAt)}</span>
           </div>
         </div>
-        <div className="text-right font-mono text-[12.5px] text-ink-faint">
-          {version ? `v${version.versionNumber} · ${version.format.replace(/^\./, '').toUpperCase()}` : 'no version'}
-          <div className="mt-1">asset {shortId(asset.id, 12)}</div>
+        <div className="flex flex-col items-end gap-2 text-right font-mono text-[12.5px] text-ink-faint">
+          <div>
+            {version ? `v${version.versionNumber} · ${version.format.replace(/^\./, '').toUpperCase()}` : 'no version'}
+            <div className="mt-1">asset {shortId(asset.id, 12)}</div>
+          </div>
+          <VoidStudioLaunchButton
+            assetId={asset.id}
+            name={asset.name}
+            modelUrl={version?.gatewayUrl ?? undefined}
+            variant="secondary"
+            size="sm"
+          >
+            Edit in Void Studio
+          </VoidStudioLaunchButton>
         </div>
       </div>
 
       {error ? <ErrorNote message={error.message} code={error.code} /> : null}
 
       {/*
-       * The stage, full width.
-       *
-       * It sat inside the two-column grid, which gave the viewer 61% of the page while the metadata
-       * panels took the rest — and a 3D file is the one thing on this screen that cannot be scrolled,
-       * zoomed or rearranged to fit a narrow column. The inverse of the usual rule applies: the object
-       * gets the whole width, and the text about it wraps.
-       *
-       * Full width also means the toolbar fits on one row, so the controls cost about 40px instead of
-       * stacking into three rows taller than the model.
+      {/*
+       * 50/50 Side-by-side Layout:
+       * Left: 3D Viewport with generous canvas height (580px - 690px)
+       * Right: Dedicated Integrity Panel (Polygons, Heights, Dimensions, Topology, Cryptographic Proof)
        */}
-      <section className="relative overflow-hidden rounded-card border border-hairline bg-surface shadow-panel animate-rise animate-rise mb-5 overflow-hidden">
-        <div className="h-[clamp(420px,62vh,760px)]">
-          <ModelViewer
-            cid={version?.ipfsCid ?? null}
-            format={version?.format ?? '.glb'}
-            label={asset.name}
-            dimensions={version?.dimensions ?? null}
-            recordedPolycount={version?.polycount ?? null}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+        <section className="lg:col-span-6 xl:col-span-7 flex flex-col rounded-card border border-hairline bg-surface shadow-panel overflow-hidden">
+          <div className="h-[580px] lg:h-[640px] xl:h-[690px] w-full">
+            <ModelViewer
+              cid={version?.ipfsCid ?? null}
+              format={version?.format ?? '.glb'}
+              label={asset.name}
+              dimensions={version?.dimensions ?? null}
+              recordedPolycount={version?.polycount ?? null}
+              onGeometryDecoded={(geom, summ) => {
+                setLiveGeometry(geom);
+                setLiveSummary(summ);
+              }}
+            />
+          </div>
+        </section>
+
+        <div className="lg:col-span-6 xl:col-span-5 flex flex-col">
+          <AssetIntegrityPanel
+            asset={asset}
+            version={version}
+            liveGeometry={liveGeometry}
+            liveSummary={liveSummary}
           />
         </div>
-      </section>
+      </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
-        <div className="space-y-5">
-          <Panel title="Integrity" right="FR-8.1 / FR-9.6">
-            <StatRow>
-              <StatCell
-                label="Polycount"
-                value={formatNumber(version?.polycount ?? null)}
-                hint="measured on ingest"
-              />
-              <StatCell label="Size" value={formatBytes(version?.sizeBytes ?? 0)} />
-              <StatCell
-                label="Pin state"
-                value={version?.pinStatus ?? '—'}
-                hint="IPFS"
-                tone={version?.pinStatus === 'pinned' ? 'forest' : 'plain'}
-              />
-              <StatCell label="Versions" value={String(asset.versions.length)} hint="immutable history" />
-            </StatRow>
-            <div className="h-px w-full bg-hairline" />
-            <dl className="px-5 py-3">
-              <div className="flex justify-between gap-4 py-1">
-                <dt className="text-[12px] tracking-[0.01em] text-ink-faint">CID</dt>
-                <dd className="font-mono text-[12px] text-ink-dim truncate" title={version?.ipfsCid ?? ''}>
-                  {version?.ipfsCid ?? '—'}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-4 py-1">
-                <dt className="text-[12px] tracking-[0.01em] text-ink-faint">Gateway</dt>
-                <dd className="font-mono text-[12px] text-ink-dim truncate">
-                  {version?.gatewayUrl ? (
-                    <a className="link-underline" href={version.gatewayUrl} target="_blank" rel="noreferrer">
-                      {version.gatewayUrl}
-                    </a>
-                  ) : (
-                    '—'
-                  )}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-4 py-1">
-                <dt className="text-[12px] tracking-[0.01em] text-ink-faint">Licence token</dt>
-                <dd className="font-mono text-[12px] text-ink-dim">
-                  {asset.license
-                    ? `#${asset.license.tokenId} · ${asset.license.status}`
-                    : 'Not licensed'}
-                </dd>
-              </div>
-              {asset.license ? (
-                <div className="flex justify-between gap-4 py-1">
-                  <dt className="text-[12px] tracking-[0.01em] text-ink-faint">Tx</dt>
-                  <dd
-                    className="font-mono text-[12px] text-ink-dim truncate"
-                    title={asset.license.txHash ?? 'mint transaction not observed'}
-                  >
-                    {asset.license.txHash ?? 'NOT OBSERVED'} / GAS {asset.license.gasUsed ?? '—'}
-                  </dd>
-                </div>
-              ) : null}
-              <div className="flex flex-wrap justify-end gap-2 py-2">
-                <CopyButton label="CID" value={version?.ipfsCid ?? null} />
-                <CopyButton label="Transaction hash" value={asset.license?.txHash ?? null} />
-                <CopyButton label="Licence token" value={asset.license?.tokenId ?? null} />
-              </div>
-              <div className="flex justify-between gap-4 py-1">
-                <dt className="text-[12px] tracking-[0.01em] text-ink-faint">XR module</dt>
-                <dd className="font-mono text-[12px] text-ink-dim truncate">
-                  {asset.xrModuleUrl ? (
-                    <a className="link-underline" href={asset.xrModuleUrl} target="_blank" rel="noreferrer">
-                      {asset.xrManifestRef ?? asset.xrModuleUrl}
-                    </a>
-                  ) : (
-                    'Not published'
-                  )}
-                </dd>
-              </div>
-            </dl>
-          </Panel>
+      <div className="grid gap-5 lg:grid-cols-12 mt-2">
+        <div className="lg:col-span-6 xl:col-span-7 space-y-5">
 
           <Panel title="Review history" right={`${asset.decisions.length} decisions`}>
             {asset.decisions.length === 0 ? (
@@ -439,7 +391,7 @@ export default function AssetConsolePage() {
           </Panel>
         </div>
 
-        <div className="space-y-4">
+        <div className="lg:col-span-6 xl:col-span-5 space-y-4">
           <Panel
             title="AI classification"
             right={

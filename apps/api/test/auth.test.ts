@@ -292,4 +292,36 @@ describe('FR-2.7 session invalidation', () => {
     });
     expect(after.statusCode).toBe(401);
   });
+
+  it('exchanges session for a short-lived VOID·STUDIO bearer token', async () => {
+    const session = await login(context.app, DEMO.users.auroraCreator);
+
+    // Unauthenticated call is refused
+    const unauth = await context.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/studio-token',
+    });
+    expect(unauth.statusCode).toBe(401);
+
+    // Authenticated call returns signed token and studio URL
+    const response = await context.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/studio-token',
+      headers: { cookie: cookieHeader(session.cookies, 'vs_access') },
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      accessToken: string;
+      studioUrl: string;
+      user: { id: string; email: string; roles: string[] };
+      tenant: { id: string; slug: string };
+    };
+    expect(body.accessToken).toBeDefined();
+    expect(typeof body.accessToken).toBe('string');
+    expect(body.studioUrl).toBeDefined();
+    expect(body.user.email).toBe(DEMO.users.auroraCreator);
+    expect(body.user.roles).toContain('Creator');
+    expect(body.tenant.slug).toBe(DEMO.tenants.auroraSlug);
+  });
 });
+

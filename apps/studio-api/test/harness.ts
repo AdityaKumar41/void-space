@@ -12,7 +12,10 @@
  * issued (`resolveSession` throws on a missing or invalid token). Coverage that needs real rows
  * belongs in the publish-handoff integration suite against a migrated database, not here.
  */
-import type { StudioApp } from '../src/app';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import type { StudioApp, StudioAppOptions } from '../src/app';
 import { loadEnv, type StudioApiEnv } from '../src/env';
 
 /**
@@ -54,8 +57,49 @@ export function applyStudioTestEnv(
 /** Builds the real application factory over the test environment. */
 export async function buildTestApp(
   overrides: Readonly<Record<string, string | undefined>> = {},
+  options: StudioAppOptions = {},
 ): Promise<StudioApp> {
   applyStudioTestEnv(overrides);
   const { buildStudioApp } = await import('../src/app');
-  return buildStudioApp(loadEnv(process.env));
+  return buildStudioApp(loadEnv(process.env), options);
+}
+
+/**
+ * The repository-root `.env`, parsed into a plain object.
+ *
+ * For the suites that need the **real** data tier rather than the unreachable URLs above. It exists
+ * because `.env` is deliberately gitignored and nothing in the default test path loads it — so a
+ * database-backed suite that read `process.env` would work on a machine that had sourced `.env` and
+ * mysteriously fail on one that had not.
+ *
+ * The parser is a deliberate subset of dotenv: `KEY=value`, `#` comments, optional surrounding quotes.
+ * It is the same one `packages/studio-db/vitest.config.ts` uses, and it is duplicated there rather than
+ * shared because that config runs *before* these modules exist — importing this file from a vitest
+ * config would evaluate it outside the test environment it is describing.
+ */
+export function rootEnv(): Record<string, string> {
+  // `test/` → `apps/studio-api/` → `apps/` → the repository root, where `.env` lives.
+  const path = fileURLToPath(new URL('../../../.env', import.meta.url));
+  if (!existsSync(path)) return {};
+
+  const parsed: Record<string, string> = {};
+  for (const rawLine of readFileSync(path, 'utf8').split('\n')) {
+    const line = rawLine.trim();
+    if (line === '' || line.startsWith('#')) continue;
+
+    const separator = line.indexOf('=');
+    if (separator === -1) continue;
+
+    const key = line.slice(0, separator).trim();
+    let value = line.slice(separator + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    parsed[key] = value;
+  }
+
+  return parsed;
 }

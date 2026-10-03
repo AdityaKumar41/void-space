@@ -20,6 +20,7 @@ import { z } from 'zod';
 import type { VoidSpaceBridge } from '../lib/gateway';
 import { viaUpstream } from '../lib/gateway';
 import { parseQuery } from '../lib/http';
+import { resolveSession } from '../lib/session';
 
 const catalogQuerySchema = z.object({
   search: z.string().max(200).optional(),
@@ -153,5 +154,30 @@ export async function bridgeRoutes(
       items: page.items.map((item) => ({ ...item, url: bridge.links.assetUrl(item.assetId) })),
       consoleUrl: bridge.links.consoleUrl,
     };
+  });
+
+  /**
+   * Session verification probe for the Studio editor.
+   * If an Authorization header is present with a valid VOID·SPACE token,
+   * returns authenticated user and tenant info. Otherwise returns { authenticated: false }.
+   */
+  app.get('/auth/session', async (request: FastifyRequest) => {
+    try {
+      const session = await resolveSession(app, request);
+      return {
+        authenticated: true,
+        user: {
+          id: session.userId,
+          displayName: session.displayName,
+          roles: session.roles,
+          permissions: session.permissions,
+        },
+        tenant: {
+          id: session.tenantId,
+        },
+      };
+    } catch {
+      return { authenticated: false };
+    }
   });
 }

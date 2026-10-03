@@ -100,6 +100,98 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.43)
 
+  apps/studio-api:
+    dependencies:
+      '@fastify/cors':
+        specifier: ^9.0.1
+        version: 9.0.1
+      '@fastify/jwt':
+        specifier: ^8.0.1
+        version: 8.0.1
+      '@fastify/multipart':
+        specifier: ^8.3.1
+        version: 8.3.1
+      '@void-space/studio-ai':
+        specifier: workspace:*
+        version: link:../../packages/studio-ai
+      '@void-space/studio-db':
+        specifier: workspace:*
+        version: link:../../packages/studio-db
+      '@void-space/studio-engine':
+        specifier: workspace:*
+        version: link:../../packages/studio-engine
+      '@void-space/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@void-space/voidspace-client':
+        specifier: workspace:*
+        version: link:../../packages/voidspace-client
+      fastify:
+        specifier: ^4.29.0
+        version: 4.29.1
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.10
+        version: 20.19.43
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.43)
+
+  apps/studio-worker:
+    dependencies:
+      '@void-space/studio-ai':
+        specifier: workspace:*
+        version: link:../../packages/studio-ai
+      '@void-space/studio-db':
+        specifier: workspace:*
+        version: link:../../packages/studio-db
+      '@void-space/studio-engine':
+        specifier: workspace:*
+        version: link:../../packages/studio-engine
+      '@void-space/types':
+        specifier: workspace:*
+        version: link:../../packages/types
+      '@void-space/voidspace-client':
+        specifier: workspace:*
+        version: link:../../packages/voidspace-client
+      bullmq:
+        specifier: ^5.34.10
+        version: 5.81.5
+      ioredis:
+        specifier: ^5.4.2
+        version: 5.11.1
+      pino:
+        specifier: ^9.5.0
+        version: 9.14.0
+      pino-pretty:
+        specifier: ^13.0.0
+        version: 13.1.3
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.10
+        version: 20.19.43
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.43)
+
   apps/web:
     dependencies:
       '@react-three/drei':
@@ -291,6 +383,31 @@ importers:
       '@types/node':
         specifier: ^20.17.10
         version: 20.19.43
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.43)
+
+  packages/studio-db:
+    dependencies:
+      '@prisma/client':
+        specifier: ^6.1.0
+        version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.17.10
+        version: 20.19.43
+      prisma:
+        specifier: ^6.1.0
+        version: 6.19.3(typescript@5.9.3)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
       typescript:
         specifier: ^5.6.3
         version: 5.9.3

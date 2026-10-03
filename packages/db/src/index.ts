@@ -27,12 +27,7 @@ export {
   type WithTenantOptions,
 } from './tenant';
 
-export {
-  recordAudit,
-  recordStatusChange,
-  type AuditEventInput,
-  type AuditLogRow,
-} from './audit';
+export { recordAudit, recordStatusChange, type AuditEventInput, type AuditLogRow } from './audit';
 
 /** Deterministic, valid GLB fixtures — used by the seed and, in tests, by the upload path. */
 export { buildGlbFixture } from './glb-fixture';
@@ -79,6 +74,23 @@ export {
   type PublicCatalogItem,
   type PublicCatalogSort,
 } from './public-catalog';
+
+export {
+  engagementSummaryFor,
+  engagementSummaries,
+  setLike,
+  isEngageable,
+  createComment,
+  listComments,
+  hideComment,
+  hiddenCommentCount,
+  moderationLog,
+  CommentModerationError,
+  CommentNotFoundError,
+  type SocialActor,
+  type EngagementSummary,
+  type CommentView,
+} from './social';
 export { loadRootEnv, migrateDatabaseUrl, REPO_ROOT } from './env';
 
 // Prisma enums/types so consumers never import from the generated path directly.

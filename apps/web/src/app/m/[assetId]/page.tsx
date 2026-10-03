@@ -26,6 +26,8 @@ import {
   thumbnailUrl,
 } from '../../../lib/public-api';
 import { CheckIcon } from '../../../components/ui/icons';
+import { VoidStudioLaunchButton } from '../../../components/studio-launch';
+import { MarketplaceEngagement } from '../../../components/marketplace-engagement';
 
 export const dynamic = 'force-dynamic';
 
@@ -280,6 +282,8 @@ export default async function ModelPage({ params }: PageProps) {
                 <p className="text-pretty border-l-2 border-l-[rgba(139,108,246,0.5)] pl-3.5 text-[13.5px] leading-[1.65] text-ink-dim">{item.licenseTerms ?? 'No additional terms were recorded.'}</p>
               </div>
             </div>
+
+            <MarketplaceEngagement assetId={item.assetId} />
           </div>
 
           {/* --------------------------------------------------------------------- rail */}
@@ -319,6 +323,17 @@ export default async function ModelPage({ params }: PageProps) {
                   Console
                 </Link>
               </div>
+
+              <VoidStudioLaunchButton
+                assetId={item.assetId}
+                name={item.name}
+                modelUrl={gatewayUrl(item.ipfsCid)}
+                variant="secondary"
+                size="md"
+                className="mt-2 w-full justify-center"
+              >
+                Remix in Void Studio
+              </VoidStudioLaunchButton>
 
               <p className="mt-4 text-[12px] leading-relaxed" style={{ color: 'var(--vs-fg-faint)' }}>
                 Downloading fetches the exact bytes the content address commits to. Nothing is served

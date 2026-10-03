@@ -48,20 +48,50 @@ function buildClient(url: string | undefined, label: string): PrismaClient {
   });
 }
 
+let _studioPrismaInstance: PrismaClient | undefined;
+let _studioPlatformPrismaInstance: PrismaClient | undefined;
+
+function getStudioPrisma(): PrismaClient {
+  if (!_studioPrismaInstance) {
+    _studioPrismaInstance =
+      globalForPrisma.__voidStudioPrisma ??
+      buildClient(process.env.STUDIO_DATABASE_URL, 'STUDIO_DATABASE_URL');
+    if (process.env.NODE_ENV !== 'production') {
+      globalForPrisma.__voidStudioPrisma = _studioPrismaInstance;
+    }
+  }
+  return _studioPrismaInstance;
+}
+
+function getStudioPlatformPrisma(): PrismaClient {
+  if (!_studioPlatformPrismaInstance) {
+    _studioPlatformPrismaInstance =
+      globalForPrisma.__voidStudioPlatformPrisma ??
+      buildClient(process.env.STUDIO_PLATFORM_DATABASE_URL, 'STUDIO_PLATFORM_DATABASE_URL');
+    if (process.env.NODE_ENV !== 'production') {
+      globalForPrisma.__voidStudioPlatformPrisma = _studioPlatformPrismaInstance;
+    }
+  }
+  return _studioPlatformPrismaInstance;
+}
+
 /** Runtime client: subject to RLS. Use inside `withStudioTenant(...)` only. */
-export const studioPrisma: PrismaClient =
-  globalForPrisma.__voidStudioPrisma ??
-  buildClient(process.env.STUDIO_DATABASE_URL, 'STUDIO_DATABASE_URL');
+export const studioPrisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const client = getStudioPrisma();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 /** Administrative client: BYPASSRLS, narrow privileges. Use inside `withStudioPlatform(...)`. */
-export const studioPlatformPrisma: PrismaClient =
-  globalForPrisma.__voidStudioPlatformPrisma ??
-  buildClient(process.env.STUDIO_PLATFORM_DATABASE_URL, 'STUDIO_PLATFORM_DATABASE_URL');
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.__voidStudioPrisma = studioPrisma;
-  globalForPrisma.__voidStudioPlatformPrisma = studioPlatformPrisma;
-}
+export const studioPlatformPrisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const client = getStudioPlatformPrisma();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 export interface DatabaseRoleInfo {
   readonly currentUser: string;

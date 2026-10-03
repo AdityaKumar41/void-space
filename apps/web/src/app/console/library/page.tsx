@@ -35,6 +35,7 @@ import {
 } from '../../../components/console-kit';
 import { Panel } from '../../../components/ui/card';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
+import { VoidStudioLaunchButton } from '../../../components/studio-launch';
 
 interface AssetSummaryView {
   readonly id: string;
@@ -199,16 +200,21 @@ function LibraryView({
             : 'Querying'
         }
         actions={
-          canUpload ? (
-            <button
-              type="button"
-              className={uploading ? 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12' : 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm'}
-              aria-expanded={uploading}
-              onClick={() => setUploading((value) => !value)}
-            >
-              {uploading ? 'Close intake' : 'Ingest an asset'}
-            </button>
-          ) : null
+          <div className="flex items-center gap-2">
+            <VoidStudioLaunchButton variant="outline" size="md">
+              Create in Studio
+            </VoidStudioLaunchButton>
+            {canUpload ? (
+              <button
+                type="button"
+                className={uploading ? 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12' : 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm'}
+                aria-expanded={uploading}
+                onClick={() => setUploading((value) => !value)}
+              >
+                {uploading ? 'Close intake' : 'Ingest an asset'}
+              </button>
+            ) : null}
+          </div>
         }
       />
 

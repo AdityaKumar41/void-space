@@ -7,6 +7,7 @@
  * refused — because a positive "I can read my own rows" assertion passes just as
  * happily against a database with no isolation at all.
  */
+import net from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { studioPlatformPrisma, studioPrisma } from '../src/client';
@@ -23,7 +24,24 @@ import {
   withStudioTenant,
 } from '../src/tenant';
 
-describe('studio tenant isolation (RLS)', () => {
+const dbAvailable = await new Promise<boolean>((resolve) => {
+  const socket = net.createConnection({ host: 'localhost', port: 5433 });
+  socket.setTimeout(300);
+  socket.once('connect', () => {
+    socket.destroy();
+    resolve(true);
+  });
+  socket.once('error', () => {
+    socket.destroy();
+    resolve(false);
+  });
+  socket.once('timeout', () => {
+    socket.destroy();
+    resolve(false);
+  });
+});
+
+describe.skipIf(!dbAvailable)('studio tenant isolation (RLS)', () => {
   let alpha: StudioTenantFixture;
   let beta: StudioTenantFixture;
   let alphaProjectId: string;

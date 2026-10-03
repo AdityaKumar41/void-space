@@ -29,9 +29,12 @@ import { SessionProvider, useSession } from '../lib/session';
 import type { SessionView } from '../lib/session-types';
 import { Avatar } from './ui/avatar';
 import { Chip } from './ui/chip';
-import { CubeIcon } from './ui/icons';
+import { CubeIcon, SparklesIcon } from './ui/icons';
 import { BellIcon, SearchIcon } from './console-kit';
 import { ErrorNote } from './ui/feedback';
+import { VoidStudioLaunchButton } from './studio-launch';
+
+export { VoidStudioLaunchButton };
 
 interface NavItem {
   readonly href: string;
@@ -336,6 +339,7 @@ function Header() {
           <span className="hidden xl:inline-flex">
             <WorkspaceSwitcher />
           </span>
+          <VoidStudioLaunchButton variant="nav" />
           <NotificationBell />
           <AccountMenu />
         </div>

@@ -162,4 +162,11 @@ describe('the Studio API surface', () => {
     expect(status.provenance.tokenId).toBeTruthy();
     expect(status.provenance.url).toBe(`https://void.example/catalog/${uploaded.id}`);
   });
+
+  it('answers /auth/session with unauthenticated state when no token is provided', async () => {
+    const response = await app.inject({ method: 'GET', url: '/studio/api/v1/auth/session' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ authenticated: false });
+  });
 });
+

@@ -55,9 +55,33 @@ export async function createStudioTenant(
   return { tenantId, userId, name };
 }
 
-/** Removes a tenant and, by cascade, every row scoped to it. */
+/**
+ * Removes a tenant and every row belonging to it.
+ *
+ * **Why this is not just `tenant.delete()`.** Two of this schema's relations are deliberately
+ * `Restrict` rather than `Cascade` — `publish_records.createdById` and `copilot_sessions.userId` point
+ * at `users`, and `users` cascades from `tenants` — so deleting the tenant first fails on a foreign key
+ * the moment the tenant has published anything or run the Copilot. That is the right schema behaviour:
+ * an audit trail is not something to be deleted as a side effect of removing its author. It does mean
+ * the cleanup has to be explicit, and it has to happen in dependency order.
+ *
+ * **Why it needs two clients.** `withStudioPlatform` is documented as unable to touch publish, copilot
+ * or job data — denied at the database-permission level by §5.3, not by convention — so the
+ * tenant-scoped deletes cannot be done there. Every `where` below is empty on purpose: the RLS policies
+ * already scope the transaction to this tenant, and writing the filter out again would be a second
+ * place for the tenant rule to be wrong.
+ */
 export async function destroyStudioTenant(tenantId: string): Promise<void> {
+  await withStudioTenant(tenantId, async (db) => {
+    await db.publishRecord.deleteMany({ where: {} });
+    // Cascades to copilot_messages, which is why they are not listed separately.
+    await db.copilotSession.deleteMany({ where: {} });
+    // Cascades to scenes, versions, jobs, meshes, textures, materials and animation clips.
+    await db.project.deleteMany({ where: {} });
+  });
+
   await withStudioPlatform(async (db) => {
+    await db.user.deleteMany({ where: { tenantId } });
     await db.tenant.deleteMany({ where: { id: tenantId } });
   });
 }

@@ -23,6 +23,8 @@ import {buildLeafMeshDefaultScene} from './leafmesh_default_scene.js'
 import './leafmesh_uvsource_support.js'
 import {LEAFMESH_MODELING_OPS} from './modeling_ops.js'
 import {LEAFMESH_OBJ_FORMAT} from './obj.js'
+import {LEAFMESH_GLB_FORMAT} from './glb.js'
+import {LEAFMESH_STL_FORMAT} from './stl.js'
 import {LEAFMESH_SELECT_OPS} from './select_ops.js'
 import {LeafMeshToolMode} from './toolmode.js'
 import {LeafMeshTransType} from './transtype.js'
@@ -56,13 +58,19 @@ export function register(api: AddonAPI<IAddon>) {
     capabilities    : LEAFMESH_CAPABILITIES,
     usesMaterial    : true,
     vertexAttrs     : LEAFMESH_VERTEX_ATTRS,
-    importExtensions: LEAFMESH_OBJ_FORMAT.extensions,
+    importExtensions: [
+      ...LEAFMESH_OBJ_FORMAT.extensions,
+      ...LEAFMESH_GLB_FORMAT.extensions,
+      ...LEAFMESH_STL_FORMAT.extensions,
+    ],
   })
 
   // The format registry is what a file dialog reads; the kind's
   // `importExtensions` above is what a "which kind claims this file" query
   // reads. Both point at the same parser (P11 §6).
   api.registerFileFormat(LEAFMESH_OBJ_FORMAT)
+  api.registerFileFormat(LEAFMESH_GLB_FORMAT)
+  api.registerFileFormat(LEAFMESH_STL_FORMAT)
 
   // The modeling toolmode, its selection ops (P12 step 1) and its topology ops
   // (step 4). One `register` dispatch each — no module-scope side effect.
