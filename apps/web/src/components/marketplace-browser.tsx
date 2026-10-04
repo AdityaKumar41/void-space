@@ -30,6 +30,7 @@ import { FilterChip } from './ui/chip';
 import { SearchField, Select } from './ui/field';
 import { EmptyState, LoadingBlock } from './ui/feedback';
 import { MarketCard } from './market-card';
+import { Reveal } from './reveal';
 
 export interface MarketplaceBrowserProps {
   readonly initial: PublicCatalogPage;
@@ -212,8 +213,10 @@ export function MarketplaceBrowser({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {items.map((item) => (
-              <MarketCard key={item.assetId} item={item} />
+            {items.map((item, position) => (
+              <Reveal key={item.assetId} delay={(position % 4) * 60}>
+                <MarketCard item={item} />
+              </Reveal>
             ))}
           </div>
         )}

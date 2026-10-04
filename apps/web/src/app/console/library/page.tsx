@@ -36,6 +36,7 @@ import {
 import { Panel } from '../../../components/ui/card';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
 import { VoidStudioLaunchButton } from '../../../components/studio-launch';
+import { Reveal } from '../../../components/reveal';
 
 interface AssetSummaryView {
   readonly id: string;
@@ -287,29 +288,30 @@ function LibraryView({
               </div>
             ) : (
               <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {assets.data.items.map((asset) => {
+                {assets.data.items.map((asset, position) => {
                   const version = asset.currentVersion;
                   const pinned = version?.pinStatus === 'pinned';
 
                   return (
-                    <ItemCard
-                      key={asset.id}
-                      assetId={asset.id}
-                      name={asset.name}
-                      href={`/console/assets/${asset.id}`}
-                      collection={`${asset.category}${
-                        asset.creator ? ` · ${asset.creator.fullName}` : ''
-                      }`}
-                      cid={version?.ipfsCid ?? null}
-                      polycount={version?.polycount ?? null}
-                      sizeBytes={version?.sizeBytes ?? null}
-                      badge={`v${version?.versionNumber ?? '—'}`}
-                      status={asset.status}
-                      figure={`${formatNumber(version?.polycount ?? null)} tris`}
-                      figureSub={`${formatBytes(version?.sizeBytes ?? 0)} · ${
-                        pinned ? 'pinned' : (version?.pinStatus ?? 'unpinned')
-                      } · ${formatRelative(asset.updatedAt)}`}
-                    />
+                    <Reveal key={asset.id} delay={(position % 3) * 60}>
+                      <ItemCard
+                        assetId={asset.id}
+                        name={asset.name}
+                        href={`/console/assets/${asset.id}`}
+                        collection={`${asset.category}${
+                          asset.creator ? ` · ${asset.creator.fullName}` : ''
+                        }`}
+                        cid={version?.ipfsCid ?? null}
+                        polycount={version?.polycount ?? null}
+                        sizeBytes={version?.sizeBytes ?? null}
+                        badge={`v${version?.versionNumber ?? '—'}`}
+                        status={asset.status}
+                        figure={`${formatNumber(version?.polycount ?? null)} tris`}
+                        figureSub={`${formatBytes(version?.sizeBytes ?? 0)} · ${
+                          pinned ? 'pinned' : (version?.pinStatus ?? 'unpinned')
+                        } · ${formatRelative(asset.updatedAt)}`}
+                      />
+                    </Reveal>
                   );
                 })}
               </div>

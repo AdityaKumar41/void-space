@@ -21,6 +21,7 @@ import Link from 'next/link';
 
 import { HeroStage } from '../components/hero-showcase';
 import { MarketCard } from '../components/market-card';
+import { CountUp, Reveal } from '../components/reveal';
 import {
   API_REFERENCE_AVAILABLE,
   MarketFooter,
@@ -41,7 +42,7 @@ import {
 import { Container, Section, SectionHead } from '../components/ui/layout';
 import { EmptyState } from '../components/ui/feedback';
 import { Stat, StatGrid } from '../components/ui/stat';
-import { formatBytes, formatNumber } from '../lib/format';
+import { formatBytes } from '../lib/format';
 import { browseMarketplace, marketplaceStats } from '../lib/public-api';
 
 export const dynamic = 'force-dynamic';
@@ -250,7 +251,7 @@ export default async function LandingPage() {
           />
 
           <Container className="relative grid gap-14 py-16 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:items-center lg:gap-20 lg:py-24">
-            <div>
+            <Reveal>
               <span className="text-[12px] font-semibold uppercase tracking-[0.16em] text-brand">
                 3D asset lifecycle platform
               </span>
@@ -278,9 +279,11 @@ export default async function LandingPage() {
               <p className="mt-7 text-[13px] leading-relaxed text-ink-faint">
                 Runs entirely on your own hardware — no cloud account, no faucet, no paid RPC.
               </p>
-            </div>
+            </Reveal>
 
-            <HeroStage items={featured} />
+            <Reveal delay={120}>
+              <HeroStage items={featured} />
+            </Reveal>
           </Container>
         </div>
 
@@ -289,31 +292,33 @@ export default async function LandingPage() {
           // No bottom padding: the next `Section` already opens with 64–112px, and adding to it
           // produced a 200px band of nothing between the figures and the catalogue.
           <Container>
-            <div className="overflow-hidden rounded-surface border border-hairline">
-              <StatGrid columns={4}>
-                <Stat
-                  label="Models licensed"
-                  value={formatNumber(stats.published)}
-                  hint="minted on chain"
-                  tone="forest"
-                />
-                <Stat
-                  label="Triangles indexed"
-                  value={formatNumber(stats.polygons)}
-                  hint="measured, not declared"
-                />
-                <Stat
-                  label="Pinned to IPFS"
-                  value={formatBytes(Number(stats.bytes))}
-                  hint="content-addressed"
-                />
-                <Stat
-                  label="Categories"
-                  value={formatNumber(stats.categories)}
-                  hint="across the catalogue"
-                />
-              </StatGrid>
-            </div>
+            <Reveal>
+              <div className="overflow-hidden rounded-surface border border-hairline">
+                <StatGrid columns={4}>
+                  <Stat
+                    label="Models licensed"
+                    value={<CountUp value={stats.published} />}
+                    hint="minted on chain"
+                    tone="forest"
+                  />
+                  <Stat
+                    label="Triangles indexed"
+                    value={<CountUp value={stats.polygons} />}
+                    hint="measured, not declared"
+                  />
+                  <Stat
+                    label="Pinned to IPFS"
+                    value={formatBytes(Number(stats.bytes))}
+                    hint="content-addressed"
+                  />
+                  <Stat
+                    label="Categories"
+                    value={<CountUp value={stats.categories} />}
+                    hint="across the catalogue"
+                  />
+                </StatGrid>
+              </div>
+            </Reveal>
 
             <p className="mt-4 text-[12.5px] text-ink-faint">
               Read live from this workspace’s public catalogue on every request. A count that was
@@ -341,8 +346,10 @@ export default async function LandingPage() {
 
           {showroom.length > 0 ? (
             <div className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {showroom.map((item) => (
-                <MarketCard key={item.assetId} item={item} />
+              {showroom.map((item, position) => (
+                <Reveal key={item.assetId} delay={(position % 4) * 70}>
+                  <MarketCard item={item} />
+                </Reveal>
               ))}
             </div>
           ) : (
@@ -364,19 +371,21 @@ export default async function LandingPage() {
           />
 
           <ol className="mt-14 grid gap-10 md:grid-cols-2 xl:grid-cols-4">
-            {STEPS.map((step) => (
+            {STEPS.map((step, position) => (
               <li key={step.step} className="min-w-0">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-control border border-hairline bg-base text-brand">
-                    <step.icon width={18} height={18} />
-                  </span>
-                  <span className="font-mono text-[12px] text-ink-faint">{step.step}</span>
-                </div>
+                <Reveal delay={(position % 4) * 70}>
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-control border border-hairline bg-base text-brand">
+                      <step.icon width={18} height={18} />
+                    </span>
+                    <span className="font-mono text-[12px] text-ink-faint">{step.step}</span>
+                  </div>
 
-                <h3 className="mt-5 text-[17px] font-semibold tracking-[-0.015em] text-ink">
-                  {step.title}
-                </h3>
-                <p className="mt-3 text-[14px] leading-[1.7] text-ink-dim">{step.body}</p>
+                  <h3 className="mt-5 text-[17px] font-semibold tracking-[-0.015em] text-ink">
+                    {step.title}
+                  </h3>
+                  <p className="mt-3 text-[14px] leading-[1.7] text-ink-dim">{step.body}</p>
+                </Reveal>
               </li>
             ))}
           </ol>
@@ -392,19 +401,24 @@ export default async function LandingPage() {
 
           <div className="mt-14 grid gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] lg:gap-20">
             <ul className="flex flex-col gap-9">
-              {PROOF.map((item) => (
-                <li key={item.title} className="grid grid-cols-[auto_minmax(0,1fr)] gap-4">
-                  <span className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-heat-12 text-brand">
-                    <CheckIcon width={13} height={13} />
-                  </span>
-                  <div>
-                    <h3 className="text-[16px] font-semibold tracking-[-0.012em] text-ink">
-                      {item.title}
-                    </h3>
-                    <p className="mt-2.5 max-w-[62ch] text-[14px] leading-[1.7] text-ink-dim">
-                      {item.body}
-                    </p>
-                  </div>
+              {PROOF.map((item, position) => (
+                <li key={item.title}>
+                  <Reveal
+                    delay={position * 50}
+                    className="grid grid-cols-[auto_minmax(0,1fr)] gap-4"
+                  >
+                    <span className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-heat-12 text-brand">
+                      <CheckIcon width={13} height={13} />
+                    </span>
+                    <div>
+                      <h3 className="text-[16px] font-semibold tracking-[-0.012em] text-ink">
+                        {item.title}
+                      </h3>
+                      <p className="mt-2.5 max-w-[62ch] text-[14px] leading-[1.7] text-ink-dim">
+                        {item.body}
+                      </p>
+                    </div>
+                  </Reveal>
                 </li>
               ))}
             </ul>
@@ -466,8 +480,8 @@ export default async function LandingPage() {
           />
 
           <div className="mt-14 grid gap-x-10 gap-y-12 md:grid-cols-2 xl:grid-cols-3">
-            {CAPABILITIES.map((item) => (
-              <div key={item.title}>
+            {CAPABILITIES.map((item, position) => (
+              <Reveal key={item.title} delay={(position % 3) * 70}>
                 <span className="flex h-9 w-9 items-center justify-center rounded-control border border-hairline bg-base text-brand">
                   <item.icon width={17} height={17} />
                 </span>
@@ -475,7 +489,7 @@ export default async function LandingPage() {
                   {item.title}
                 </h3>
                 <p className="mt-2.5 text-[14px] leading-[1.7] text-ink-dim">{item.body}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </Section>
@@ -489,12 +503,14 @@ export default async function LandingPage() {
           />
 
           <div className="mt-14 grid gap-10 md:grid-cols-3">
-            {AUDIENCES.map((item) => (
+            {AUDIENCES.map((item, position) => (
               <div key={item.title} className="border-t border-hairline pt-6">
-                <h3 className="text-[16px] font-semibold tracking-[-0.012em] text-ink">
-                  {item.title}
-                </h3>
-                <p className="mt-3 text-[14px] leading-[1.7] text-ink-dim">{item.body}</p>
+                <Reveal delay={(position % 3) * 70}>
+                  <h3 className="text-[16px] font-semibold tracking-[-0.012em] text-ink">
+                    {item.title}
+                  </h3>
+                  <p className="mt-3 text-[14px] leading-[1.7] text-ink-dim">{item.body}</p>
+                </Reveal>
               </div>
             ))}
           </div>
@@ -542,25 +558,27 @@ export default async function LandingPage() {
             </div>
 
             <ul className="divide-y divide-hairline overflow-hidden rounded-card border border-hairline bg-base">
-              {ENDPOINTS.map((endpoint) => (
-                <li
-                  key={`${endpoint.method}-${endpoint.path}`}
-                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-5 py-4"
-                >
-                  <span
-                    className={cn(
-                      'font-mono text-[11px] font-semibold uppercase tracking-[0.08em]',
-                      endpoint.method === 'GET' ? 'text-ink-faint' : 'text-brand',
-                    )}
+              {ENDPOINTS.map((endpoint, position) => (
+                <li key={`${endpoint.method}-${endpoint.path}`}>
+                  <Reveal
+                    delay={position * 60}
+                    className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-5 py-4"
                   >
-                    {endpoint.method}
-                  </span>
-                  <code className="font-mono text-[13px] text-ink">
-                    /api/v1{endpoint.path}
-                  </code>
-                  <span className="w-full text-[12.5px] leading-relaxed text-ink-faint sm:w-auto sm:flex-1 sm:text-right">
-                    {endpoint.note}
-                  </span>
+                    <span
+                      className={cn(
+                        'font-mono text-[11px] font-semibold uppercase tracking-[0.08em]',
+                        endpoint.method === 'GET' ? 'text-ink-faint' : 'text-brand',
+                      )}
+                    >
+                      {endpoint.method}
+                    </span>
+                    <code className="font-mono text-[13px] text-ink">
+                      /api/v1{endpoint.path}
+                    </code>
+                    <span className="w-full text-[12.5px] leading-relaxed text-ink-faint sm:w-auto sm:flex-1 sm:text-right">
+                      {endpoint.note}
+                    </span>
+                  </Reveal>
                 </li>
               ))}
             </ul>
@@ -576,12 +594,14 @@ export default async function LandingPage() {
           />
 
           <div className="mt-14 grid gap-10 md:grid-cols-3">
-            {LIMITS.map((item) => (
+            {LIMITS.map((item, position) => (
               <div key={item.title} className="border-t border-hairline pt-6">
-                <h3 className="text-[16px] font-semibold tracking-[-0.012em] text-ink">
-                  {item.title}
-                </h3>
-                <p className="mt-3 text-[14px] leading-[1.7] text-ink-dim">{item.body}</p>
+                <Reveal delay={(position % 3) * 70}>
+                  <h3 className="text-[16px] font-semibold tracking-[-0.012em] text-ink">
+                    {item.title}
+                  </h3>
+                  <p className="mt-3 text-[14px] leading-[1.7] text-ink-dim">{item.body}</p>
+                </Reveal>
               </div>
             ))}
           </div>
@@ -591,7 +611,7 @@ export default async function LandingPage() {
         <Section className="relative overflow-hidden border-t border-hairline">
           <div aria-hidden className="pointer-events-none absolute inset-0 bg-heat-glow" />
 
-          <div className="relative mx-auto max-w-2xl text-center">
+          <Reveal className="relative mx-auto max-w-2xl text-center">
             <h2 className="text-balance text-[clamp(1.75rem,3.4vw,2.5rem)] font-semibold leading-[1.1] tracking-[-0.028em] text-ink">
               See a real licence before you talk to anyone.
             </h2>
@@ -607,7 +627,7 @@ export default async function LandingPage() {
                 Sign in to the console
               </Link>
             </div>
-          </div>
+          </Reveal>
         </Section>
 
       </main>

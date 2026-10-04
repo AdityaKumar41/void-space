@@ -34,6 +34,7 @@ import {
   Toolbar,
   type RailGroup,
 } from '../../../components/console-kit';
+import { Reveal } from '../../../components/reveal';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
 
 interface CatalogItem {
@@ -262,32 +263,33 @@ export default function ConsoleCatalogPage() {
             </div>
           ) : (
             <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {visible.map((item) => {
+              {visible.map((item, position) => {
                 const version = item.currentVersion;
                 const heavy = bandOf(version?.polycount) === 'heavy';
 
                 return (
-                  <ItemCard
-                    key={item.id}
-                    assetId={item.id}
-                    name={item.name}
-                    href={`/console/assets/${item.id}`}
-                    collection={item.category}
-                    cid={version?.ipfsCid ?? null}
-                    polycount={version?.polycount ?? null}
-                    sizeBytes={version?.sizeBytes ?? null}
-                    badge={item.license ? `#${item.license.tokenId}` : undefined}
-                    figure={`${formatNumber(version?.polycount ?? null)} tris`}
-                    figureSub={`${formatBytes(version?.sizeBytes ?? 0)} · ${formatRelative(item.updatedAt)}${
-                      heavy ? ' · heavy for XR' : ''
-                    }`}
-                    action={
-                      // A button, not a link: the preview opens in place rather than navigating.
-                      <button type="button" className="rounded-control border border-veil-8 bg-veil-6 px-3 py-1.5 text-[13px] font-semibold text-ink transition-colors duration-150 ease-standard hover:bg-veil-12" onClick={() => setPreview(item)}>
-                        Preview
-                      </button>
-                    }
-                  />
+                  <Reveal key={item.id} delay={(position % 3) * 60}>
+                    <ItemCard
+                      assetId={item.id}
+                      name={item.name}
+                      href={`/console/assets/${item.id}`}
+                      collection={item.category}
+                      cid={version?.ipfsCid ?? null}
+                      polycount={version?.polycount ?? null}
+                      sizeBytes={version?.sizeBytes ?? null}
+                      badge={item.license ? `#${item.license.tokenId}` : undefined}
+                      figure={`${formatNumber(version?.polycount ?? null)} tris`}
+                      figureSub={`${formatBytes(version?.sizeBytes ?? 0)} · ${formatRelative(item.updatedAt)}${
+                        heavy ? ' · heavy for XR' : ''
+                      }`}
+                      action={
+                        // A button, not a link: the preview opens in place rather than navigating.
+                        <button type="button" className="rounded-control border border-veil-8 bg-veil-6 px-3 py-1.5 text-[13px] font-semibold text-ink transition-colors duration-150 ease-standard hover:bg-veil-12" onClick={() => setPreview(item)}>
+                          Preview
+                        </button>
+                      }
+                    />
+                  </Reveal>
                 );
               })}
             </div>

@@ -37,6 +37,7 @@ import { Sparkbars } from '../../components/ui/stat';
 import { buttonVariants } from '../../components/ui/button';
 import { Chip, statusColor } from '../../components/ui/chip';
 import { TBody, TD, TH, THead, TR, Table } from '../../components/ui/table';
+import { CountUp, Reveal } from '../../components/reveal';
 
 interface DashboardPayload {
   readonly scope: 'tenant' | 'own';
@@ -142,24 +143,24 @@ export default function OverviewPage() {
           <>
             <StatCell
               label="Awaiting review"
-              value={formatNumber(data.counts.awaitingReview)}
+              value={<CountUp value={data.counts.awaitingReview} />}
               hint={data.counts.awaitingReview > 0 ? 'oldest first' : 'queue clear'}
               tone={data.counts.awaitingReview > 0 ? 'heat' : 'plain'}
             />
             <StatCell
               label="Published"
-              value={formatNumber(data.counts.published)}
+              value={<CountUp value={data.counts.published} />}
               hint="live in the catalogue"
               tone="forest"
             />
             <StatCell
               label="Licences minted"
-              value={formatNumber(data.counts.licensesMinted)}
+              value={<CountUp value={data.counts.licensesMinted} />}
               hint="ERC-721 registry"
             />
             <StatCell
               label="In flight"
-              value={formatNumber(totalInFlight)}
+              value={<CountUp value={totalInFlight} />}
               hint={totalInFlight > 0 ? 'queue jobs running' : 'no jobs pending'}
               tone={totalInFlight > 0 ? 'honey' : 'plain'}
             />
@@ -199,21 +200,23 @@ export default function OverviewPage() {
               grid. `pb-2` gives the hover lift somewhere to go without clipping.
             */
             <div className="mt-6 -mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto px-6 pb-2">
-              {published.data.items.map((asset) => (
+              {published.data.items.map((asset, position) => (
                 <div key={asset.id} className="w-[250px] shrink-0 snap-start">
-                  <ItemCard
-                    assetId={asset.id}
-                    name={asset.name}
-                    href={`/console/assets/${asset.id}`}
-                    collection={asset.category}
-                    cid={asset.currentVersion?.ipfsCid ?? null}
-                    polycount={asset.currentVersion?.polycount ?? null}
-                    sizeBytes={asset.currentVersion?.sizeBytes ?? null}
-                    badge="ERC-721"
-                    figureSub={`v${asset.currentVersion?.versionNumber ?? '—'} · ${
-                      asset.currentVersion?.pinStatus ?? 'unpinned'
-                    }`}
-                  />
+                  <Reveal delay={position * 50}>
+                    <ItemCard
+                      assetId={asset.id}
+                      name={asset.name}
+                      href={`/console/assets/${asset.id}`}
+                      collection={asset.category}
+                      cid={asset.currentVersion?.ipfsCid ?? null}
+                      polycount={asset.currentVersion?.polycount ?? null}
+                      sizeBytes={asset.currentVersion?.sizeBytes ?? null}
+                      badge="ERC-721"
+                      figureSub={`v${asset.currentVersion?.versionNumber ?? '—'} · ${
+                        asset.currentVersion?.pinStatus ?? 'unpinned'
+                      }`}
+                    />
+                  </Reveal>
                 </div>
               ))}
             </div>
