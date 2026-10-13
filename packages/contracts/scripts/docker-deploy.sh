@@ -19,7 +19,7 @@ if [ -f "${ROOT_DIR}/.env" ]; then
 fi
 
 RPC_URL="${CHAIN_RPC_URL:-}"
-STATE_PATH="${CONTRACT_STATE_PATH:-packages/contracts/.contracts-state.json}"
+STATE_PATH="${CONTRACT_STATE_PATH:-${ROOT_DIR}/packages/contracts/.contracts-state.json}"
 
 if [ -z "${RPC_URL}" ]; then
   echo "[deploy] ERROR: CHAIN_RPC_URL is required (expected a Sepolia RPC URL)" >&2
@@ -31,7 +31,7 @@ if [ -z "${PLATFORM_SIGNER_SEED:-}" ]; then
   exit 1
 fi
 
-echo "[deploy] checking Sepolia RPC at ${RPC_URL}"
+echo "[deploy] checking configured Sepolia RPC"
 for _ in $(seq 1 60); do
   if cast block-number --rpc-url "${RPC_URL}" >/dev/null 2>&1; then
     echo "[deploy] Sepolia RPC is ready"
@@ -49,12 +49,6 @@ fi
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-# The chain id decides which broadcast log to read. Pinning it beats globbing
-# `*/run-latest.json`, which would silently pick an arbitrary chain's log once a
-# developer has deployed against more than one.
-CHAIN_ID=11155111
-BROADCAST_LOG="broadcast/Deploy.s.sol/${CHAIN_ID}/run-latest.json"
-
 DEPLOYER_KEY="${PLATFORM_SIGNER_SEED}"
 PLATFORM_SIGNER_ADDRESS="$(cast wallet address --private-key "${DEPLOYER_KEY}")"
 
@@ -62,30 +56,25 @@ echo "[deploy] forge build"
 forge build
 
 echo "[deploy] deploying AssetLicenseRegistry (publisher=${PLATFORM_SIGNER_ADDRESS})"
-DEPLOYER_PRIVATE_KEY="${DEPLOYER_KEY}" \
-PUBLISHER_ADDRESS="${PLATFORM_SIGNER_ADDRESS}" \
-forge script script/Deploy.s.sol:Deploy \
+DEPLOY_RESULT="$(mktemp)"
+forge create src/AssetLicenseRegistry.sol:AssetLicenseRegistry \
   --rpc-url "${RPC_URL}" \
+  --private-key "${DEPLOYER_KEY}" \
   --broadcast \
-  --slow
+  --gas-limit "${DEPLOY_GAS_LIMIT:-30000000}" \
+  --constructor-args "${PLATFORM_SIGNER_ADDRESS}" > "${DEPLOY_RESULT}" 2>&1
 
 CONTRACT_ADDRESS="$(node -e '
-  // Parsed with node rather than jq: the foundry image does not ship jq, so the
-  // original `jq -r … || true` produced an empty string on every run and the script
-  // exited 1 *after* a successful deployment — a failed deploy that had actually
-  // worked, which is the most confusing possible outcome.
   const fs = require("fs");
-  const log = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-  // The last CREATE that carries an address: a script may deploy more than one
-  // contract, and the registry is not guaranteed to be first forever.
-  const creates = (log.transactions || []).filter((tx) => tx.contractAddress);
-  const last = creates[creates.length - 1];
-  process.stdout.write(last ? last.contractAddress : "");
-' "${BROADCAST_LOG}" 2>/dev/null || true)"
+  const output = fs.readFileSync(process.argv[1], "utf8");
+  const match = output.match(/Deployed to:\s*(0x[a-fA-F0-9]{40})/);
+  process.stdout.write(match ? match[1] : "");
+' "${DEPLOY_RESULT}" 2>/dev/null || true)"
+rm -f "${DEPLOY_RESULT}"
 
 if [ -z "${CONTRACT_ADDRESS}" ] || [ "${CONTRACT_ADDRESS}" = "null" ]; then
-  echo "[deploy] ERROR: could not read the deployed address from ${BROADCAST_LOG}" >&2
-  echo "[deploy]        The transaction may still have succeeded — check ${BROADCAST_LOG}" >&2
+  echo "[deploy] ERROR: forge create did not return a deployed address" >&2
+  echo "[deploy]        Check the Sepolia explorer for the broadcast transaction." >&2
   exit 1
 fi
 
