@@ -18,7 +18,7 @@ import {
   type Hash,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { foundry } from 'viem/chains';
+import { sepolia } from 'viem/chains';
 
 /** The contract's `LicenseRecord` struct as returned by `getLicense`. */
 export interface OnChainLicense {
@@ -87,6 +87,7 @@ export interface ChainClient {
 
 export interface ChainClientOptions {
   readonly rpcUrl: string;
+  readonly chainId?: number;
   readonly contractAddress: string;
   readonly privateKey: string;
 }
@@ -99,10 +100,11 @@ export function createChainClient(options: ChainClientOptions): ChainClient {
   );
   const contractAddress = options.contractAddress as Address;
 
-  const publicClient = createPublicClient({ chain: foundry, transport: http(options.rpcUrl) });
+  const chain = sepolia;
+  const publicClient = createPublicClient({ chain, transport: http(options.rpcUrl) });
   const walletClient = createWalletClient({
     account,
-    chain: foundry,
+    chain,
     transport: http(options.rpcUrl),
   });
 

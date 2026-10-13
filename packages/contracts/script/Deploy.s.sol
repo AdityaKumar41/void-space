@@ -5,15 +5,12 @@ import {AssetLicenseRegistry} from "../src/AssetLicenseRegistry.sol";
 
 /**
  * @title Deploy
- * @notice Deploys AssetLicenseRegistry to the local Anvil chain and grants the
+ * @notice Deploys AssetLicenseRegistry to the configured chain and grants the
  *         platform signer the on-chain publisher role (SRS §9.3).
- *
- * Local development only: the publisher key is a deterministic Anvil test
- * account, and no token minted here has any economic value (§2.7, §3.9.1).
  *
  * Usage (see packages/contracts/scripts/docker-deploy.sh):
  *   DEPLOYER_PRIVATE_KEY=0x... PUBLISHER_ADDRESS=0x... \
- *     forge script script/Deploy.s.sol:Deploy --rpc-url $ANVIL_RPC_URL --broadcast
+ *     forge script script/Deploy.s.sol:Deploy --rpc-url $CHAIN_RPC_URL --broadcast
  */
 contract Deploy {
     function run() external returns (AssetLicenseRegistry registry) {

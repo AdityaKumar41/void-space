@@ -1,38 +1,61 @@
 #!/usr/bin/env bash
 #
-# Deploy AssetLicenseRegistry.sol to the local Anvil chain and publish the
+# Deploy AssetLicenseRegistry.sol to Sepolia and publish the
 # resulting address + ABI where api and worker can read them (SRS §9.3).
 #
-# Runs inside the deploy-contracts container (foundry image), but is equally
-# usable from a host with a native Foundry install:
-#   CONTRACT_STATE_PATH=/tmp/contracts.json ANVIL_RPC_URL=http://localhost:8545 \
+# Runs from a host with a native Foundry install:
+#   CHAIN_RPC_URL=https://... PLATFORM_SIGNER_SEED=0x... \
 #     bash packages/contracts/scripts/docker-deploy.sh
 set -euo pipefail
 
-RPC_URL="${ANVIL_RPC_URL:-http://localhost:8545}"
-STATE_PATH="${CONTRACT_STATE_PATH:-/shared/contracts.json}"
+# Host deployments load the repository environment here because pnpm does not export `.env` values
+# into child shell processes. The file is intentionally optional so CI can provide explicit env vars.
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+if [ -f "${ROOT_DIR}/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "${ROOT_DIR}/.env"
+  set +a
+fi
 
-echo "[deploy] waiting for anvil at ${RPC_URL}"
+RPC_URL="${CHAIN_RPC_URL:-}"
+STATE_PATH="${CONTRACT_STATE_PATH:-packages/contracts/.contracts-state.json}"
+
+if [ -z "${RPC_URL}" ]; then
+  echo "[deploy] ERROR: CHAIN_RPC_URL is required (expected a Sepolia RPC URL)" >&2
+  exit 1
+fi
+
+if [ -z "${PLATFORM_SIGNER_SEED:-}" ]; then
+  echo "[deploy] ERROR: PLATFORM_SIGNER_SEED is required for Sepolia deployment" >&2
+  exit 1
+fi
+
+echo "[deploy] checking Sepolia RPC at ${RPC_URL}"
 for _ in $(seq 1 60); do
   if cast block-number --rpc-url "${RPC_URL}" >/dev/null 2>&1; then
-    echo "[deploy] anvil is ready"
+    echo "[deploy] Sepolia RPC is ready"
     break
   fi
   sleep 1
 done
 cast block-number --rpc-url "${RPC_URL}" >/dev/null
 
+NETWORK_CHAIN_ID="$(cast chain-id --rpc-url "${RPC_URL}")"
+if [ "${NETWORK_CHAIN_ID}" != "11155111" ]; then
+  echo "[deploy] ERROR: refusing to deploy — RPC chain id is ${NETWORK_CHAIN_ID}, expected Sepolia (11155111)" >&2
+  exit 1
+fi
+
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # The chain id decides which broadcast log to read. Pinning it beats globbing
 # `*/run-latest.json`, which would silently pick an arbitrary chain's log once a
 # developer has deployed against more than one.
-CHAIN_ID="${ANVIL_CHAIN_ID:-31337}"
+CHAIN_ID=11155111
 BROADCAST_LOG="broadcast/Deploy.s.sol/${CHAIN_ID}/run-latest.json"
 
-# Anvil's first deterministic test account is used as the platform signer for
-# local development (§3.9.3) — never for anything of value.
-DEPLOYER_KEY="${PLATFORM_SIGNER_SEED:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
+DEPLOYER_KEY="${PLATFORM_SIGNER_SEED}"
 PLATFORM_SIGNER_ADDRESS="$(cast wallet address --private-key "${DEPLOYER_KEY}")"
 
 echo "[deploy] forge build"
@@ -75,13 +98,25 @@ node -e '
 const fs = require("fs");
 const state = {
   contractAddress: process.argv[1],
-  chainId: Number(process.env.ANVIL_CHAIN_ID || 31337),
+  chainId: Number(process.env.CHAIN_ID || 11155111),
   rpcUrl: process.argv[2],
   publisherAddress: process.argv[3],
   deployedAt: new Date().toISOString(),
 };
 fs.writeFileSync(process.argv[4], JSON.stringify(state, null, 2) + "\n");
 ' "${CONTRACT_ADDRESS}" "${RPC_URL}" "${PLATFORM_SIGNER_ADDRESS}" "${STATE_PATH}"
+
+if [ -f "${ROOT_DIR}/.env" ]; then
+  TMP_ENV="$(mktemp)"
+  awk -v address="${CONTRACT_ADDRESS}" '
+    BEGIN { updated = 0 }
+    /^CONTRACT_ADDRESS=/ { print "CONTRACT_ADDRESS=" address; updated = 1; next }
+    { print }
+    END { if (!updated) print "CONTRACT_ADDRESS=" address }
+  ' "${ROOT_DIR}/.env" > "${TMP_ENV}"
+  mv "${TMP_ENV}" "${ROOT_DIR}/.env"
+  echo "[deploy] updated ${ROOT_DIR}/.env with CONTRACT_ADDRESS=${CONTRACT_ADDRESS}"
+fi
 
 echo "[deploy] CONTRACT_ADDRESS=${CONTRACT_ADDRESS}"
 echo "[deploy] wrote ${STATE_PATH}"

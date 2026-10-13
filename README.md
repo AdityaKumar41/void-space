@@ -1,11 +1,11 @@
 # VOID·SPACE
 
 **AI-enhanced, multi-tenant 3D Digital Asset Management & XR publishing platform** — with
-decentralized storage (IPFS) and on-chain licensing (ERC-721 on a local Anvil chain).
+decentralized storage (IPFS) and on-chain licensing (ERC-721 on Ethereum Sepolia).
 
 Implementation of **VS-SRS-2.0** (`docs/VOID-SPACE_SRS_v2.0_Production.docx`). The whole system —
-web app, API, workers, database, cache, IPFS node and blockchain — runs locally from a single
-`docker compose` stack with **no cloud dependency, no faucet and no paid RPC provider**.
+web app, API, workers, database, cache and IPFS node run locally; licensing is anchored on Ethereum
+Sepolia through the configured `CHAIN_RPC_URL`.
 
 ---
 
@@ -21,7 +21,7 @@ web app, API, workers, database, cache, IPFS node and blockchain — runs locall
 | Data        | PostgreSQL 16 + Prisma 6                                       | Shared schema multi-tenancy with **native Row-Level Security**                           |
 | Queue       | Redis 7 + BullMQ                                               | `ai-enrichment`, `ipfs-pin`, `blender-optimize`, `chain-license`, `xr-publish`, `notify` |
 | Storage     | IPFS (Kubo), cached by nginx                                   | Content-addressed CIDs recorded per asset version                                        |
-| Chain       | Anvil (Foundry) + Solidity ^0.8.24                             | `AssetLicenseRegistry.sol` (ERC-721 licence per asset)                                   |
+| Chain       | Ethereum Sepolia + Solidity ^0.8.24                            | `AssetLicenseRegistry.sol` (ERC-721 licence per asset)                                   |
 | Edge        | nginx (TLS, rate limiting, IPFS gateway cache)                 | Only service exposed to the host                                                         |
 | Monorepo    | pnpm workspaces + Turborepo                                    | Shared types prevent FE/BE contract drift                                                |
 
@@ -89,14 +89,14 @@ place the implementation diverges from `docs/VOID-STUDIO_SRS_v1.0.docx`.
 
 - Docker Desktop (or Docker Engine + Compose v2)
 - Node.js 20 LTS (`.nvmrc` pins it; Node 20–24 works locally) and pnpm 9 (`corepack enable`)
-- _Optional:_ a native Foundry install (`forge`, `anvil`, `cast`) — `pnpm dev:up` prefers it and
-  falls back to the containerized toolchain
+- _Optional:_ a native Foundry install (`forge`, `cast`) for `pnpm contracts:deploy:sepolia`
 
 ## Quick start
 
 ```bash
 pnpm install          # install workspace dependencies
-pnpm dev:up           # start postgres, redis, ipfs, anvil, nginx + migrate + RLS + deploy contract
+pnpm dev:up           # start postgres, redis, ipfs, nginx + migrate + RLS
+pnpm contracts:deploy:sepolia  # deploy after setting CHAIN_RPC_URL and PLATFORM_SIGNER_SEED
 pnpm db:seed          # demo tenants, users, assets in every lifecycle state
 pnpm dev              # api + worker + web in watch mode
 ```
@@ -138,7 +138,7 @@ Demo credentials (created by `pnpm db:seed`, password `VoidSpace!2026`):
 | postgres     | `…-postgres-1`             | 5432                       | dev only                                                                             |
 | redis        | `…-redis-1`                | 6379                       | dev only                                                                             |
 | ipfs (Kubo)  | `…-ipfs-1`                 | 5001 (API), 8080 (gateway) | dev only; browsers use nginx `/ipfs/<cid>`                                           |
-| anvil        | `…-anvil-1`                | 8545                       | local EVM chain                                                                      |
+| Sepolia RPC  | configured by `CHAIN_RPC_URL` | HTTPS                    | Ethereum Sepolia testnet                                                            |
 
 Everything is on a private Docker network; only nginx is exposed by default (§2.5).
 

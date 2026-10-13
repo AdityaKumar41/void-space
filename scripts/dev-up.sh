@@ -3,10 +3,10 @@
 # One-command local bring-up (SRS §9.1).
 #
 #   1. ensure .env + development TLS certificate exist
-#   2. start the infra services (postgres, redis, ipfs, anvil) and the edge
+#   2. start the infra services (postgres, redis, ipfs) and the edge
 #   3. wait for readiness
 #   4. apply Prisma migrations, then the RLS policies/grants
-#   5. deploy AssetLicenseRegistry.sol to Anvil and publish its address
+#   5. use the already-deployed Sepolia AssetLicenseRegistry address
 #
 # Afterwards run `pnpm dev` for api/worker/web in watch mode.
 set -euo pipefail
@@ -24,13 +24,19 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
+# Make the chain settings available to the explicit Sepolia validation below as well as to Compose.
+set -a
+# shellcheck disable=SC1091
+. ./.env
+set +a
+
 if [ ! -f docker/certs/void-space.crt ]; then
   info "generating development TLS certificate"
   bash docker/scripts/gen-dev-certs.sh
 fi
 
 # --- 2. containers ----------------------------------------------------------
-info "starting VOID·SPACE infra + edge (postgres, redis, ipfs, anvil, nginx)"
+info "starting VOID·SPACE infra + edge (postgres, redis, ipfs, nginx)"
 docker compose --profile infra --profile edge up -d
 
 info "starting VOID·STUDIO infra + edge (studio-postgres, studio-redis, studio-ipfs, studio-nginx)"
@@ -65,7 +71,6 @@ wait_for_studio_service() {
 
 wait_for_service postgres "pg_isready -U ${POSTGRES_USER:-voidspace} -d ${POSTGRES_DB:-voidspace}"
 wait_for_service redis "redis-cli ping"
-wait_for_service anvil "cast block-number --rpc-url http://localhost:8545"
 wait_for_studio_service studio-postgres "pg_isready -U ${STUDIO_POSTGRES_USER:-voidstudio} -d ${STUDIO_POSTGRES_DB:-voidstudio}"
 wait_for_studio_service studio-redis "redis-cli ping"
 
@@ -88,39 +93,12 @@ pnpm --silent studio:db:migrate
 info "applying VOID·STUDIO Row-Level Security policies and grants"
 pnpm --silent studio:db:rls
 
-# --- 5. smart contract ------------------------------------------------------
-CONTRACT_STATE="${ROOT_DIR}/packages/contracts/.contracts-state.json"
-if [ -f "${CONTRACT_STATE}" ] && ! grep -q '^CONTRACT_ADDRESS=$' .env 2>/dev/null; then
-  info "contract already deployed (delete ${CONTRACT_STATE##*/} to redeploy)"
+# --- 5. Sepolia contract ---------------------------------------------------
+if [ -z "${CHAIN_RPC_URL:-}" ] || [ -z "${CONTRACT_ADDRESS:-}" ]; then
+  warn "Sepolia contract is not configured. Set CHAIN_RPC_URL and CONTRACT_ADDRESS in .env."
+  warn "Deploy once with: pnpm contracts:deploy:sepolia"
 else
-  if command -v forge >/dev/null 2>&1; then
-    info "deploying AssetLicenseRegistry.sol to Anvil (native forge)"
-    ANVIL_RPC_URL="http://localhost:${ANVIL_PORT:-8545}" \
-      CONTRACT_STATE_PATH="${CONTRACT_STATE}" \
-      bash packages/contracts/scripts/docker-deploy.sh
-  else
-    info "deploying AssetLicenseRegistry.sol to Anvil (foundry container)"
-    docker compose run --rm deploy-contracts
-    # The container writes to the shared volume; mirror it into the repo.
-    docker compose run --rm --entrypoint sh deploy-contracts \
-      -c "cat /shared/contracts.json" > "${CONTRACT_STATE}"
-  fi
-fi
-
-# Publish the address into .env for native api/worker (§9.3 step 3).
-if [ -f "${CONTRACT_STATE}" ]; then
-  CONTRACT_ADDRESS="$(node -e "process.stdout.write(require('${CONTRACT_STATE}').contractAddress || '')")"
-  if [ -n "${CONTRACT_ADDRESS}" ]; then
-    tmp="$(mktemp)"
-    awk -v v="${CONTRACT_ADDRESS}" '
-      BEGIN { done = 0 }
-      /^CONTRACT_ADDRESS=/ { print "CONTRACT_ADDRESS=" v; done = 1; next }
-      { print }
-      END { if (!done) print "CONTRACT_ADDRESS=" v }
-    ' .env > "${tmp}"
-    mv "${tmp}" .env
-    info "CONTRACT_ADDRESS=${CONTRACT_ADDRESS} written to .env"
-  fi
+  info "using AssetLicenseRegistry on Sepolia at ${CONTRACT_ADDRESS}"
 fi
 
 cat <<'EOF'

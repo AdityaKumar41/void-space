@@ -87,7 +87,7 @@ export async function licensingRoutes(
   options: LicensingRoutesOptions,
 ): Promise<void> {
   const { env, producer } = options;
-  const explorerBase = `http://localhost:${env.ANVIL_RPC_URL.split(':').pop() ?? '8545'}`;
+  const explorerBase = env.CHAIN_EXPLORER_URL ?? 'https://sepolia.etherscan.io';
 
   // ------------------------------------------------------------------- publish
   app.post(

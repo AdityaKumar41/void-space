@@ -42,6 +42,15 @@ type Processor = (job: never) => Promise<unknown>;
 const PROCESSORS: Partial<Record<QueueName, Processor>> = {};
 
 export async function main(): Promise<void> {
+  const chainRpcUrl = process.env.CHAIN_RPC_URL;
+  const chainId = Number(process.env.CHAIN_ID ?? 11155111);
+  if (!chainRpcUrl) {
+    throw new Error('[worker] CHAIN_RPC_URL is not set — configure the Sepolia RPC in .env');
+  }
+  if (chainId !== 11155111) {
+    throw new Error(`[worker] CHAIN_ID must be 11155111 (Sepolia), received ${chainId}`);
+  }
+
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
     throw new Error('[worker] REDIS_URL is not set — copy .env.example to .env (SRS §9.4)');
@@ -75,7 +84,8 @@ export async function main(): Promise<void> {
 
   PROCESSORS['chain-license'] = createChainLicenseProcessor({
     logger,
-    rpcUrl: process.env.ANVIL_RPC_URL ?? 'http://localhost:8545',
+    rpcUrl: chainRpcUrl,
+    chainId,
     contractAddress: process.env.CONTRACT_ADDRESS ?? '',
     privateKey: process.env.PLATFORM_SIGNER_SEED ?? '',
     ipfsApiUrl: process.env.IPFS_API_URL ?? 'http://localhost:5001',

@@ -67,8 +67,8 @@ async function checkHttp(endpoint: string, init?: RequestInit): Promise<Dependen
   }
 }
 
-/** Anvil answers a JSON-RPC eth_blockNumber call — the documented readiness probe (§9.3). */
-async function checkAnvil(rpcUrl: string): Promise<DependencyCheck> {
+/** The configured EVM network answers a JSON-RPC eth_blockNumber call. */
+async function checkChain(rpcUrl: string): Promise<DependencyCheck> {
   return checkHttp(rpcUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -155,13 +155,13 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
     const [postgres, ipfs, anvil] = await Promise.all([
       checkPostgres(),
       checkHttp(`${env.IPFS_API_URL}/api/v0/version`, { method: 'POST' }),
-      checkAnvil(env.ANVIL_RPC_URL),
+      checkChain(env.CHAIN_RPC_URL),
     ]);
 
     const dependencies = {
       postgres,
       ipfs,
-      anvil,
+      chain: anvil,
       // Optional integrations degrade gracefully (NFR-REL.1).
       claude: env.ANTHROPIC_API_KEY
         ? ({ status: 'up', detail: 'api key configured' } as const)

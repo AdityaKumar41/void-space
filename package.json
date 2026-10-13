@@ -25,6 +25,7 @@
     "contracts:test": "pnpm --filter @void-space/contracts test",
     "contracts:abi": "pnpm --filter @void-space/contracts export:abi",
     "contracts:deploy": "pnpm --filter @void-space/contracts deploy",
+    "contracts:deploy:sepolia": "CHAIN_ID=11155111 pnpm --filter @void-space/contracts deploy",
     "dev": "node scripts/dev.mjs",
     "dev:turbo": "turbo run dev --parallel",
     "build": "turbo run build",

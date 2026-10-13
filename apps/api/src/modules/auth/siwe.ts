@@ -33,9 +33,6 @@ import type { SessionRequestContext } from './sessions';
 
 const NONCE_TTL_MS = 5 * 60 * 1000;
 const WALLET_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
-/** Anvil's chain id — the only chain in this stack (§3.9.1). */
-const ANVIL_CHAIN_ID = 31337;
-
 /**
  * Verifies an EIP-191 (`personal_sign`) signature over the SIWE message.
  *
@@ -144,7 +141,7 @@ export function createSiweService(deps: SiweDeps): SiweService {
 
     const message = createSiweMessage({
       address,
-      chainId: ANVIL_CHAIN_ID,
+      chainId: deps.env.CHAIN_ID,
       domain,
       nonce,
       uri,

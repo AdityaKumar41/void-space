@@ -5,7 +5,7 @@
 #   pnpm dev       -> api, worker, web in watch mode (natively, fast iteration)
 #
 # Profiles:
-#   infra : postgres, redis, ipfs, anvil, deploy-contracts  (always needed)
+#   infra : postgres, redis, ipfs                                 (data tier)
 #   edge  : nginx TLS termination + IPFS gateway cache      (always needed)
 #   app   : containerized api/worker/web (alternative to `pnpm dev`, §9.1)
 #   blender: headless Blender runner (heavy image, pulled on demand, FR-6.3)
@@ -32,14 +32,12 @@ services:
   # asking for the application gets you the database it runs on. Selecting `infra` alone still starts
   # only the data tier, which is what the local-development workflow wants.
   #
-  # `deploy-contracts` deliberately does *not* join the `app` profile. It deploys a fresh registry and
-  # overwrites the shared state file on every run, so folding it into `up` would silently move the
-  # contract address (and orphan every licence already minted against the old one). Deploying stays an
-  # explicit step.
+  # The default platform chain is Sepolia. Anvil remains available only through the opt-in
+  # `local-chain` profile for contract tests.
   postgres:
     <<: *default-restart
     image: postgres:16-alpine
-    profiles: ["infra", "app"]
+    profiles: ["local-chain"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-voidspace}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voidspace_pw}
@@ -146,31 +144,6 @@ services:
       retries: 10
       start_period: 10s
 
-  # ------------------------------------------------- contract deploy (one-shot)
-  deploy-contracts:
-    image: ghcr.io/foundry-rs/foundry:stable
-    profiles: ["infra"]
-    depends_on:
-      anvil:
-        condition: service_healthy
-    working_dir: /contracts
-    environment:
-      ANVIL_RPC_URL: http://anvil:8545
-      CONTRACT_STATE_PATH: /shared/contracts.json
-      PLATFORM_SIGNER_SEED: ${PLATFORM_SIGNER_SEED}
-    volumes:
-      - ./packages/contracts:/contracts
-      - contractsdata:/shared
-    # `bash`, not `/bin/sh`. The script is `#!/usr/bin/env bash` and uses
-    # `set -euo pipefail`, but passing it to `/bin/sh` bypasses the shebang entirely:
-    # dash has no `pipefail`, so the very first `set` aborts with
-    # "Illegal option -o pipefail" and the contract never deploys — while the health
-    # endpoint still reports the contract as "up" because it only echoes the address
-    # it was configured with. That combination is the worst kind: a green check over a
-    # silently empty chain, which is exactly what `eth_getCode` revealed.
-    entrypoint: ["bash", "/contracts/scripts/docker-deploy.sh"]
-    restart: "no"
-
   # ------------------------------------------------------- application tier
   # Containerized alternative to `pnpm dev` (§9.1). Enable with:
   #   docker compose --profile app up -d
@@ -192,7 +165,10 @@ services:
       REDIS_URL: redis://redis:6379
       IPFS_API_URL: http://ipfs:5001
       IPFS_GATEWAY_URL: http://ipfs:8080
-      ANVIL_RPC_URL: http://anvil:8545
+      CHAIN_RPC_URL: ${CHAIN_RPC_URL}
+      CHAIN_ID: ${CHAIN_ID:-11155111}
+      CHAIN_EXPLORER_URL: ${CHAIN_EXPLORER_URL:-https://sepolia.etherscan.io}
+      CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}
       CONTRACT_STATE_PATH: /shared/contracts.json
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-access-secret-change-me}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-only-refresh-secret-change-me}
@@ -203,7 +179,6 @@ services:
       STAGING_DIR: /var/lib/void-space/uploads/staging
       STAGING_MAX_BYTES: ${STAGING_MAX_BYTES:-5368709120}
     volumes:
-      - contractsdata:/shared:ro
       - uploads:/var/lib/void-space/uploads
     restart: unless-stopped
 
@@ -225,8 +200,10 @@ services:
       REDIS_URL: redis://redis:6379
       IPFS_API_URL: http://ipfs:5001
       IPFS_GATEWAY_URL: http://ipfs:8080
-      ANVIL_RPC_URL: http://anvil:8545
-      CONTRACT_STATE_PATH: /shared/contracts.json
+      CHAIN_RPC_URL: ${CHAIN_RPC_URL}
+      CHAIN_ID: ${CHAIN_ID:-11155111}
+      CHAIN_EXPLORER_URL: ${CHAIN_EXPLORER_URL:-https://sepolia.etherscan.io}
+      CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}
       PLATFORM_SIGNER_SEED: ${PLATFORM_SIGNER_SEED}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -237,7 +214,6 @@ services:
       BLENDER_RUNNER_URL: ${BLENDER_RUNNER_URL:-}
       BLENDER_JOB_DIR: /var/lib/void-space/blender-jobs
     volumes:
-      - contractsdata:/shared:ro
       - uploads:/var/lib/void-space/uploads
       - blenderjobs:/var/lib/void-space/blender-jobs
     restart: unless-stopped
@@ -298,7 +274,6 @@ volumes:
   redisdata:
   ipfsdata:
   ipfscache:
-  contractsdata:
   uploads:
   blenderjobs:
   # anvilstate:  # opt-in chain persistence (§3.9.1)

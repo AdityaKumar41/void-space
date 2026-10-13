@@ -30,6 +30,7 @@ import type { WorkerProducer } from '../lib/producer';
 export interface ChainLicenseDeps {
   readonly logger: Logger;
   readonly rpcUrl: string;
+  readonly chainId?: number;
   readonly contractAddress: string;
   readonly privateKey: string;
   readonly ipfsApiUrl: string;
@@ -57,6 +58,7 @@ interface ChainLicensePayload extends JobPayload {
 export function createChainLicenseProcessor(deps: ChainLicenseDeps) {
   const chain = deps.chain ?? createChainClient({
     rpcUrl: deps.rpcUrl,
+    chainId: deps.chainId,
     contractAddress: deps.contractAddress,
     privateKey: deps.privateKey,
   });

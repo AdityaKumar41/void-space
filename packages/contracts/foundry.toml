@@ -13,8 +13,7 @@ fs_permissions = [{ access = "read-write", path = "./.contracts-state.json" }]
 verbosity = 2
 
 [rpc_endpoints]
-anvil = "http://localhost:8545"
-local = "${ANVIL_RPC_URL}"
+sepolia = "${CHAIN_RPC_URL}"
 
 [fmt]
 line_length = 100
