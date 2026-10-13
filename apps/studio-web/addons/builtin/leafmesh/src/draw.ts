@@ -13,7 +13,15 @@
  */
 
 import type {Drawable, IUniformsBlock, MaterialAttrRequest, ShaderProgram, VertexAttrDesc} from '@framework/api'
-import {BufferUsage, MATERIAL_BASE_VERTEX_ATTRS} from '@framework/api'
+import {
+  BufferUsage,
+  MATERIAL_BASE_VERTEX_ATTRS,
+  LayerTypes,
+  SimpleMesh,
+  Vector2,
+  Vector3,
+  Vector4,
+} from '@framework/api'
 
 import {buildDrawGeometry, gatherDrawAttr} from './draw_buffers.js'
 import type {DrawGeometry} from './draw_buffers.js'
@@ -57,6 +65,7 @@ export class LeafMeshDrawable implements Drawable {
   private dirty = true
   private device?: GPUDevice
   private warnedWebGL = false
+  private simpleMesh?: SimpleMesh
 
   constructor(mesh: LeafMesh, cache: TriangulationCache) {
     this.mesh = mesh
@@ -70,6 +79,7 @@ export class LeafMeshDrawable implements Drawable {
   /** Drop the CPU arrays; the GPU buffers are reused if the size still fits. */
   invalidate(): void {
     this.dirty = true
+    this.simpleMesh = undefined
   }
 
   /**
@@ -121,6 +131,29 @@ export class LeafMeshDrawable implements Drawable {
       const data = gatherDrawAttr(this.mesh, this.tris, req.name, req.elemSize)
       if (data !== undefined) {
         this.setSlot(req.slot, data)
+      }
+    }
+
+    const vertCount = this.geom.triCount * 3
+    if (!this.slots.has(2)) {
+      const uvs = gatherDrawAttr(this.mesh, this.tris, 'uv', 2) ?? new Float32Array(vertCount * 2)
+      this.setSlot(2, uvs)
+    }
+
+    if (!this.slots.has(3)) {
+      const colors = gatherDrawAttr(this.mesh, this.tris, 'color', 4)
+      if (colors !== undefined) {
+        this.setSlot(3, colors)
+      } else {
+        const defaultColors = new Float32Array(vertCount * 4)
+        for (let i = 0; i < vertCount; i++) {
+          const idx = i * 4
+          defaultColors[idx] = 0.82
+          defaultColors[idx + 1] = 0.82
+          defaultColors[idx + 2] = 0.85
+          defaultColors[idx + 3] = 1.0
+        }
+        this.setSlot(3, defaultColors)
       }
     }
   }
@@ -187,14 +220,92 @@ export class LeafMeshDrawable implements Drawable {
     }
   }
 
-  draw(_gl: WebGL2RenderingContext, _uniforms: IUniformsBlock, _program: ShaderProgram): void {
-    // The realtime renderer is WebGPU-only; the WebGL queue adapter is reached
-    // only when WebGPU failed to come up, and a warning beats an exception
-    // storm on every object of every frame.
-    if (!this.warnedWebGL) {
-      this.warnedWebGL = true
-      // eslint-disable-next-line no-console
-      console.warn('leafmesh: the WebGL draw path is not implemented — LeafMesh renders on WebGPU only.')
+  private buildSimpleMesh(): void {
+    if (!this.geom || this.geom.triCount === 0) {
+      this.simpleMesh = undefined
+      return
+    }
+
+    const sm = new SimpleMesh(
+      LayerTypes.LOC | LayerTypes.NORMAL | LayerTypes.UV | LayerTypes.COLOR | LayerTypes.ID
+    )
+
+    const uvs = gatherDrawAttr(this.mesh, this.tris, 'uv', 2)
+    const colors = gatherDrawAttr(this.mesh, this.tris, 'color', 4)
+
+    const co = this.geom.position
+    const no = this.geom.normal
+    const triCount = this.geom.triCount
+
+    const p0 = new Vector3()
+    const p1 = new Vector3()
+    const p2 = new Vector3()
+    const n0 = new Vector3()
+    const n1 = new Vector3()
+    const n2 = new Vector3()
+    const c0 = new Vector4([1, 1, 1, 1])
+    const c1 = new Vector4([1, 1, 1, 1])
+    const c2 = new Vector4([1, 1, 1, 1])
+    const uv0 = new Vector2([0, 0])
+    const uv1 = new Vector2([0, 0])
+    const uv2 = new Vector2([0, 0])
+
+    for (let i = 0; i < triCount; i++) {
+      const o = i * 9
+      p0.loadXYZ(co[o], co[o + 1], co[o + 2])
+      p1.loadXYZ(co[o + 3], co[o + 4], co[o + 5])
+      p2.loadXYZ(co[o + 6], co[o + 7], co[o + 8])
+
+      n0.loadXYZ(no[o], no[o + 1], no[o + 2])
+      n1.loadXYZ(no[o + 3], no[o + 4], no[o + 5])
+      n2.loadXYZ(no[o + 6], no[o + 7], no[o + 8])
+
+      const ed = sm.tri(p0, p1, p2).normals(n0, n1, n2)
+
+      if (colors !== undefined) {
+        const co4 = i * 12
+        c0.loadXYZW(colors[co4], colors[co4 + 1], colors[co4 + 2], colors[co4 + 3])
+        c1.loadXYZW(colors[co4 + 4], colors[co4 + 5], colors[co4 + 6], colors[co4 + 7])
+        c2.loadXYZW(colors[co4 + 8], colors[co4 + 9], colors[co4 + 10], colors[co4 + 11])
+        ed.colors(c0, c1, c2)
+      } else {
+        c0.loadXYZW(1, 1, 1, 1)
+        ed.colors(c0, c0, c0)
+      }
+
+      if (uvs !== undefined) {
+        const uvo = i * 6
+        uv0.loadXY(uvs[uvo], uvs[uvo + 1])
+        uv1.loadXY(uvs[uvo + 2], uvs[uvo + 3])
+        uv2.loadXY(uvs[uvo + 4], uvs[uvo + 5])
+        ed.uvs(uv0, uv1, uv2)
+      }
+    }
+
+    // Also populate lines for mesh edges so wireframe overlays render properly
+    try {
+      const meshCo = this.mesh.v.co
+      for (const eid of this.mesh.e) {
+        const v1 = this.mesh.e.v1[eid]
+        const v2 = this.mesh.e.v2[eid]
+        if (v1 >= 0 && v2 >= 0) {
+          p0.loadXYZ(meshCo[v1 * 3], meshCo[v1 * 3 + 1], meshCo[v1 * 3 + 2])
+          p1.loadXYZ(meshCo[v2 * 3], meshCo[v2 * 3 + 1], meshCo[v2 * 3 + 2])
+          sm.line(p0, p1).colors(c0, c0)
+        }
+      }
+    } catch {}
+
+    this.simpleMesh = sm
+  }
+
+  draw(gl: WebGL2RenderingContext, uniforms: IUniformsBlock, program: ShaderProgram): void {
+    if (this.dirty || this.simpleMesh === undefined) {
+      this.rebuild()
+      this.buildSimpleMesh()
+    }
+    if (this.simpleMesh) {
+      this.simpleMesh.draw(gl, uniforms, program)
     }
   }
 
@@ -206,5 +317,11 @@ export class LeafMeshDrawable implements Drawable {
     this.geom = undefined
     this.tris = []
     this.dirty = true
+    if (this.simpleMesh && (this.simpleMesh as any).gl) {
+      try {
+        this.simpleMesh.destroy((this.simpleMesh as any).gl)
+      } catch {}
+    }
+    this.simpleMesh = undefined
   }
 }

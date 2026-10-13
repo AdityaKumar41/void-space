@@ -42,7 +42,7 @@ import {GenericIsect} from '../../../../scripts/util/spatial'
 import type {SculptCorePaintMode} from './sculptcore'
 import type {DrawQueue, FrameContext} from '../../../../scripts/render/queue'
 import {isWebGPU} from '../../../../scripts/core/renderer_flag'
-import type {AssertExtends, IInvalidatable} from '../../../../scripts/core/geometry_contract'
+import type {AssertExtends, IInvalidatable, ITriangleSource} from '../../../../scripts/core/geometry_contract'
 import {GeometryCapability, InvalidationKind} from '../../../../scripts/core/geometry_contract'
 import type {IDataKindDescriptor} from '../../../../scripts/core/data_kinds'
 import {MATERIAL_BASE_VERTEX_ATTRS} from '../../../../scripts/core/vertex_layout'
@@ -4501,6 +4501,141 @@ export class LiteMesh extends SceneObjectData {
     //
   }
   regenElementsDraw() {}
+
+  /**
+   * Conformance to ITriangleSource for generic 3D asset export (GLB, OBJ, STL, PLY).
+   * Extracts live vertices and triangulates polygon face rings in bulk from sculptcore.
+   */
+  extractTriangles(): {positions: Float64Array; indices: Int32Array; normals?: Float64Array} {
+    if (!this.mesh) {
+      return {positions: new Float64Array(0), indices: new Int32Array(0)}
+    }
+
+    try {
+      const vOut = this._floatVecOut()
+      this.mesh.dumpVertCo(vOut.vec as never)
+      const vRaw = vOut.read()
+      const numVerts = (vRaw.length / 4) | 0
+      if (numVerts === 0) {
+        return {positions: new Float64Array(0), indices: new Int32Array(0)}
+      }
+
+      const positions = new Float64Array(numVerts * 3)
+      const vertMap = new Map<number, number>()
+
+      for (let i = 0; i < numVerts; i++) {
+        const base = i * 4
+        const vi = Math.round(vRaw[base])
+        vertMap.set(vi, i)
+        positions[i * 3] = vRaw[base + 1]
+        positions[i * 3 + 1] = vRaw[base + 2]
+        positions[i * 3 + 2] = vRaw[base + 3]
+      }
+
+      const fOut = this._intVecOut()
+      this.mesh.liveElems(2, fOut.vec as never) // SC_FACE = 2
+      const faceIndices = fOut.read()
+
+      const offsetsOut = this._intVecOut()
+      const cornersOut = this._intVecOut()
+      this.mesh.uvFaceRings(fOut.vec as never, offsetsOut.vec as never, cornersOut.vec as never)
+
+      const vertsOut = this._intVecOut()
+      this.mesh.uvCornerVerts(cornersOut.vec as never, vertsOut.vec as never)
+
+      const offsets = offsetsOut.read()
+      const cornerVerts = vertsOut.read()
+
+      const triIndices: number[] = []
+      const numFaces = faceIndices.length
+
+      for (let fi = 0; fi < numFaces; fi++) {
+        const start = offsets[fi]
+        const end = offsets[fi + 1]
+        if (end - start < 3) continue
+
+        const faceVertIdxs: number[] = []
+        for (let c = start; c < end; c++) {
+          const rawVi = cornerVerts[c]
+          const compIdx = vertMap.get(rawVi)
+          if (compIdx !== undefined) {
+            faceVertIdxs.push(compIdx)
+          }
+        }
+
+        const fCount = faceVertIdxs.length
+        if (fCount < 3) continue
+
+        const v0 = faceVertIdxs[0]
+        for (let j = 1; j < fCount - 1; j++) {
+          triIndices.push(v0, faceVertIdxs[j], faceVertIdxs[j + 1])
+        }
+      }
+
+      const indices = new Int32Array(triIndices)
+
+      // Calculate smooth per-vertex normals
+      const normals = new Float64Array(positions.length)
+      for (let i = 0; i < indices.length; i += 3) {
+        const i0 = indices[i]
+        const i1 = indices[i + 1]
+        const i2 = indices[i + 2]
+
+        const ax = positions[i0 * 3]
+        const ay = positions[i0 * 3 + 1]
+        const az = positions[i0 * 3 + 2]
+        const bx = positions[i1 * 3]
+        const by = positions[i1 * 3 + 1]
+        const bz = positions[i1 * 3 + 2]
+        const cx = positions[i2 * 3]
+        const cy = positions[i2 * 3 + 1]
+        const cz = positions[i2 * 3 + 2]
+
+        const ux = bx - ax
+        const uy = by - ay
+        const uz = bz - az
+        const vx = cx - ax
+        const vy = cy - ay
+        const vz = cz - az
+
+        const nx = uy * vz - uz * vy
+        const ny = uz * vx - ux * vz
+        const nz = ux * vy - uy * vx
+
+        normals[i0 * 3] += nx
+        normals[i0 * 3 + 1] += ny
+        normals[i0 * 3 + 2] += nz
+
+        normals[i1 * 3] += nx
+        normals[i1 * 3 + 1] += ny
+        normals[i1 * 3 + 2] += nz
+
+        normals[i2 * 3] += nx
+        normals[i2 * 3 + 1] += ny
+        normals[i2 * 3 + 2] += nz
+      }
+
+      for (let i = 0; i < numVerts; i++) {
+        const idx = i * 3
+        const nx = normals[idx]
+        const ny = normals[idx + 1]
+        const nz = normals[idx + 2]
+        const len = Math.sqrt(nx * nx + ny * ny + nz * nz)
+        if (len > 1e-6) {
+          normals[idx] /= len
+          normals[idx + 1] /= len
+          normals[idx + 2] /= len
+        } else {
+          normals[idx + 2] = 1.0
+        }
+      }
+
+      return {positions, indices, normals}
+    } catch (err) {
+      console.warn('LiteMesh.extractTriangles failed:', err)
+      return {positions: new Float64Array(0), indices: new Int32Array(0)}
+    }
+  }
 }
 
 /** The geometry-kind descriptor; the addon's `register(api)` hook installs it. */
@@ -4508,12 +4643,7 @@ export const LITEMESH_DATA_KIND: IDataKindDescriptor = {
   id          : 'litemesh',
   uiName      : 'Lite Mesh',
   usesMaterial: true,
-  // TODO: LiteMesh has no TRIANGLES capability, so STL export silently skips
-  // it, even though it is the mesh type users would most want to export.
-  // Before P13 re-pointed the exporter at ITriangleSource, this threw
-  // outright instead. The fix is to implement extractTriangles over the
-  // sculptcore tessellation.
-  capabilities: [GeometryCapability.INVALIDATION],
+  capabilities: [GeometryCapability.INVALIDATION, GeometryCapability.TRIANGLES],
   // The always-present set. Everything a material asks for beyond this is
   // built per-material by `setRequestedAttrs`, at the slot the generator
   // assigned — see documentation/geometry-contract.md §10.
@@ -4523,3 +4653,4 @@ export const LITEMESH_DATA_KIND: IDataKindDescriptor = {
 /** Conformance to the host geometry contract; see documentation/geometry-contract.md §2. */
 export type _LiteMeshIsGeometrySource = AssertExtends<LiteMesh, IGeometrySource>
 export type _LiteMeshIsInvalidatable = AssertExtends<LiteMesh, IInvalidatable>
+export type _LiteMeshIsTriangleSource = AssertExtends<LiteMesh, ITriangleSource>

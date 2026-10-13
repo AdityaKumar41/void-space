@@ -2,6 +2,7 @@ import {util, nstructjs, DataAPI, DataStruct} from '../path.ux/scripts/pathux.js
 import {registerDataAPI} from '../data_api/api_define_registry.js'
 import {BrushSets, setBrushSet} from '../brush/brush'
 import addonManager from '../addon/addon.js'
+import {distributionEnabled} from '../addon/distribution.js'
 import {getAppStorage} from './app_storage'
 import {APP_KEY_NAME} from './const'
 import {registerSyncTarget, noteLocalWrite} from './storage_sync'
@@ -427,23 +428,30 @@ AppSettings {
     this.syncAddonList()
 
     // Pass 1: enable everything the user wants enabled (pulls deps on
-    // transitively, regardless of a dep's own persisted flag).
+    // transitively, regardless of a dep's own persisted flag). Distribution
+    // enabled explicitly wins over persisted false or missing.
     for (const rec of addonManager.addons) {
       const id = rec.manifest?.id ?? rec.key
+      const distEnabled = distributionEnabled(id)
       const s = this.addonSettings[id]
-      if (s?.enabled && !rec.enabled) {
+      const shouldEnable = s?.enabled || distEnabled === true || (s === undefined && rec.manifest?.defaultEnabled !== false)
+      if (shouldEnable && !rec.enabled) {
         addonManager.enable(id)
       }
     }
 
     // Pass 2: disable user-disabled addons, honoring dependents. A disable
     // blocked by an enabled dependent is retried after that dependent is
-    // disabled (loop until stable).
+    // disabled (loop until stable). Never disable addons that the distribution
+    // explicitly requires enabled.
     let changed = true
     while (changed) {
       changed = false
       for (const rec of addonManager.addons) {
         const id = rec.manifest?.id ?? rec.key
+        if (distributionEnabled(id) === true) {
+          continue
+        }
         const s = this.addonSettings[id]
         if (s && !s.enabled && rec.enabled) {
           const res = addonManager.disable(id)
@@ -506,9 +514,12 @@ AppSettings {
         const s = new AddonSettings(id)
         // Capture the addon's current (default-on after start()) state so a
         // freshly-seen addon isn't spuriously treated as user-disabled.
-        s.enabled = addon.enabled
+        s.enabled = distributionEnabled(id) ?? addon.enabled
         this.addonSettings[id] = s
 
+        ret = true
+      } else if (distributionEnabled(id) === true && !this.addonSettings[id].enabled) {
+        this.addonSettings[id].enabled = true
         ret = true
       }
     }

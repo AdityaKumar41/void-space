@@ -416,12 +416,14 @@ ImageBlock {
     }
 
     this.gpuTex?.destroy()
+    this._dummyGpuTex?.destroy()
 
     const deadThis = this as ImageBlock<OPT & {dead: true}>
 
     deadThis._drawFBO = undefined
     deadThis.glTex = undefined
     deadThis.gpuTex = undefined
+    deadThis._dummyGpuTex = undefined
     deadThis.gl = undefined
   }
 
@@ -469,9 +471,30 @@ ImageBlock {
    * there is no float-buffer path — the editor display sampler reads
    * `rgba8unorm`. Returns `undefined` until the image is ready.
    */
+  _dummyGpuTex?: GpuTexture
+
   getGpuTex(device: GPUDevice): GpuTexture | undefined {
     if (!this._image?.image || !this.ready) {
-      return undefined
+      if (!this._dummyGpuTex) {
+        this._dummyGpuTex = new GpuTexture(device, {
+          label : `image.${this.lib_id}.dummy`,
+          width : 1,
+          height: 1,
+          format: 'rgba8unorm',
+        })
+        device.queue.writeTexture(
+          {texture: this._dummyGpuTex.handle},
+          new Uint8Array([255, 255, 255, 255]),
+          {bytesPerRow: 4, rowsPerImage: 1},
+          {width: 1, height: 1}
+        )
+      }
+      return this._dummyGpuTex
+    }
+
+    if (this._dummyGpuTex) {
+      this._dummyGpuTex.destroy()
+      this._dummyGpuTex = undefined
     }
 
     const data = this._image.image
@@ -526,9 +549,14 @@ ImageBlock {
 
   _firePromises() {
     this.ready = true
+    this.graphUpdate()
 
     for (const {accept} of this._promises) {
       accept(this._image)
+    }
+
+    if (typeof window !== 'undefined' && typeof (window as any).redraw_viewport === 'function') {
+      ;(window as any).redraw_viewport()
     }
   }
 

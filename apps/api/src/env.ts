@@ -39,7 +39,7 @@ export const envSchema = z.object({
   /** Comma-separated allow-list for browser calls (the edge proxy in front of us). */
   CORS_ORIGINS: z
     .string()
-    .default('https://localhost,http://localhost:3000,https://localhost:3000')
+    .default('https://localhost,http://localhost:3000,https://localhost:3000,http://localhost:5007,https://localhost:8443')
     .transform((value) =>
       value
         .split(',')

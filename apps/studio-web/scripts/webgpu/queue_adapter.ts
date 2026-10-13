@@ -57,15 +57,30 @@ function getUniformBindings(device: GPUDevice, pipeline: Pipeline): UniformBindi
 /**
  * One zero-filled vertex buffer per device, bound to any pipeline slot the
  * drawn mesh doesn't supply. Lets pipelines declare a fixed vertex-buffer
- * layout (positional `WGSL_VERTEX_SLOTS`) without forcing every drawable to
- * upload a NORMAL/UV/COLOR/ID buffer it doesn't actually use — the WGSL
- * shader still reads zeros from the missing attribute, which the fragment
- * stage discards or treats as a sensible default. Sized at 1 MiB which
- * covers ~65k vertices at stride 16; if a mesh exceeds that it will hit
- * a WebGPU validation error and we can grow this.
+/**
+ * Default size covers millions of vertices at stride 16 (64 MiB).
+ * Dynamically grows if a massive mesh exceeds it.
  */
-const DUMMY_VERTEX_BUFFER_SIZE = 1024 * 1024
+const DUMMY_VERTEX_BUFFER_SIZE = 64 * 1024 * 1024
 const dummyVertexBufferByDevice = new WeakMap<GPUDevice, GPUBuffer>()
+
+function getDummyVertexBuffer(device: GPUDevice, minSize = DUMMY_VERTEX_BUFFER_SIZE): GPUBuffer {
+  let buf = dummyVertexBufferByDevice.get(device)
+  if (!buf || buf.size < minSize) {
+    buf?.destroy()
+    const size = Math.max(DUMMY_VERTEX_BUFFER_SIZE, (minSize + 1024 * 1024 - 1) & ~(1024 * 1024 - 1))
+    buf = device.createBuffer({
+      label           : 'WebGPUDrawQueueAdapter.dummyVertexBuffer',
+      size,
+      usage           : BufferUsage.VERTEX,
+      mappedAtCreation: true,
+    })
+    new Uint8Array(buf.getMappedRange()).fill(0)
+    buf.unmap()
+    dummyVertexBufferByDevice.set(device, buf)
+  }
+  return buf
+}
 
 /**
  * Mesh-primflag → pipeline topology. SimpleIsland.drawGPU at the WebGL
@@ -118,22 +133,6 @@ function getTopologyVariant(cache: PipelineCache, base: Pipeline, topology: GPUP
     variants.set(topology, variant)
   }
   return variant
-}
-
-function getDummyVertexBuffer(device: GPUDevice): GPUBuffer {
-  let buf = dummyVertexBufferByDevice.get(device)
-  if (!buf) {
-    buf = device.createBuffer({
-      label           : 'WebGPUDrawQueueAdapter.dummyVertexBuffer',
-      size            : DUMMY_VERTEX_BUFFER_SIZE,
-      usage           : BufferUsage.VERTEX,
-      mappedAtCreation: true,
-    })
-    new Uint8Array(buf.getMappedRange()).fill(0)
-    buf.unmap()
-    dummyVertexBufferByDevice.set(device, buf)
-  }
-  return buf
 }
 
 export class WebGPUDrawQueueAdapter implements DrawQueue {

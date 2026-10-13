@@ -82,7 +82,7 @@ export function validateExportCandidate(candidate: ExportCandidate): ExportValid
     messages.push(`The export is ${actualMb} MB against a ${limitMb} MB limit.`);
   }
 
-  if (!candidate.gltfHeaderValid) {
+  if ((extension === '.glb' || extension === '.gltf') && !candidate.gltfHeaderValid) {
     blockedBy.push('INVALID_GLTF');
     messages.push('The exported GLB has no valid glTF header, so VOID·SPACE would reject it.');
   }

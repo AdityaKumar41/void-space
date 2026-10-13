@@ -112,8 +112,9 @@ export type {IMaterialAttrConsumer, MaterialAttrRequest, VertexAttrDesc, VertexA
 // Properties-editor panel contributions (§9). A leaf like the two above.
 export {ANY_DATA_KIND} from './core/props_panels.js'
 export type {IPropsPanel} from './core/props_panels.js'
-// `core/data_kinds.ts` is deliberately NOT re-exported here: a kind is
-// registered, not imported, so it goes through `AddonAPI.registerDataKind`.
+// `core/data_kinds.ts` registration goes through `AddonAPI.registerDataKind`,
+// but the capability query `triangleSourceOf` is re-exported for universal geometry export.
+export {triangleSourceOf} from './core/data_kinds.js'
 
 // sceneobject/* and View3DOp — the base classes an addon's geometry type and
 // its viewport ops extend.
@@ -137,6 +138,14 @@ export type {ToolContext} from './core/context.js'
 export {Node, NodeFlags, CallbackNode} from './core/graph.js'
 export {DependSocket} from './core/graphsockets.js'
 export {Material, DefaultMat, makeDefaultMaterial} from './core/material.js'
+export {
+  ImageNode,
+  AttributeNode,
+  AttributeCategory,
+  DiffuseNode,
+  GeometryNode,
+  OutputNode,
+} from './shadernodes/shader_nodes.js'
 export {default as bus} from './core/bus.js'
 export type {BusTriggers} from './core/bus.js'
 export {EDGE_LINKED_LISTS} from './core/const.js'
@@ -246,7 +255,7 @@ export {ImageBus} from './editors/image/ImageBus.js'
 export type {ImageDrawLine} from './editors/image/ImageBus.js'
 // The image data block and the pointer-with-a-user that an editor holds one
 // through, so an addon-owned editor can show a texture behind what it edits.
-export {ImageBlock, ImageTypes, ImageUser} from './image/image.js'
+export {ImageBlock, ImageTypes, ImageGenTypes, ImageFlags, ImageUser} from './image/image.js'
 // An addon that contributes a whole editor area needs the base class, its
 // sidebar, and the data-block browser its header puts in a row. `api.editor.*`
 // carries the same values, but only inside `register(api)` — a class body

@@ -9,24 +9,24 @@ export interface INumberList {
 }
 
 export declare global {
-  declare function updateDataGraph(immediate?: boolean)
+  function updateDataGraph(immediate?: boolean): void
 
   /* This goes here for use by STRUCT scripts;
    * it's deliberately wrong to force you to
    * properly import it in other code.*/
-  declare function DataRef(): void
+  function DataRef(): void
 
-  declare interface Set {
-    map(func: (item: any) => any)
+  interface Set {
+    map(func: (item: any) => any): any
 
-    filter(func: (item: any) => boolean)
+    filter(func: (item: any) => boolean): any
   }
 
   /* window.D* debug variables.
    * These are created at the console.
    * only.
    **/
-  declare interface Window {
+  interface Window {
     D1: number | undefined
     D2: number | undefined
     D3: number | undefined
@@ -50,16 +50,16 @@ export declare global {
     _genDefaultFile: typeof import('../core/appstate').genDefaultFile
   }
 
-  declare const DEBUG: any
-  declare const _appstate: AppState
+  const DEBUG: any
+  const _appstate: AppState
 
   /**
    * `AppState` reachable as a type without importing `core/appstate` — what
    * lets `core/app_instance.ts` stay import-free (P20 §2.1).
    */
-  declare type AppStateGlobal = AppState
+  type AppStateGlobal = AppState
 
-  declare interface HTMLCanvasElement {
+  interface HTMLCanvasElement {
     dpi: number
   }
 }

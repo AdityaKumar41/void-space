@@ -247,8 +247,13 @@ MenuBarEditor {
       'app.load_last_autosave()',
       'app.save(forceDialog=false saveToolStack=true)|Save With Toolstack',
       'app.save(forceDialog=true)|Save As',
-      'app.export_stl()',
-      'app.import_file()',
+      Menu.SEP,
+      'app.import_file()|Import 3D Asset...',
+      Menu.SEP,
+      'app.export_glb()|Export glTF 2.0 (.glb)',
+      'app.export_obj()|Export Wavefront (.obj)',
+      'app.export_stl()|Export Stereolithography (.stl)',
+      'app.export_ply()|Export Stanford (.ply)',
     ]
 
     // Only the NW.js shell owns a window to close; the browser build has no Exit.

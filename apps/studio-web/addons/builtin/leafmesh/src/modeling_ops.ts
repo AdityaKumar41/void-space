@@ -497,6 +497,54 @@ export class LeafMeshLoopCutOp extends LeafMeshTopoOpBase<LoopCutIn> {
   }
 }
 
+/**
+ * Delete selected faces, edges, or vertices with full topology cleanup.
+ * Falls back to object deletion if nothing is selected or in object mode.
+ */
+export class LeafMeshDeleteSelectedOp extends LeafMeshTopoOpBase {
+  static tooldef() {
+    return {
+      toolpath: 'leafmesh.delete_selected',
+      uiname  : 'Delete Selected',
+      icon    : Icons.DELETE,
+      inputs  : {},
+    }
+  }
+
+  exec(ctx: ToolContext): void {
+    const data = this._getData(ctx)
+    if (data === undefined) {
+      ctx.api.execTool(ctx, 'object.delete_selected()')
+      return
+    }
+
+    const faces = listSelected(data.mesh, Domain.FACE)
+    const edges = listSelected(data.mesh, Domain.EDGE)
+    const verts = listSelected(data.mesh, Domain.VERT)
+
+    if (faces.length === 0 && edges.length === 0 && verts.length === 0) {
+      ctx.api.execTool(ctx, 'object.delete_selected()')
+      return
+    }
+
+    if (faces.length > 0) {
+      for (const f of faces) {
+        data.mesh.killFace(f)
+      }
+    } else if (edges.length > 0) {
+      for (const e of edges) {
+        data.mesh.killEdge(e)
+      }
+    } else if (verts.length > 0) {
+      for (const v of verts) {
+        data.mesh.killVert(v)
+      }
+    }
+
+    this._finish(data, [])
+  }
+}
+
 export const LEAFMESH_MODELING_OPS = [
   LeafMeshExtrudeRegionOp,
   LeafMeshExtrudeIndividualOp,
@@ -506,4 +554,6 @@ export const LEAFMESH_MODELING_OPS = [
   LeafMeshBevelEdgesOp,
   LeafMeshSubdivideOp,
   LeafMeshLoopCutOp,
+  LeafMeshDeleteSelectedOp,
 ]
+

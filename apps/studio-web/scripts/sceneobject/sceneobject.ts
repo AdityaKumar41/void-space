@@ -447,6 +447,12 @@ SceneObject {
   draw(view3d: View3D, gl: WebGL2RenderingContext, uniforms: any, program: ShaderProgram = Shaders.BasicLitMesh): void {
     uniforms.objectMatrix = this.outputs.matrix.getValue()
     uniforms.object_id = this.lib_id
+    if (!uniforms.normalMatrix || uniforms.objectMatrix) {
+      uniforms.normalMatrix = new Matrix4(uniforms.objectMatrix).makeRotationOnly()
+    }
+    if (uniforms.alpha === undefined) {
+      uniforms.alpha = 1.0
+    }
 
     const frame: FrameContext = {gl, uniforms, program}
     const queue = createDrawQueue(frame)

@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
+const IPFS_GATEWAY_URL = process.env.IPFS_GATEWAY_URL ?? 'http://localhost:8080';
 
 const nextConfig = {
   reactStrictMode: true,
@@ -32,6 +33,18 @@ const nextConfig = {
    */
   async rewrites() {
     return [{ source: '/api/:path*', destination: `${API_INTERNAL_URL}/api/:path*` }];
+  },
+  async headers() {
+    return [
+      {
+        source: '/ipfs/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, HEAD, OPTIONS' },
+          { key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' },
+        ],
+      },
+    ];
   },
 };
 

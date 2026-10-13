@@ -119,6 +119,7 @@ export function initWebGL(state = peekAppState()) {
   canvas.style['height'] = h + 'px'
   canvas.style['position'] = 'absolute'
   canvas.style.zIndex = '-2'
+  canvas.style['backgroundColor'] = '#08080a'
 
   canvas.dpi = dpi
 
@@ -722,6 +723,31 @@ View3D {
       // bar's Add menu builds, so the two stay in step.
       new HotKey('A', ['shift'], () => {
         spawnAddMenu(this.ctx)
+      }),
+
+      // Blender's Tab: toggle between Object Mode and Edit/Sculpt Mode
+      new HotKey('Tab', [], () => {
+        const scene = this.ctx?.scene as any
+        if (!scene || !scene.constructor?.toolModeProp) return
+        const toolModeProp = scene.constructor.toolModeProp
+        const objectIdx = toolModeProp.values['object'] ?? 0
+        const isObjectMode = scene.toolmode_i === objectIdx
+
+        if (isObjectMode) {
+          const ob = scene.objects?.active || this.ctx?.object
+          const kind = ob?.data?.constructor?.dataDefine?.()?.id || ob?.data?.name || ''
+          if (kind === 'leafmesh' && 'leafmesh' in toolModeProp.values) {
+            scene.switchToolMode(toolModeProp.values['leafmesh'])
+          } else if (kind === 'litemesh' || kind === 'sculptcore') {
+            const target = toolModeProp.values['sculptcore'] ?? toolModeProp.values['leafmesh']
+            if (target !== undefined) scene.switchToolMode(target)
+          } else if ('leafmesh' in toolModeProp.values) {
+            scene.switchToolMode(toolModeProp.values['leafmesh'])
+          }
+        } else {
+          scene.switchToolMode(objectIdx)
+        }
+        window.redraw_viewport(true)
       }),
 
       new HotKey('Key1', [], () => {
@@ -1809,7 +1835,102 @@ View3D {
       return
     }
 
-    drawViewportWebGpu(this as unknown as ViewLike)
+    let drewGpu = false
+    if (isWebGPU()) {
+      try {
+        drewGpu = drawViewportWebGpu(this as unknown as ViewLike)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[webgpu] drawViewportWebGpu error:', err)
+        drewGpu = false
+      }
+    }
+
+    if (!drewGpu) {
+      try {
+        this.drawViewportWebGl()
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[webgl] drawViewportWebGl error:', err)
+      }
+    }
+  }
+
+  drawViewportWebGl() {
+    const gl = this.gl
+    if (!gl) return
+
+    gl.enable(gl.SCISSOR_TEST)
+    const glY = Math.max(0, this.canvas.height - (this.glPos[1] + this.glSize[1]))
+    gl.scissor(this.glPos[0], glY, this.glSize[0], this.glSize[1])
+    gl.viewport(this.glPos[0], glY, this.glSize[0], this.glSize[1])
+
+    gl.enable(gl.DEPTH_TEST)
+    gl.depthFunc(gl.LEQUAL)
+    gl.depthMask(true)
+
+    // Clear viewport background (graphite palette #08080a)
+    gl.clearColor(0.031, 0.031, 0.039, 1.0)
+    gl.clearDepth(1.0)
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+    // 1. Ground Grid
+    if ((this.flag & View3DFlags.SHOW_GRID) && this.grid) {
+      const lineProg = view3d_shaders.Shaders.BasicLineShader
+      if (lineProg) {
+        const uniforms = {
+          projectionMatrix: this.activeCamera.rendermat,
+          normalMatrix    : this.activeCamera.normalmat,
+          objectMatrix    : new Matrix4(),
+          near            : this.activeCamera.near,
+          far             : this.activeCamera.far,
+          aspect          : this.activeCamera.aspect,
+          size            : this.glSize,
+          polygonOffset   : 0.0,
+          alpha           : 1.0,
+          color           : [0.35, 0.35, 0.4, 0.6],
+        }
+        try {
+          this.grid.draw(gl, uniforms, lineProg)
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('[webgl] grid draw error:', err)
+        }
+      }
+    }
+
+    // 2. Draw scene objects
+    try {
+      this.drawObjects()
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[webgl] drawObjects error:', err)
+    }
+
+    // 3. Toolmode on_drawstart & on_drawend
+    const scene = this.ctx?.scene
+    if (scene?.toolmode) {
+      try {
+        scene.toolmode.on_drawstart?.(this)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[webgl] toolmode.on_drawstart error:', err)
+      }
+      try {
+        scene.toolmode.on_drawend?.(this)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[webgl] toolmode.on_drawend error:', err)
+      }
+    }
+
+    // 4. Widgets
+    try {
+      this.widgets?.draw(this, gl)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[webgl] widgets.draw error:', err)
+    }
   }
 
   makeDrawQuad(v1: Vector3, v2: Vector3, v3: Vector3, v4: Vector3, color: Vector4 | number[], useZ = true): DrawQuad {

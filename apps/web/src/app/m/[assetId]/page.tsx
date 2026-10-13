@@ -327,6 +327,8 @@ export default async function ModelPage({ params }: PageProps) {
               <VoidStudioLaunchButton
                 assetId={item.assetId}
                 name={item.name}
+                format={item.format}
+                filename={`${item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}${item.format ? (item.format.startsWith('.') ? item.format : `.${item.format}`) : '.glb'}`}
                 modelUrl={gatewayUrl(item.ipfsCid)}
                 variant="secondary"
                 size="md"

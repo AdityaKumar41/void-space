@@ -271,7 +271,7 @@ export async function authRoutes(
     const studioUrl =
       process.env.VOID_STUDIO_URL ||
       process.env.STUDIO_URL ||
-      'https://localhost:8443';
+      'http://localhost:5007';
 
     return reply.status(200).send({
       accessToken,

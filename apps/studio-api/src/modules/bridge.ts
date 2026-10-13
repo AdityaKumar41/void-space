@@ -83,14 +83,20 @@ export async function bridgeRoutes(
    * Creator *where* their work goes and *what* is already there.
    */
   app.get('/voidspace/status', async () => {
-    const [all, newest] = await Promise.all([
-      viaUpstream('read catalogue statistics', () =>
+    let all = { total: 0 };
+    let newest: { readonly items: readonly any[] } = { items: [] };
+    let reachable = true;
+
+    try {
+      const [allRes, newestRes] = await Promise.all([
         bridge.gateway.browsePublicCatalog({ limit: 1 }),
-      ),
-      viaUpstream('read the newest catalogue entries', () =>
         bridge.gateway.browsePublicCatalog({ limit: 4, sort: 'newest' }),
-      ),
-    ]);
+      ]);
+      all = allRes;
+      newest = newestRes;
+    } catch {
+      reachable = false;
+    }
 
     const featured = newest.items[0];
 
@@ -99,7 +105,7 @@ export async function bridgeRoutes(
       /** Where the Studio is talking to. Shown so a mis-set URL is visible, not inferred. */
       apiBaseUrl: bridge.apiBaseUrl ?? '(in-process mock)',
       links: bridge.links,
-      reachable: true,
+      reachable,
       publish: {
         enabled: bridge.publishEnabled,
         /** The exact remedy, so the UI can tell a Creator what to ask an admin for. */
@@ -157,6 +163,31 @@ export async function bridgeRoutes(
   });
 
   /**
+   * Session / token acquisition for the Studio editor.
+   * If the Studio is configured with a valid Developer API key, returns an active
+   * bearer token from VOID·SPACE so local authoring and showcase work without manual token pasting.
+   */
+  app.get('/auth/token', async (_request, reply) => {
+    if (!bridge.publishEnabled || !bridge.apiBaseUrl || !bridge.apiKey) {
+      return reply.status(404).send({ error: 'Publish credential unconfigured' });
+    }
+    try {
+      const upstream = await fetch(`${bridge.apiBaseUrl}/api/v1/auth/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ apiKey: bridge.apiKey }),
+      });
+      if (!upstream.ok) {
+        return reply.status(upstream.status).send({ error: 'Failed to exchange API key' });
+      }
+      const data = await upstream.json();
+      return reply.send(data);
+    } catch (err: any) {
+      return reply.status(502).send({ error: err.message });
+    }
+  });
+
+  /**
    * Session verification probe for the Studio editor.
    * If an Authorization header is present with a valid VOID·SPACE token,
    * returns authenticated user and tenant info. Otherwise returns { authenticated: false }.
@@ -178,6 +209,39 @@ export async function bridgeRoutes(
       };
     } catch {
       return { authenticated: false };
+    }
+  });
+
+  /**
+   * Proxies 3D model assets for the Studio editor.
+   * Eliminates any cross-origin browser blocking or disk-cache poisoning
+   * when fetching meshes from VOID·SPACE or IPFS.
+   */
+  app.get('/voidspace/model-proxy', async (request: FastifyRequest, reply) => {
+    const { url } = request.query as { url?: string };
+    if (!url) {
+      return reply.status(400).send({ error: 'Missing url query parameter' });
+    }
+
+    try {
+      const upstream = await fetch(url, {
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!upstream.ok) {
+        return reply.status(upstream.status).send({ error: `Upstream returned HTTP ${upstream.status}` });
+      }
+
+      const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+      const arrayBuffer = await upstream.arrayBuffer();
+
+      reply.header('content-type', contentType);
+      reply.header('access-control-allow-origin', '*');
+      reply.header('cross-origin-resource-policy', 'cross-origin');
+      reply.header('cache-control', 'public, max-age=31536000, immutable');
+      return reply.send(Buffer.from(arrayBuffer));
+    } catch (err: any) {
+      return reply.status(502).send({ error: `Proxy fetch failed: ${err.message}` });
     }
   });
 }

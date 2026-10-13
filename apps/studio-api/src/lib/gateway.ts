@@ -56,6 +56,7 @@ export interface VoidSpaceBridge {
    * marketplace before any credential exists, and only Publish needs one. Modelling
    * this as "no gateway at all" would break browsing for no reason.
    */
+  readonly apiKey?: string;
   readonly publishEnabled: boolean;
   /** Throws with a message that names the fix when publishing is attempted without a credential. */
   requirePublishCredential(): void;
@@ -113,6 +114,7 @@ export function buildVoidSpaceBridge(env: StudioApiEnv): VoidSpaceBridge {
   return {
     mode: 'live',
     gateway,
+    apiKey: publishEnabled ? apiKey : undefined,
     apiBaseUrl: env.STUDIO_VOIDSPACE_API_BASE_URL,
     links,
     publishEnabled,

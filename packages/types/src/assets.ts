@@ -19,7 +19,7 @@ export const REVIEW_DECISIONS = ['approved', 'rejected', 'revision'] as const;
 export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
 
 /** §2.5: uploaded files are restricted to these formats, 200 MB ceiling per asset. */
-export const ALLOWED_ASSET_EXTENSIONS = ['.glb', '.gltf', '.obj', '.fbx', '.stl', '.blend'] as const;
+export const ALLOWED_ASSET_EXTENSIONS = ['.glb', '.gltf', '.obj', '.fbx', '.stl', '.ply', '.blend'] as const;
 export type AssetExtension = (typeof ALLOWED_ASSET_EXTENSIONS)[number];
 
 export const MAX_ASSET_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB — FR-3.1
@@ -28,14 +28,22 @@ export const MAX_ASSET_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB — FR-3.1
 export const ASSET_MIME_TYPES: Readonly<Record<AssetExtension, readonly string[]>> = {
   '.glb': ['model/gltf-binary', 'application/octet-stream'],
   '.gltf': ['model/gltf+json', 'application/json', 'text/plain', 'application/octet-stream'],
-  '.obj': ['text/plain', 'application/octet-stream', 'model/obj'],
-  '.fbx': ['application/octet-stream', 'model/fbx'],
-  '.stl': ['model/stl', 'application/sla', 'application/octet-stream'],
+  '.obj': ['text/plain', 'application/octet-stream', 'model/obj', 'model/wavefront-obj'],
+  '.fbx': ['application/octet-stream', 'model/fbx', 'application/x-fbx', 'model/vnd.fbx'],
+  '.stl': ['model/stl', 'application/sla', 'application/octet-stream', 'application/vnd.ms-pki.stl', 'text/plain'],
+  '.ply': ['model/ply', 'application/x-ply', 'text/plain', 'application/octet-stream'],
   '.blend': ['application/octet-stream', 'application/x-blender'],
 };
 
 /** Formats a browser-side 3D viewer can render directly (FR-5.2). */
-export const NATIVELY_VIEWABLE_EXTENSIONS: readonly AssetExtension[] = ['.glb', '.gltf'];
+export const NATIVELY_VIEWABLE_EXTENSIONS: readonly AssetExtension[] = [
+  '.glb',
+  '.gltf',
+  '.obj',
+  '.stl',
+  '.ply',
+  '.fbx',
+];
 
 export const PIN_STATUSES = ['pending', 'pinning', 'pinned', 'failed'] as const;
 export type PinStatus = (typeof PIN_STATUSES)[number];

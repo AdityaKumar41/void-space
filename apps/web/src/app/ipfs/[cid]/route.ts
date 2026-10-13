@@ -42,6 +42,14 @@ const PASS_THROUGH = [
   'last-modified',
 ] as const;
 
+const CORS_HEADERS: Record<string, string> = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, HEAD, OPTIONS',
+  'access-control-allow-headers': '*',
+  'cross-origin-resource-policy': 'cross-origin',
+  'vary': 'Origin',
+};
+
 export async function GET(
   request: Request,
   { params }: { params: { cid: string } },
@@ -49,7 +57,7 @@ export async function GET(
   const { cid } = params;
 
   if (!CID_PATTERN.test(cid)) {
-    return new Response('Not found', { status: 404 });
+    return new Response('Not found', { status: 404, headers: CORS_HEADERS });
   }
 
   /** Forwarded so a partial-content request stays partial. */
@@ -66,18 +74,18 @@ export async function GET(
   } catch {
     // The gateway is down or unreachable. 503 says "try again", and the message avoids leaking the
     // internal hostname into a page the public can read.
-    return new Response('Content gateway unavailable', { status: 503 });
+    return new Response('Content gateway unavailable', { status: 503, headers: CORS_HEADERS });
   }
 
   if (upstream.status === 404 || upstream.status === 400) {
-    return new Response('Not found', { status: 404 });
+    return new Response('Not found', { status: 404, headers: CORS_HEADERS });
   }
 
   if (!upstream.ok && upstream.status !== 206) {
-    return new Response('Content gateway error', { status: 502 });
+    return new Response('Content gateway error', { status: 502, headers: CORS_HEADERS });
   }
 
-  const headers = new Headers();
+  const headers = new Headers(CORS_HEADERS);
   for (const name of PASS_THROUGH) {
     const value = upstream.headers.get(name);
     if (value !== null) headers.set(name, value);
@@ -91,3 +99,11 @@ export async function GET(
   // through Node's stream types and back would only add a copy per chunk.
   return new Response(upstream.body, { status: upstream.status, headers });
 }
+
+export async function OPTIONS(): Promise<Response> {
+  return new Response(null, {
+    status: 204,
+    headers: CORS_HEADERS,
+  });
+}
+

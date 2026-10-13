@@ -37,10 +37,14 @@ import {
   useGLTF,
   useProgress,
 } from '@react-three/drei';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useLoader, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import {
   Component,
   Suspense,
@@ -64,7 +68,7 @@ import {
 import { shortCid } from '@/lib/format';
 
 /** Kinds of model the browser can render natively. */
-const NATIVE_FORMATS = new Set(['glb', 'gltf']);
+const NATIVE_FORMATS = new Set(['glb', 'gltf', 'obj', 'stl', 'ply', 'fbx']);
 
 export function canPreviewNatively(format: string): boolean {
   return NATIVE_FORMATS.has(format.toLowerCase().replace(/^\.+/, ''));
@@ -405,25 +409,16 @@ export interface ClipHandle {
  * The model
  * ========================================================================================== */
 
-interface ModelProps {
-  readonly url: string;
+interface ModelSceneProps {
+  readonly scene: THREE.Object3D;
+  readonly animations?: readonly THREE.AnimationClip[];
   readonly mode: ShadeMode;
   readonly onDecoded: (geometry: DecodedGeometry) => void;
   readonly onSummary: (summary: SceneSummary) => void;
   readonly onClips: (clips: ClipHandle | null) => void;
 }
 
-function Model({ url, mode, onDecoded, onSummary, onClips }: ModelProps) {
-  const { scene, animations } = useGLTF(url);
-
-  /**
-   * The scene is cloned for two reasons, and both matter.
-   *
-   * Materials must be cloned because three.js shares them through `Object3D.clone()`, so any change
-   * made for one viewer would silently apply to every other viewer of the same asset. And the clone
-   * has to be a `SkeletonUtils` clone, not a plain one: a plain clone of a skinned mesh shares the
-   * original skeleton, so playing a clip in the preview would move bones the original still owns.
-   */
+function ModelScene({ scene, animations = [], mode, onDecoded, onSummary, onClips }: ModelSceneProps) {
   const prepared = useMemo(() => {
     const root = SkeletonUtils.clone(scene) as THREE.Object3D;
     const originals: MaterialMap = new Map();
@@ -471,10 +466,10 @@ function Model({ url, mode, onDecoded, onSummary, onClips }: ModelProps) {
     onSummary(summariseScene(prepared.root));
   }, [prepared, onDecoded, onSummary]);
 
-  const { actions, mixer } = useAnimations(animations, prepared.root);
+  const { actions, mixer } = useAnimations(animations as THREE.AnimationClip[], prepared.root);
 
   useEffect(() => {
-    if (animations.length === 0) {
+    if (!animations || animations.length === 0) {
       onClips(null);
       return;
     }
@@ -491,6 +486,93 @@ function Model({ url, mode, onDecoded, onSummary, onClips }: ModelProps) {
   }, [animations, actions, mixer, onClips]);
 
   return <primitive object={prepared.root} />;
+}
+
+interface FormatModelProps {
+  readonly url: string;
+  readonly mode: ShadeMode;
+  readonly onDecoded: (geometry: DecodedGeometry) => void;
+  readonly onSummary: (summary: SceneSummary) => void;
+  readonly onClips: (clips: ClipHandle | null) => void;
+}
+
+function GlbModel({ url, ...rest }: FormatModelProps) {
+  const { scene, animations } = useGLTF(url);
+  return <ModelScene scene={scene} animations={animations} {...rest} />;
+}
+
+function ObjModel({ url, ...rest }: FormatModelProps) {
+  const obj = useLoader(OBJLoader, url);
+  const scene = useMemo(() => {
+    obj.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        if (!mesh.material || (Array.isArray(mesh.material) && mesh.material.length === 0)) {
+          mesh.material = new THREE.MeshStandardMaterial({
+            color: 0x94a3b8,
+            roughness: 0.4,
+            metalness: 0.15,
+          });
+        }
+      }
+    });
+    return obj;
+  }, [obj]);
+  return <ModelScene scene={scene} {...rest} />;
+}
+
+function StlModel({ url, ...rest }: FormatModelProps) {
+  const geometry = useLoader(STLLoader, url);
+  const scene = useMemo(() => {
+    geometry.computeVertexNormals();
+    const material = new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      roughness: 0.4,
+      metalness: 0.15,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    const group = new THREE.Group();
+    group.add(mesh);
+    return group;
+  }, [geometry]);
+  return <ModelScene scene={scene} {...rest} />;
+}
+
+function PlyModel({ url, ...rest }: FormatModelProps) {
+  const geometry = useLoader(PLYLoader, url);
+  const scene = useMemo(() => {
+    geometry.computeVertexNormals();
+    const hasColors = Boolean(geometry.attributes.color);
+    const material = new THREE.MeshStandardMaterial({
+      color: hasColors ? 0xffffff : 0x94a3b8,
+      vertexColors: hasColors,
+      roughness: 0.4,
+      metalness: 0.15,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    const group = new THREE.Group();
+    group.add(mesh);
+    return group;
+  }, [geometry]);
+  return <ModelScene scene={scene} {...rest} />;
+}
+
+function FbxModel({ url, ...rest }: FormatModelProps) {
+  const fbx = useLoader(FBXLoader, url);
+  return <ModelScene scene={fbx} animations={fbx.animations || []} {...rest} />;
+}
+
+interface ModelProps extends FormatModelProps {
+  readonly format?: string;
+}
+
+function Model({ url, format, ...rest }: ModelProps) {
+  const norm = (format || '').toLowerCase().replace(/^\.+/, '');
+  if (norm === 'obj') return <ObjModel url={url} {...rest} />;
+  if (norm === 'stl') return <StlModel url={url} {...rest} />;
+  if (norm === 'ply') return <PlyModel url={url} {...rest} />;
+  if (norm === 'fbx') return <FbxModel url={url} {...rest} />;
+  return <GlbModel url={url} {...rest} />;
 }
 
 /* ============================================================================================
@@ -1637,6 +1719,7 @@ export function ModelViewer({
               <group ref={modelRef}>
                 <Model
                   url={url}
+                  format={format}
                   mode={mode}
                   onDecoded={handleDecoded}
                   onSummary={handleSummary}

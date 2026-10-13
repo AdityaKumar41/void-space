@@ -1230,6 +1230,7 @@ App {
     canvas.style['height'] = h + 'px'
     canvas.style['position'] = 'absolute'
     canvas.style.zIndex = '-2'
+    canvas.style['backgroundColor'] = '#08080a'
     canvas.dpi = dpi
   }
 

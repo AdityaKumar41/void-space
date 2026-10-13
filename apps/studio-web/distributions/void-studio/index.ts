@@ -14,12 +14,11 @@ export default defineDistribution({
   id   : 'void-studio',
   title: 'VOID·STUDIO',
 
-  // litemesh is in-bundle; leafmesh and uv_editor ship as their own builds
-  // under build/addons/. leafmesh is still default-off here and uv_editor
-  // default-on — each addon's manifest says which, and neither is overridden.
-  // Order is not load-bearing — the resolver sorts, and the startup scene is
-  // chosen by name below.
-  addons: [bundled(litemeshManifest, litemesh), external('leafmesh'), external('uv_editor')],
+  addons: [
+    bundled(litemeshManifest, litemesh),
+    external('leafmesh', {enabled: true}),
+    external('uv_editor'),
+  ],
 
   defaultScene: 'litemesh-sphere',
 })

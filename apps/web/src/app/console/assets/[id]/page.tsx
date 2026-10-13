@@ -245,6 +245,8 @@ export default function AssetConsolePage() {
           <VoidStudioLaunchButton
             assetId={asset.id}
             name={asset.name}
+            format={version?.format}
+            filename={`${asset.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}${version?.format ? (version.format.startsWith('.') ? version.format : `.${version.format}`) : '.glb'}`}
             modelUrl={version?.gatewayUrl ?? undefined}
             variant="secondary"
             size="sm"

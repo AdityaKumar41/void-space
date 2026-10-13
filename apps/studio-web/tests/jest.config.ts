@@ -94,6 +94,7 @@ const config: Config = {
     '^(?!.*path-controller)(?!.*path\\.ux)(.*/)?util/vectormath(\\.js)?$':
       '<rootDir>/../scripts/path.ux/scripts/util/vectormath.ts',
     '^@framework/pathux$': '<rootDir>/lib/pathux_shim.ts',
+    '^@framework/api$': '<rootDir>/../scripts/framework_api.ts',
     '^(\\.{1,2}/.*)\\.js$' : '$1',
   },
 

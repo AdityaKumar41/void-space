@@ -184,3 +184,30 @@ export function readOBJ(text: string, mesh = new LeafMesh()): ObjReadResult {
 
   return {mesh, stats}
 }
+
+export function exportTrianglesToOBJ(
+  tris: {positions: Float64Array; indices: Int32Array},
+  name = 'Model'
+): string {
+  const vertCount = (tris.positions.length / 3) | 0
+  if (vertCount === 0 || tris.indices.length === 0) {
+    return ''
+  }
+
+  let out = `# Exported by VOID·STUDIO 1.0\no ${name}\n`
+  for (let i = 0; i < vertCount; i++) {
+    const x = tris.positions[i * 3]
+    const y = tris.positions[i * 3 + 1]
+    const z = tris.positions[i * 3 + 2]
+    out += `v ${x.toFixed(6)} ${y.toFixed(6)} ${z.toFixed(6)}\n`
+  }
+
+  for (let i = 0; i < tris.indices.length; i += 3) {
+    const i0 = tris.indices[i] + 1
+    const i1 = tris.indices[i + 1] + 1
+    const i2 = tris.indices[i + 2] + 1
+    out += `f ${i0} ${i1} ${i2}\n`
+  }
+
+  return out
+}

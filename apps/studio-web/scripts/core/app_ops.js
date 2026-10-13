@@ -3,9 +3,10 @@ import {ToolOp, BoolProperty, UndoFlags} from '../path.ux/scripts/pathux.js'
 import * as cconst from './const.js'
 import * as platform from './platform.js'
 import {exportSTLMesh} from '../util/stlformat.js'
-import {formatForFilename, listImportFormats} from './file_formats.js'
+import {formatForFilename, listImportFormats, getFileFormat, listExportFormats} from './file_formats.js'
 import {genDefaultFile} from './gen_default_file.js'
 import {getAppState} from './app_instance.js'
+import addonManager from '../addon/addon.js'
 
 // AppImportOBJOp moved to scripts/mesh/import_obj_op.js so core stops
 // importing from mesh. The class is registered there via ToolOp.register.
@@ -84,9 +85,17 @@ export class FileSaveOp extends ToolOp {
         ],
       })
       .then((saveHandle) => {
-        getAppState().saveHandle = saveHandle
+        if (saveHandle) {
+          getAppState().saveHandle = saveHandle
+        }
         getAppState().autosave?.onProjectSaved()
         ctx.message('File saved')
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') {
+          return
+        }
+        console.warn('Save dialog error:', err)
       })
     //saveFile(getAppState().createFile(), "unnamed."+cconst.FILE_EXT, ["."+cconst.FILE_EXT]);
   }
@@ -120,16 +129,23 @@ export class FileOpenOp extends ToolOp {
       })
       .then((paths) => {
         console.log('paths', paths)
-        if (paths.length === 0) {
+        if (!paths || paths.length === 0) {
           return
         }
 
         return platform.platform.readFile(paths[0], 'application/x-octet-stream')
       })
       .then((data) => {
+        if (!data) return
         console.log('got data!', data)
         getAppState().saveHandle = undefined
         getAppState().loadFileAsync(data, {reset_toolstack: true, load_screen: true, reset_context: true})
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') {
+          return
+        }
+        console.warn('Open dialog error:', err)
       })
 
     //loadFile(undefined, ["."+cconst.FILE_EXT]).then((filedata) => {
@@ -189,6 +205,148 @@ export class FileNewOp extends ToolOp {
 }
 ToolOp.register(FileNewOp)
 
+function triggerBrowserDownload(filename, data, mimeType) {
+  let blob
+  if (typeof data === 'string') {
+    blob = new Blob([data], {type: mimeType || 'text/plain;charset=utf-8'})
+  } else if (data instanceof Uint8Array || data instanceof ArrayBuffer) {
+    blob = new Blob([data], {type: mimeType || 'application/octet-stream'})
+  } else {
+    return
+  }
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+async function exportWithFormat(ctx, formatId, defaultFilename, dialogTitle, mimeType) {
+  let fmt = getFileFormat(formatId)
+  if (!fmt && typeof addonManager !== 'undefined') {
+    if (!addonManager.isEnabled('leafmesh')) {
+      try {
+        addonManager.enable('leafmesh')
+      } catch {}
+      fmt = getFileFormat(formatId)
+    }
+  }
+
+  if (!fmt || typeof fmt.exportToBytes !== 'function') {
+    try {
+      const addonUrl = new URL('./build/addons/leafmesh/src/main.js', document.baseURI).href
+      const leafmeshMod = await import(/* @vite-ignore */ addonUrl)
+      if (formatId === 'glb' || formatId === 'gltf') fmt = leafmeshMod?.LEAFMESH_GLB_FORMAT
+      else if (formatId === 'obj') fmt = leafmeshMod?.LEAFMESH_OBJ_FORMAT
+      else if (formatId === 'stl') fmt = leafmeshMod?.LEAFMESH_STL_FORMAT
+      else if (formatId === 'ply') fmt = leafmeshMod?.LEAFMESH_PLY_FORMAT
+    } catch (e) {
+      console.warn('Fallback dynamic import failed for exporter:', e)
+    }
+  }
+
+  if (!fmt || typeof fmt.exportToBytes !== 'function') {
+    ctx.error?.(`No exporter registered for format: ${formatId}`)
+    return
+  }
+
+  const ob = ctx.scene?.objects?.active || ctx.object
+  const baseName = (ob?.name || 'model').replace(/[^a-zA-Z0-9_\-]/g, '_')
+  const ext = fmt.extensions[0] || `.${formatId}`
+  const filename = `${baseName}${ext}`
+
+  const data = fmt.exportToBytes(ctx)
+  if (!data || (data instanceof Uint8Array && data.length === 0) || (typeof data === 'string' && data.length === 0)) {
+    ctx.warning?.(`Scene has no geometry to export as ${fmt.uiName}`)
+    return
+  }
+
+  const savefunc = () => data
+
+  if (platform.platform && typeof platform.platform.showSaveDialog === 'function') {
+    platform.platform
+      .showSaveDialog(dialogTitle || `Export ${fmt.uiName}`, savefunc, {
+        filters: [
+          {
+            defaultPath: filename,
+            name       : `${fmt.uiName} Files`,
+            extensions : fmt.extensions.map((e) => e.replace(/^\./, '')),
+          },
+        ],
+      })
+      .then((saveHandle) => {
+        if (saveHandle) {
+          getAppState().saveHandle = saveHandle
+        }
+        ctx.message?.(`Exported ${filename}`)
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') {
+          return
+        }
+        triggerBrowserDownload(filename, data, mimeType)
+        ctx.message?.(`Exported ${filename}`)
+      })
+  } else {
+    triggerBrowserDownload(filename, data, mimeType)
+    ctx.message?.(`Exported ${filename}`)
+  }
+}
+
+export class FileExportGLBOp extends ToolOp {
+  static tooldef() {
+    return {
+      uiname  : 'Export glTF 2.0 (.glb)',
+      toolpath: 'app.export_glb',
+      inputs  : {},
+      undoflag: UndoFlags.NO_UNDO,
+    }
+  }
+
+  exec(ctx) {
+    exportWithFormat(ctx, 'glb', 'model.glb', 'Export glTF 2.0 Binary', 'model/gltf-binary')
+  }
+}
+
+ToolOp.register(FileExportGLBOp)
+
+export class FileExportOBJOp extends ToolOp {
+  static tooldef() {
+    return {
+      uiname  : 'Export Wavefront (.obj)',
+      toolpath: 'app.export_obj',
+      inputs  : {},
+      undoflag: UndoFlags.NO_UNDO,
+    }
+  }
+
+  exec(ctx) {
+    exportWithFormat(ctx, 'obj', 'model.obj', 'Export Wavefront OBJ', 'text/plain')
+  }
+}
+
+ToolOp.register(FileExportOBJOp)
+
+export class FileExportPLYOp extends ToolOp {
+  static tooldef() {
+    return {
+      uiname  : 'Export Stanford (.ply)',
+      toolpath: 'app.export_ply',
+      inputs  : {},
+      undoflag: UndoFlags.NO_UNDO,
+    }
+  }
+
+  exec(ctx) {
+    exportWithFormat(ctx, 'ply', 'model.ply', 'Export Stanford PLY', 'text/plain')
+  }
+}
+
+ToolOp.register(FileExportPLYOp)
+
 export class FileExportSTL extends ToolOp {
   static tooldef() {
     return {
@@ -203,30 +361,48 @@ export class FileExportSTL extends ToolOp {
   }
 
   exec(ctx) {
-    let list = new Set(ctx.selectedTriangleSourceObjects).map((f) => f.data)
-    if (list.size === 0) {
+    const fmt = getFileFormat('stl')
+    let stlData = fmt?.exportToBytes?.(ctx)
+    if (!stlData || (stlData instanceof Uint8Array && stlData.length === 0)) {
+      let list = new Set(ctx.selectedTriangleSourceObjects).map((f) => f.data)
+      if (list.size > 0) {
+        stlData = exportSTLMesh(list)
+      }
+    }
+
+    if (!stlData || (stlData instanceof Uint8Array && stlData.length === 0) || (stlData instanceof ArrayBuffer && stlData.byteLength === 0)) {
+      ctx.warning?.('No geometry to export as STL')
       return
     }
 
-    let savefunc = () => {
-      return exportSTLMesh(list)
-    }
+    const ob = ctx.scene?.objects?.active || ctx.object
+    const filename = `${(ob?.name || 'model').replace(/[^a-zA-Z0-9_\-]/g, '_')}.stl`
+
+    const savefunc = () => stlData
 
     platform.platform
       .showSaveDialog('Export STL', savefunc, {
         filters: [
           {
-            defaultPath: 'unnamed.stl',
+            defaultPath: filename,
             name       : 'STL Files',
             extensions : ['stl'],
           },
         ],
       })
       .then((saveHandle) => {
-        getAppState().saveHandle = saveHandle
-        ctx.message('File saved')
+        if (saveHandle) {
+          getAppState().saveHandle = saveHandle
+        }
+        ctx.message?.(`Exported ${filename}`)
       })
-    //saveFile(getAppState().createFile(), "unnamed."+cconst.FILE_EXT, ["."+cconst.FILE_EXT]);
+      .catch((err) => {
+        if (err?.name === 'AbortError') {
+          return
+        }
+        triggerBrowserDownload(filename, stlData, 'application/sla')
+        ctx.message?.(`Exported ${filename}`)
+      })
   }
 }
 
@@ -246,6 +422,9 @@ export class FileImportOp extends ToolOp {
   }
 
   exec(ctx) {
+    if (typeof addonManager !== 'undefined' && !addonManager.isEnabled('leafmesh')) {
+      addonManager.enable('leafmesh')
+    }
     // The dialog is built from whatever is registered right now, so an addon
     // contributing a format is the only thing that makes its extension
     // reachable — core knows no format names.
@@ -265,7 +444,7 @@ export class FileImportOp extends ToolOp {
     platform.platform
       .showOpenDialog('Import File', {filters})
       .then((paths) => {
-        if (paths.length === 0) {
+        if (!paths || paths.length === 0) {
           return undefined
         }
 
@@ -279,12 +458,18 @@ export class FileImportOp extends ToolOp {
 
         const fmt = formatForFilename(filename)
         if (fmt === undefined) {
-          ctx.error(`No importer for ${filename}`)
+          ctx.error?.(`No importer for ${filename}`)
           return
         }
 
         fmt.importFromBytes(ctx, new Uint8Array(data), filename)
         window.redraw_viewport()
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') {
+          return
+        }
+        console.warn('Import dialog error:', err)
       })
   }
 }

@@ -15,6 +15,8 @@ export interface VoidStudioLaunchButtonProps {
   readonly assetId?: string;
   readonly name?: string;
   readonly modelUrl?: string;
+  readonly format?: string;
+  readonly filename?: string;
   readonly variant?: 'nav' | 'action' | 'outline' | 'ghost' | 'primary' | 'secondary';
   readonly size?: 'sm' | 'md' | 'lg' | 'icon';
   readonly className?: string;
@@ -25,6 +27,8 @@ export function VoidStudioLaunchButton({
   assetId,
   name,
   modelUrl,
+  format,
+  filename,
   variant = 'action',
   size = 'md',
   className,
@@ -40,19 +44,26 @@ export function VoidStudioLaunchButton({
     setErrorMsg(null);
 
     let token: string | null = null;
+    let handoffStudioUrl: string | null = null;
     try {
-      const res = await apiFetch<{ token?: string; accessToken?: string; expiresIn: number }>(
+      const res = await apiFetch<{ token?: string; accessToken?: string; expiresIn: number; studioUrl?: string }>(
         '/auth/studio-token',
         { method: 'POST' },
       );
       token = res.token ?? res.accessToken ?? null;
+      if (res.studioUrl) {
+        handoffStudioUrl = res.studioUrl;
+      }
     } catch (err) {
       console.warn('Could not mint studio handoff token; launching without auth session', err);
     } finally {
       setBusy(false);
     }
 
-    const studioBase = process.env.NEXT_PUBLIC_STUDIO_URL || 'http://localhost:5007';
+    const studioBase =
+      process.env.NEXT_PUBLIC_STUDIO_URL ||
+      (handoffStudioUrl && !handoffStudioUrl.includes('localhost:8443') ? handoffStudioUrl : null) ||
+      'http://localhost:5007';
     const params = new URLSearchParams();
 
     if (token) {
@@ -63,6 +74,12 @@ export function VoidStudioLaunchButton({
     }
     if (name) {
       params.set('name', name);
+    }
+    if (format) {
+      params.set('format', format.startsWith('.') ? format : `.${format}`);
+    }
+    if (filename) {
+      params.set('filename', filename);
     }
     if (modelUrl) {
       const absoluteModelUrl = modelUrl.startsWith('http')

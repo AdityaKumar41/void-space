@@ -382,6 +382,8 @@ leafmesh.LeafMeshToolMode {
       new HotKey('I', [], 'leafmesh.inset_faces()'),
       new HotKey('B', ['ctrl'], (ctx) => this._bevel(ctx as ViewContext)),
       new HotKey('R', ['ctrl'], 'leafmesh.loop_cut()'),
+      new HotKey('X', [], 'leafmesh.delete_selected()'),
+      new HotKey('Delete', [], 'leafmesh.delete_selected()'),
     ])
   }
 

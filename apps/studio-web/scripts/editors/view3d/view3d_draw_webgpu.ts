@@ -208,13 +208,13 @@ export function primeWebGpuViewport(canvas: HTMLCanvasElement | OffscreenCanvas)
  * kicks the async device init on the first call and returns; the
  * frame draws on the second `redraw_viewport()` after init resolves.
  */
-export function drawViewportWebGpu(view3d: ViewLike): void {
-  if (!isWebGPU()) return
+export function drawViewportWebGpu(view3d: ViewLike): boolean {
+  if (!isWebGPU()) return false
   const canvas = view3d.canvas
-  if (!canvas) return
+  if (!canvas) return false
 
   const viewport = primeWebGpuViewport(canvas)
-  if (!viewport) return
+  if (!viewport) return false
 
   // New frame: reset the per-draw uniform-buffer ring (see uniform_bindings).
   nextUniformFrameEpoch()
@@ -235,7 +235,7 @@ export function drawViewportWebGpu(view3d: ViewLike): void {
     colorAttachments: [
       {
         view      : canvasTex.createView(),
-        clearValue: {r: 0.15, g: 0.15, b: 0.15, a: 1},
+        clearValue: {r: 0.031, g: 0.031, b: 0.039, a: 1},
         loadOp    : 'clear',
         storeOp   : 'store',
       },
@@ -270,6 +270,7 @@ export function drawViewportWebGpu(view3d: ViewLike): void {
     if (viewport.ctx.encoder) {
       getWebGpuDebug(viewport.gpu.device).pushTexture('render_final', canvasTex, viewport.ctx.encoder)
     }
+    return true
   } finally {
     viewport.ctx.endFrame()
   }
@@ -610,7 +611,7 @@ function drawRenderWebGpu(view3d: ViewLike): void {
     projectionMatrix: camera.rendermat,
     normalMatrix    : camera.normalmat,
     viewportSize    : view3d.glSize,
-    ambientColor    : scene.envlight?.color,
+    ambientColor    : scene.envlight?.color ?? [0.35, 0.35, 0.38],
     ambientPower    : scene.envlight?.power ?? 1.0,
     uSample         : 1,
     near            : camera.near,

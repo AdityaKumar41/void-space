@@ -331,15 +331,29 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
 
     await withTenant(principal.tenantId, async (db) => {
       const defaults = await tenantDefaults(db, principal.tenantId);
-      if (
-        defaults.allowedCategories.length > 0 &&
-        !defaults.allowedCategories.includes(metadata.category)
-      ) {
-        throw new ConflictError(
-          `Category "${metadata.category}" is not allowed in this workspace`,
-          'CATEGORY_NOT_ALLOWED',
-          { allowed: defaults.allowedCategories },
+      let assignedCategory = metadata.category;
+      if (defaults.allowedCategories.length > 0) {
+        const match = defaults.allowedCategories.find(
+          (c) =>
+            c.toLowerCase() === metadata.category.toLowerCase() ||
+            c.toLowerCase() === metadata.category.toLowerCase().replace(/s$/, '') ||
+            c.toLowerCase().replace(/s$/, '') === metadata.category.toLowerCase(),
         );
+        if (match) {
+          assignedCategory = match;
+        } else {
+          try {
+            await db.tenantSettings.update({
+              where: { tenantId: principal.tenantId },
+              data: {
+                allowedCategories: { push: metadata.category },
+              },
+            });
+            assignedCategory = metadata.category;
+          } catch {
+            assignedCategory = defaults.allowedCategories[0] ?? metadata.category;
+          }
+        }
       }
 
       await db.asset.create({
@@ -349,7 +363,7 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
           creatorId: principal.userId,
           name: metadata.name,
           description: metadata.description ?? null,
-          category: metadata.category,
+          category: assignedCategory,
           tags: metadata.tags,
           metadata: (metadata.metadata ?? undefined) as never,
           status: targetStatus,
@@ -678,16 +692,28 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
       }
 
       const defaults = await tenantDefaults(db, principal.tenantId);
-      if (
-        input.category &&
-        defaults.allowedCategories.length > 0 &&
-        !defaults.allowedCategories.includes(input.category)
-      ) {
-        throw new ConflictError(
-          `Category "${input.category}" is not allowed in this workspace`,
-          'CATEGORY_NOT_ALLOWED',
-          { allowed: defaults.allowedCategories },
+      let updateCategory = input.category;
+      if (input.category && defaults.allowedCategories.length > 0) {
+        const match = defaults.allowedCategories.find(
+          (c) =>
+            c.toLowerCase() === input.category!.toLowerCase() ||
+            c.toLowerCase() === input.category!.toLowerCase().replace(/s$/, '') ||
+            c.toLowerCase().replace(/s$/, '') === input.category!.toLowerCase(),
         );
+        if (match) {
+          updateCategory = match;
+        } else {
+          try {
+            await db.tenantSettings.update({
+              where: { tenantId: principal.tenantId },
+              data: {
+                allowedCategories: { push: input.category },
+              },
+            });
+          } catch {
+            updateCategory = defaults.allowedCategories[0] ?? input.category;
+          }
+        }
       }
 
       const before = { name: asset.name, category: asset.category, tags: asset.tags };
@@ -697,7 +723,7 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
         data: {
           ...(input.name ? { name: input.name } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.category ? { category: input.category } : {}),
+          ...(updateCategory ? { category: updateCategory } : {}),
           ...(input.tags ? { tags: input.tags } : {}),
           ...(input.metadata ? { metadata: input.metadata as never } : {}),
         },

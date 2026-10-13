@@ -25,6 +25,8 @@ import {LEAFMESH_MODELING_OPS} from './modeling_ops.js'
 import {LEAFMESH_OBJ_FORMAT} from './obj.js'
 import {LEAFMESH_GLB_FORMAT} from './glb.js'
 import {LEAFMESH_STL_FORMAT} from './stl.js'
+import {LEAFMESH_PLY_FORMAT} from './ply.js'
+import {LEAFMESH_PRIMITIVE_OPS} from './primitive_ops.js'
 import {LEAFMESH_SELECT_OPS} from './select_ops.js'
 import {LeafMeshToolMode} from './toolmode.js'
 import {LeafMeshTransType} from './transtype.js'
@@ -62,6 +64,7 @@ export function register(api: AddonAPI<IAddon>) {
       ...LEAFMESH_OBJ_FORMAT.extensions,
       ...LEAFMESH_GLB_FORMAT.extensions,
       ...LEAFMESH_STL_FORMAT.extensions,
+      ...LEAFMESH_PLY_FORMAT.extensions,
     ],
   })
 
@@ -71,10 +74,30 @@ export function register(api: AddonAPI<IAddon>) {
   api.registerFileFormat(LEAFMESH_OBJ_FORMAT)
   api.registerFileFormat(LEAFMESH_GLB_FORMAT)
   api.registerFileFormat(LEAFMESH_STL_FORMAT)
+  api.registerFileFormat(LEAFMESH_PLY_FORMAT)
 
   // The modeling toolmode, its selection ops (P12 step 1) and its topology ops
   // (step 4). One `register` dispatch each — no module-scope side effect.
-  api.registerAll(LeafMeshToolMode, ...LEAFMESH_SELECT_OPS, ...LEAFMESH_MODELING_OPS)
+  api.registerAll(
+    LeafMeshToolMode,
+    ...LEAFMESH_SELECT_OPS,
+    ...LEAFMESH_MODELING_OPS,
+    ...LEAFMESH_PRIMITIVE_OPS
+  )
+
+  // Contribute primitives to the View3D "Add" menu & Shift-A popup
+  api.menuEntries('add', [
+    'leafmesh.add_cube()|Mesh: Cube',
+    'leafmesh.add_uv_sphere()|Mesh: UV Sphere',
+    'leafmesh.add_icosphere()|Mesh: Ico Sphere',
+    'leafmesh.add_cylinder()|Mesh: Cylinder',
+    'leafmesh.add_cone()|Mesh: Cone',
+    'leafmesh.add_torus()|Mesh: Torus',
+    'leafmesh.add_plane()|Mesh: Plane',
+    'leafmesh.add_grid()|Mesh: Grid',
+    'leafmesh.add_monkey()|Mesh: Monkey (Suzanne)',
+    'leafmesh.add_tube()|Mesh: Tube',
+  ])
 
   // Implementor #2 of `ITransDataType` (P12 §6) — grab/rotate/scale, snapping
   // and proportional edit, with `transform_ops.ts` naming no geometry type.
@@ -91,3 +114,5 @@ export function register(api: AddonAPI<IAddon>) {
 export function unregister() {}
 export function handleArgv() {}
 export function validArgv() {}
+
+export {LEAFMESH_OBJ_FORMAT, LEAFMESH_GLB_FORMAT, LEAFMESH_STL_FORMAT, LEAFMESH_PLY_FORMAT}

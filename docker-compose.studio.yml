@@ -106,6 +106,8 @@ services:
     volumes:
       - ./docker/studio/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./docker/certs:/etc/nginx/certs:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       studio-ipfs:
         condition: service_started

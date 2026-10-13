@@ -319,9 +319,20 @@ export async function projectRoutes(
       metadata: { studioProjectId: project.id, studioProjectName: project.name },
     };
 
+    const ext = (body.export.extension || body.filename.slice(body.filename.lastIndexOf('.'))).toLowerCase();
+    const contentType =
+      ext === '.glb' ? 'model/gltf-binary' :
+      ext === '.gltf' ? 'model/gltf+json' :
+      ext === '.obj' ? 'model/obj' :
+      ext === '.fbx' ? 'application/octet-stream' :
+      ext === '.stl' ? 'model/stl' :
+      ext === '.ply' ? 'model/ply' :
+      ext === '.blend' ? 'application/x-blender' :
+      'model/gltf-binary';
+
     const file = {
       filename: body.filename,
-      contentType: 'model/gltf-binary',
+      contentType,
       data: fileBytes,
     };
 

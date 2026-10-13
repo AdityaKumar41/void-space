@@ -2,9 +2,11 @@
  * STL (Binary & ASCII) import for LeafMesh.
  */
 import type {IFileFormat, ToolContext} from '@framework/api'
-import {InvalidationKind, SceneObject, makeDefaultMaterial} from '@framework/api'
+import {InvalidationKind, SceneObject, makeDefaultMaterial, triangleSourceOf} from '@framework/api'
 
 import {LeafMeshData} from './leafmesh.js'
+import {exportTrianglesToSTL} from './stl_format.js'
+export {exportTrianglesToSTL}
 
 function blockName(filename: string | undefined): string {
   if (filename === undefined || filename.length === 0) {
@@ -134,6 +136,83 @@ export function importSTLIntoScene(ctx: ToolContext, bytes: Uint8Array, filename
   return data
 }
 
+import type {Tri} from './triangulate.js'
+import {TriangulationCache} from './triangulate.js'
+
+export function exportLeafMeshToSTL(data: LeafMeshData, name = 'Model'): Uint8Array {
+  const mesh = data.mesh
+  const cache = new TriangulationCache()
+  const tris: Tri[] = []
+  for (const f of mesh.f) {
+    for (const tri of cache.get(mesh, f)) {
+      tris.push(tri)
+    }
+  }
+
+  const triCount = tris.length
+  const totalBytes = 84 + triCount * 50
+  const out = new Uint8Array(totalBytes)
+  const view = new DataView(out.buffer)
+
+  // 80 byte header
+  const headerStr = `VOID·STUDIO STL 1.0 - ${name}`.slice(0, 80)
+  for (let i = 0; i < headerStr.length; i++) {
+    out[i] = headerStr.charCodeAt(i)
+  }
+
+  view.setUint32(80, triCount, true)
+
+  const co = mesh.v.co
+  for (let t = 0; t < triCount; t++) {
+    const at = 84 + t * 50
+    const tri = tris[t]
+    const v0 = tri.v[0] * 3
+    const v1 = tri.v[1] * 3
+    const v2 = tri.v[2] * 3
+
+    // Face normal via cross product
+    const ux = co[v1] - co[v0]
+    const uy = co[v1 + 1] - co[v0 + 1]
+    const uz = co[v1 + 2] - co[v0 + 2]
+    const vx = co[v2] - co[v0]
+    const vy = co[v2 + 1] - co[v0 + 1]
+    const vz = co[v2 + 2] - co[v0 + 2]
+
+    let nx = uy * vz - uz * vy
+    let ny = uz * vx - ux * vz
+    let nz = ux * vy - uy * vx
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz)
+    if (len > 0) {
+      nx /= len
+      ny /= len
+      nz /= len
+    }
+
+    view.setFloat32(at, nx, true)
+    view.setFloat32(at + 4, ny, true)
+    view.setFloat32(at + 8, nz, true)
+
+    // v0
+    view.setFloat32(at + 12, co[v0], true)
+    view.setFloat32(at + 16, co[v0 + 1], true)
+    view.setFloat32(at + 20, co[v0 + 2], true)
+
+    // v1
+    view.setFloat32(at + 24, co[v1], true)
+    view.setFloat32(at + 28, co[v1 + 1], true)
+    view.setFloat32(at + 32, co[v1 + 2], true)
+
+    // v2
+    view.setFloat32(at + 36, co[v2], true)
+    view.setFloat32(at + 40, co[v2 + 1], true)
+    view.setFloat32(at + 44, co[v2 + 2], true)
+
+    view.setUint16(at + 48, 0, true) // attribute byte count
+  }
+
+  return out
+}
+
 export const LEAFMESH_STL_FORMAT: IFileFormat<ToolContext> = {
   id: 'stl',
   uiName: 'Stereolithography STL',
@@ -141,5 +220,18 @@ export const LEAFMESH_STL_FORMAT: IFileFormat<ToolContext> = {
 
   importFromBytes(ctx, bytes, filename) {
     importSTLIntoScene(ctx, bytes, filename)
+  },
+
+  exportToBytes(ctx) {
+    const ob = ctx.scene?.objects?.active || [...(ctx.scene?.objects || [])].find((o: any) => o.data instanceof LeafMeshData || triangleSourceOf(o?.data))
+    if (ob && ob.data instanceof LeafMeshData) {
+      return exportLeafMeshToSTL(ob.data, ob.name || 'Model')
+    }
+    const src = triangleSourceOf(ob?.data)
+    if (src) {
+      const tris = src.extractTriangles()
+      return exportTrianglesToSTL(tris)
+    }
+    return new Uint8Array()
   },
 }

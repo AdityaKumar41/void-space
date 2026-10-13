@@ -436,6 +436,16 @@ export function applyVoidStudioTheme(): ThemeApplicationResult {
 
   try {
     setTheme(buildVoidStudioTheme())
+    if (typeof document !== 'undefined') {
+      if (document.body) {
+        document.body.style.backgroundColor = VOID_STUDIO_PALETTE.bg
+        document.body.style.color = VOID_STUDIO_PALETTE.fg
+      }
+      if (document.documentElement) {
+        document.documentElement.style.backgroundColor = VOID_STUDIO_PALETTE.bg
+        document.documentElement.style.color = VOID_STUDIO_PALETTE.fg
+      }
+    }
     alreadyApplied = true
     return {applied: true}
   } catch (err) {
