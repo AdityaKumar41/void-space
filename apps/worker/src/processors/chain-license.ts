@@ -4,7 +4,7 @@
  * The publish pipeline, in order:
  *
  *   1. build the ERC-721 metadata document for the licence and pin it to IPFS (FR-9.4);
- *   2. `mintLicense(assetId, ipfsCid, licenseTermsHash, recipient)` on the local chain;
+ *   2. `mintLicense(assetId, ipfsCid, licenseTermsHash, recipient)` on Avalanche Fuji;
  *   3. record the `License` row with the real tx hash, block and gas (FR-9.6);
  *   4. flip the asset to `published` and stamp `publishedAt`;
  *   5. enqueue `xr-publish` so the EoN push happens independently (FR-10.1).

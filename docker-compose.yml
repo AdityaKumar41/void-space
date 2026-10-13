@@ -32,7 +32,7 @@ services:
   # asking for the application gets you the database it runs on. Selecting `infra` alone still starts
   # only the data tier, which is what the local-development workflow wants.
   #
-  # The default platform chain is Sepolia. Anvil remains available only through the opt-in
+  # The default platform chain is Avalanche Fuji. Anvil remains available only through the opt-in
   # `local-chain` profile for contract tests.
   postgres:
     <<: *default-restart
@@ -166,8 +166,8 @@ services:
       IPFS_API_URL: http://ipfs:5001
       IPFS_GATEWAY_URL: http://ipfs:8080
       CHAIN_RPC_URL: ${CHAIN_RPC_URL}
-      CHAIN_ID: ${CHAIN_ID:-11155111}
-      CHAIN_EXPLORER_URL: ${CHAIN_EXPLORER_URL:-https://sepolia.etherscan.io}
+      CHAIN_ID: ${CHAIN_ID:-43113}
+      CHAIN_EXPLORER_URL: ${CHAIN_EXPLORER_URL:-https://testnet.snowtrace.io}
       CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}
       CONTRACT_STATE_PATH: /shared/contracts.json
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-only-access-secret-change-me}
@@ -201,8 +201,8 @@ services:
       IPFS_API_URL: http://ipfs:5001
       IPFS_GATEWAY_URL: http://ipfs:8080
       CHAIN_RPC_URL: ${CHAIN_RPC_URL}
-      CHAIN_ID: ${CHAIN_ID:-11155111}
-      CHAIN_EXPLORER_URL: ${CHAIN_EXPLORER_URL:-https://sepolia.etherscan.io}
+      CHAIN_ID: ${CHAIN_ID:-43113}
+      CHAIN_EXPLORER_URL: ${CHAIN_EXPLORER_URL:-https://testnet.snowtrace.io}
       CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}
       PLATFORM_SIGNER_SEED: ${PLATFORM_SIGNER_SEED}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

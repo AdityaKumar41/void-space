@@ -19,7 +19,7 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 
 import type { ApiEnv } from '../../env';
-import { ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ServiceUnavailableError } from '../../lib/errors';
 import { parseBody, parseParams } from '../../lib/http';
 import type { JobProducer } from '../../lib/jobs';
 
@@ -42,7 +42,7 @@ async function enqueue(
     readonly payload: Record<string, unknown>;
     readonly maxAttempts: number;
   },
-): Promise<string> {
+): Promise<{ readonly jobId: string; readonly enqueued: boolean; readonly error?: string }> {
   const jobId = randomUUID();
 
   await withTenant(params.tenantId, (db) =>
@@ -79,7 +79,7 @@ async function enqueue(
     );
   }
 
-  return jobId;
+  return { jobId, enqueued: outcome.enqueued, error: outcome.error };
 }
 
 export async function licensingRoutes(
@@ -87,7 +87,7 @@ export async function licensingRoutes(
   options: LicensingRoutesOptions,
 ): Promise<void> {
   const { env, producer } = options;
-  const explorerBase = env.CHAIN_EXPLORER_URL ?? 'https://sepolia.etherscan.io';
+  const explorerBase = env.CHAIN_EXPLORER_URL ?? 'https://testnet.snowtrace.io';
 
   // ------------------------------------------------------------------- publish
   app.post(
@@ -172,7 +172,7 @@ export async function licensingRoutes(
         };
       });
 
-      const chainLicenseJobId = await enqueue(producer, {
+      const chainLicenseJob = await enqueue(producer, {
         tenantId: principal.tenantId,
         queue: 'chain-license',
         entityType: 'asset',
@@ -193,10 +193,18 @@ export async function licensingRoutes(
         },
       });
 
+      if (!chainLicenseJob.enqueued) {
+        throw new ServiceUnavailableError(
+          'Minting is temporarily unavailable because the background worker queue is offline. Start Redis and the worker, then try Publish and mint again.',
+          'CHAIN_QUEUE_UNAVAILABLE',
+          { jobId: chainLicenseJob.jobId },
+        );
+      }
+
       return reply.status(202).send({
         assetId: id,
         status: 'approved',
-        chainLicenseJobId,
+        chainLicenseJobId: chainLicenseJob.jobId,
         xrPublishJobId: null,
         message: 'Minting the licence on chain; the asset publishes when the transaction confirms.',
       });
@@ -252,7 +260,7 @@ export async function licensingRoutes(
 
       // The on-chain revocation runs asynchronously; the DB flag is immediate so the UI and
       // the catalog stop offering the licence right away.
-      const chainRevokeJobId = await enqueue(producer, {
+      const chainRevokeJob = await enqueue(producer, {
         tenantId: principal.tenantId,
         queue: 'chain-license',
         entityType: 'asset',
@@ -285,7 +293,7 @@ export async function licensingRoutes(
       return reply.status(202).send({
         assetId: id,
         revoked: true,
-        chainLicenseJobId: chainRevokeJobId,
+        chainLicenseJobId: chainRevokeJob.jobId,
         message: 'Licence flagged revoked; the on-chain revocation is confirming.',
       });
     },
@@ -370,7 +378,7 @@ function toDetail(license: LicenseRow, explorerBase: string): LicenseDetail {
     approverRef: license.approverId,
     asset: license.asset ?? null,
     explorer: {
-      // Anvil ships no block explorer; these links are the documented local inspector
+      // Fuji provides the public explorer links used by the operations console.
       // endpoints so a reviewer can still trace the transaction (FR-9.6).
       txUrl: license.txHash ? `${explorerBase}/tx/${license.txHash}` : null,
       addressUrl: `${explorerBase}/address/${license.contractAddress}`,

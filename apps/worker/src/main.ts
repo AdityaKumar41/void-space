@@ -43,12 +43,18 @@ const PROCESSORS: Partial<Record<QueueName, Processor>> = {};
 
 export async function main(): Promise<void> {
   const chainRpcUrl = process.env.CHAIN_RPC_URL;
-  const chainId = Number(process.env.CHAIN_ID ?? 11155111);
+  const chainId = Number(process.env.CHAIN_ID ?? 43113);
   if (!chainRpcUrl) {
-    throw new Error('[worker] CHAIN_RPC_URL is not set — configure the Sepolia RPC in .env');
+    throw new Error('[worker] CHAIN_RPC_URL is not set — configure the Avalanche Fuji RPC in .env');
   }
-  if (chainId !== 11155111) {
-    throw new Error(`[worker] CHAIN_ID must be 11155111 (Sepolia), received ${chainId}`);
+  if (chainId !== 43113) {
+    throw new Error(`[worker] CHAIN_ID must be 43113 (Avalanche Fuji), received ${chainId}`);
+  }
+  if (!process.env.CONTRACT_ADDRESS) {
+    throw new Error('[worker] CONTRACT_ADDRESS is not set — configure the deployed Fuji contract in .env');
+  }
+  if (!process.env.PLATFORM_SIGNER_SEED) {
+    throw new Error('[worker] PLATFORM_SIGNER_SEED is not set — configure the Fuji publisher key in .env');
   }
 
   const redisUrl = process.env.REDIS_URL;

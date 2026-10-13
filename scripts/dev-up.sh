@@ -6,7 +6,7 @@
 #   2. start the infra services (postgres, redis, ipfs) and the edge
 #   3. wait for readiness
 #   4. apply Prisma migrations, then the RLS policies/grants
-#   5. use the already-deployed Sepolia AssetLicenseRegistry address
+#   5. use the already-deployed Avalanche Fuji AssetLicenseRegistry address
 #
 # Afterwards run `pnpm dev` for api/worker/web in watch mode.
 set -euo pipefail
@@ -24,7 +24,7 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
-# Make the chain settings available to the explicit Sepolia validation below as well as to Compose.
+# Make the chain settings available to the explicit Fuji validation below as well as to Compose.
 set -a
 # shellcheck disable=SC1091
 . ./.env
@@ -93,12 +93,12 @@ pnpm --silent studio:db:migrate
 info "applying VOID·STUDIO Row-Level Security policies and grants"
 pnpm --silent studio:db:rls
 
-# --- 5. Sepolia contract ---------------------------------------------------
+# --- 5. Avalanche Fuji contract --------------------------------------------
 if [ -z "${CHAIN_RPC_URL:-}" ] || [ -z "${CONTRACT_ADDRESS:-}" ]; then
-  warn "Sepolia contract is not configured. Set CHAIN_RPC_URL and CONTRACT_ADDRESS in .env."
-  warn "Deploy once with: pnpm contracts:deploy:sepolia"
+  warn "Avalanche Fuji contract is not configured. Set CHAIN_RPC_URL and CONTRACT_ADDRESS in .env."
+  warn "Deploy once with: pnpm contracts:deploy:fuji"
 else
-  info "using AssetLicenseRegistry on Sepolia at ${CONTRACT_ADDRESS}"
+  info "using AssetLicenseRegistry on Avalanche Fuji at ${CONTRACT_ADDRESS}"
 fi
 
 cat <<'EOF'

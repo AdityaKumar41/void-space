@@ -53,9 +53,9 @@ export const envSchema = z.object({
   REDIS_URL: z.string().url(),
   IPFS_API_URL: z.string().url(),
   IPFS_GATEWAY_URL: z.string().url(),
-  /** Sepolia RPC used by the licensing contract and chain health check. */
+  /** Avalanche Fuji RPC used by the licensing contract and chain health check. */
   CHAIN_RPC_URL: z.string().url(),
-  CHAIN_ID: z.coerce.number().int().positive().default(11155111),
+  CHAIN_ID: z.coerce.number().int().positive().default(43113),
   CHAIN_EXPLORER_URL: optionalUrl,
 
   // --- auth (FR-2.3) -------------------------------------------------------

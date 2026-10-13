@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Deploy AssetLicenseRegistry.sol to Sepolia and publish the
+# Deploy AssetLicenseRegistry.sol to Avalanche Fuji and publish the
 # resulting address + ABI where api and worker can read them (SRS §9.3).
 #
 # Runs from a host with a native Foundry install:
@@ -22,19 +22,19 @@ RPC_URL="${CHAIN_RPC_URL:-}"
 STATE_PATH="${CONTRACT_STATE_PATH:-${ROOT_DIR}/packages/contracts/.contracts-state.json}"
 
 if [ -z "${RPC_URL}" ]; then
-  echo "[deploy] ERROR: CHAIN_RPC_URL is required (expected a Sepolia RPC URL)" >&2
+  echo "[deploy] ERROR: CHAIN_RPC_URL is required (expected an Avalanche Fuji RPC URL)" >&2
   exit 1
 fi
 
 if [ -z "${PLATFORM_SIGNER_SEED:-}" ]; then
-  echo "[deploy] ERROR: PLATFORM_SIGNER_SEED is required for Sepolia deployment" >&2
+  echo "[deploy] ERROR: PLATFORM_SIGNER_SEED is required for Avalanche Fuji deployment" >&2
   exit 1
 fi
 
-echo "[deploy] checking configured Sepolia RPC"
+echo "[deploy] checking configured Avalanche Fuji RPC"
 for _ in $(seq 1 60); do
   if cast block-number --rpc-url "${RPC_URL}" >/dev/null 2>&1; then
-    echo "[deploy] Sepolia RPC is ready"
+    echo "[deploy] Avalanche Fuji RPC is ready"
     break
   fi
   sleep 1
@@ -42,8 +42,8 @@ done
 cast block-number --rpc-url "${RPC_URL}" >/dev/null
 
 NETWORK_CHAIN_ID="$(cast chain-id --rpc-url "${RPC_URL}")"
-if [ "${NETWORK_CHAIN_ID}" != "11155111" ]; then
-  echo "[deploy] ERROR: refusing to deploy — RPC chain id is ${NETWORK_CHAIN_ID}, expected Sepolia (11155111)" >&2
+if [ "${NETWORK_CHAIN_ID}" != "43113" ]; then
+  echo "[deploy] ERROR: refusing to deploy — RPC chain id is ${NETWORK_CHAIN_ID}, expected Avalanche Fuji (43113)" >&2
   exit 1
 fi
 
@@ -70,11 +70,17 @@ CONTRACT_ADDRESS="$(node -e '
   const match = output.match(/Deployed to:\s*(0x[a-fA-F0-9]{40})/);
   process.stdout.write(match ? match[1] : "");
 ' "${DEPLOY_RESULT}" 2>/dev/null || true)"
+TRANSACTION_HASH="$(node -e '
+  const fs = require("fs");
+  const output = fs.readFileSync(process.argv[1], "utf8");
+  const match = output.match(/Transaction hash:\s*(0x[a-fA-F0-9]{64})/);
+  process.stdout.write(match ? match[1] : "");
+' "${DEPLOY_RESULT}" 2>/dev/null || true)"
 rm -f "${DEPLOY_RESULT}"
 
 if [ -z "${CONTRACT_ADDRESS}" ] || [ "${CONTRACT_ADDRESS}" = "null" ]; then
   echo "[deploy] ERROR: forge create did not return a deployed address" >&2
-  echo "[deploy]        Check the Sepolia explorer for the broadcast transaction." >&2
+  echo "[deploy]        Check the Avalanche Fuji explorer for the broadcast transaction." >&2
   exit 1
 fi
 
@@ -87,7 +93,7 @@ node -e '
 const fs = require("fs");
 const state = {
   contractAddress: process.argv[1],
-  chainId: Number(process.env.CHAIN_ID || 11155111),
+  chainId: Number(process.env.CHAIN_ID || 43113),
   rpcUrl: process.argv[2],
   publisherAddress: process.argv[3],
   deployedAt: new Date().toISOString(),
@@ -108,4 +114,7 @@ if [ -f "${ROOT_DIR}/.env" ]; then
 fi
 
 echo "[deploy] CONTRACT_ADDRESS=${CONTRACT_ADDRESS}"
+if [ -n "${TRANSACTION_HASH}" ]; then
+  echo "[deploy] TRANSACTION_HASH=${TRANSACTION_HASH}"
+fi
 echo "[deploy] wrote ${STATE_PATH}"

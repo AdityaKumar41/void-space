@@ -5,7 +5,7 @@
  * `mintLicense` / `revokeLicense` transaction and how to read a licence back, and nothing
  * about assets or review.
  *
- * The signing key is the platform publisher account (Anvil account #0 locally, supplied as
+ * The signing key is the platform publisher account (Fuji-funded, supplied as
  * PLATFORM_SIGNER_SEED). It is only ever read here, never logged, and never sent to the API
  * process — minting is a worker responsibility.
  */
@@ -18,7 +18,7 @@ import {
   type Hash,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { sepolia } from 'viem/chains';
+import { avalancheFuji } from 'viem/chains';
 
 /** The contract's `LicenseRecord` struct as returned by `getLicense`. */
 export interface OnChainLicense {
@@ -95,12 +95,15 @@ export interface ChainClientOptions {
 const ABI = ASSET_LICENSE_REGISTRY_ABI as never;
 
 export function createChainClient(options: ChainClientOptions): ChainClient {
+  if (options.chainId !== undefined && options.chainId !== avalancheFuji.id) {
+    throw new Error(`Unsupported chain id ${options.chainId}; the licensing worker requires Avalanche Fuji (${avalancheFuji.id})`);
+  }
   const account = privateKeyToAccount(
     (options.privateKey.startsWith('0x') ? options.privateKey : `0x${options.privateKey}`) as `0x${string}`,
   );
   const contractAddress = options.contractAddress as Address;
 
-  const chain = sepolia;
+const chain = avalancheFuji;
   const publicClient = createPublicClient({ chain, transport: http(options.rpcUrl) });
   const walletClient = createWalletClient({
     account,

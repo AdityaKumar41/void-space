@@ -563,8 +563,9 @@ export default function AssetConsolePage() {
                   </select>
                 </label>
                 <div className="text-[12px] tracking-[0.01em] text-ink-faint mt-3">
-                  Mints an ERC-721 licence on Anvil, pins the licence document to IPFS, then
-                  pushes the module to EoN Reality.
+                  Mints an ERC-721 licence on Avalanche Fuji, pins the licence document to IPFS,
+                  then pushes the module to EoN Reality. Approval records the assessor decision;
+                  this button submits the actual on-chain mint.
                 </div>
                 <button
                   type="button"
