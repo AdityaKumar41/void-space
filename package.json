@@ -45,7 +45,7 @@
     "studio:dev:down": "docker compose -f docker-compose.studio.yml down",
     "studio:dev:logs": "docker compose -f docker-compose.studio.yml logs -f --tail=50",
     "studio:ps": "docker compose -f docker-compose.studio.yml ps",
-    "studio:dev": "turbo run dev --filter=@void-space/studio-api --filter=@void-space/studio-worker",
+    "studio:dev": "pnpm studio:dev:up && turbo run dev --filter=@void-space/studio-api --filter=@void-space/studio-worker",
     "studio:api:dev": "pnpm --filter @void-space/studio-api dev",
     "studio:api:start": "pnpm --filter @void-space/studio-api start",
     "studio:worker:dev": "pnpm --filter @void-space/studio-worker dev",

@@ -69,7 +69,7 @@ explicitly publish.
 | Command                                                          | What it does                                                                             |
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `pnpm studio:dev:up`                                             | The Studio's data tier + edge: postgres 5433, redis 6380, ipfs 5002, nginx 8443          |
-| `pnpm studio:dev`                                                | `apps/studio-api` in watch mode on :4100 (`studio:api:dev` for just that app)            |
+| `pnpm studio:dev`                                                | Starts the Studio data tier, then runs `apps/studio-api` and `apps/studio-worker` in watch mode (`studio:api:dev` for just the API) |
 | `pnpm studio:db:migrate` / `pnpm studio:db:rls`                  | Migrate the Studio schema, then apply its RLS policies                                   |
 | `pnpm studio:test`                                               | The Studio's suites — engine, SDK, AI, db, api. No database and no VOID·SPACE required   |
 | `STUDIO_INTEGRATION=1 pnpm --filter @void-space/studio-api test` | Adds the authenticated-route suite, which needs `studio:dev:up` and the migrations above |

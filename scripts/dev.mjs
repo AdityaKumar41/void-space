@@ -39,22 +39,57 @@ async function prepareEnvironment() {
   // 1. Check if studio-web needs build
   const studioEntryPoint = path.resolve(studioWebDir, 'build/entry_point.js');
   if (!fs.existsSync(studioEntryPoint)) {
-    console.log('\x1b[1;36m[dev:setup]\x1b[0m Building VOID·STUDIO Web bundle (build/entry_point.js)...');
-    spawnSync('pnpm', ['--dir', 'apps/studio-web', 'build'], {
-      cwd: rootDir,
-      stdio: 'inherit',
-      env: process.env,
-    });
+    const sculptcoreBrowserJs = path.resolve(
+      studioWebDir,
+      'sculptcore/typescript/build/sculptcore-browser.js',
+    );
+    const sculptcoreBrowserWasm = path.resolve(
+      studioWebDir,
+      'sculptcore/typescript/build/sculptcore-browser.wasm',
+    );
+
+    if (!fs.existsSync(sculptcoreBrowserJs) || !fs.existsSync(sculptcoreBrowserWasm)) {
+      console.warn(
+        '\x1b[1;33m[dev:warn]\x1b[0m VOID·STUDIO Web build skipped: SculptCore browser artifacts are missing. ' +
+          'Run `pnpm studio:fork:setup` once, then `pnpm studio:fork:build`.',
+      );
+    } else {
+      console.log(
+        '\x1b[1;36m[dev:setup]\x1b[0m Building VOID·STUDIO Web bundle (build/entry_point.js)...',
+      );
+      const studioBuild = spawnSync('pnpm', ['--dir', 'apps/studio-web', 'build'], {
+        cwd: rootDir,
+        stdio: 'inherit',
+        env: process.env,
+      });
+      if (studioBuild.status !== 0) {
+        console.warn(
+          '\x1b[1;33m[dev:warn]\x1b[0m VOID·STUDIO Web build failed; the terminal dashboard and backend services will continue.',
+        );
+      }
+    }
   }
 
-  // 2. Check if backing databases are accessible
-  const [pgSpace, pgStudio] = await Promise.all([
+  // 2. Check if backing data services are accessible. The workers depend on Redis too;
+  // checking only PostgreSQL lets `pnpm dev` start successfully while both workers
+  // repeatedly report ECONNREFUSED when Redis is the service that is down.
+  const [pgSpace, pgStudio, redisSpace, redisStudio] = await Promise.all([
     checkPort(5432),
     checkPort(5433),
+    checkPort(6379),
+    checkPort(6380),
   ]);
 
-  if (!pgSpace || !pgStudio) {
-    console.log('\x1b[1;33m[dev:info]\x1b[0m PostgreSQL services (port 5432 or 5433) are not currently responding.');
+  if (!pgSpace || !pgStudio || !redisSpace || !redisStudio) {
+    const unavailable = [
+      !pgSpace && 'PostgreSQL 5432',
+      !pgStudio && 'Studio PostgreSQL 5433',
+      !redisSpace && 'Redis 6379',
+      !redisStudio && 'Studio Redis 6380',
+    ]
+      .filter(Boolean)
+      .join(', ');
+    console.log(`\x1b[1;33m[dev:info]\x1b[0m Required data services are not responding: ${unavailable}.`);
     console.log('\x1b[1;36m[dev:info]\x1b[0m Attempting to start containers via scripts/dev-up.sh...\n');
     try {
       const up = spawnSync('bash', ['scripts/dev-up.sh'], {
@@ -85,22 +120,62 @@ function printBanner() {
   console.log('\x1b[1;36m╚════════════════════════════════════════════════════════════════════════════════════════╝\x1b[0m\n');
 }
 
+// Turbo's TUI owns the whole terminal in an interactive session. The legacy banner would be
+// rendered behind it and, together with unstructured child-process output, would tear the layout.
+const interactiveTerminal = Boolean(process.stdout.isTTY && process.stdin.isTTY);
+if (!interactiveTerminal) {
+  printBanner();
+}
 await prepareEnvironment();
-printBanner();
 
-// 1. Launch Turbo parallel pipeline in streaming mode so logs are visible
-const turbo = spawn('pnpm', ['exec', 'turbo', 'run', 'dev', '--parallel', '--ui=stream'], {
+// 1. Launch only the network services that are not already running. This makes repeated
+// `pnpm dev` invocations safe when an earlier terminal still owns a port.
+const turboFilters = [];
+for (const [packageName, port] of [
+  ['@void-space/web', 3000],
+  ['@void-space/api', 4000],
+  ['@void-space/studio-api', 4100],
+]) {
+  const alreadyRunning = await checkPort(port, 'localhost');
+
+  // The interactive dashboard is also a process overview. Always give Turbo these tasks so the
+  // frontend and API remain visible in the TUI; otherwise a reused port silently removes them from
+  // the task list. A clean `pnpm dev` session is expected for TUI mode.
+  if (interactiveTerminal) {
+    turboFilters.push(`--filter=${packageName}`);
+  } else if (alreadyRunning) {
+    console.log(`\x1b[1;36m[dev]\x1b[0m Reusing ${packageName} on :${port}.`);
+  } else {
+    turboFilters.push(`--filter=${packageName}`);
+  }
+}
+
+turboFilters.push('--filter=@void-space/worker', '--filter=@void-space/studio-worker');
+
+const turbo = spawn(
+  'pnpm',
+  ['exec', 'turbo', 'run', 'dev', '--parallel', `--ui=${interactiveTerminal ? 'tui' : 'stream'}`, ...turboFilters],
+  {
   cwd: rootDir,
   stdio: 'inherit',
   env: { ...process.env, FORCE_COLOR: '1' },
-});
+  },
+);
 
-// 2. Launch VOID·STUDIO Web Editor dev server on port 5007
-const studioWeb = spawn('node', ['tools/serv.js', '5007'], {
-  cwd: studioWebDir,
-  stdio: ['inherit', 'pipe', 'pipe'],
-  env: { ...process.env, FORCE_COLOR: '1' },
-});
+// 2. Launch VOID·STUDIO Web Editor dev server on port 5007, unless one is already running.
+// Reusing it avoids EADDRINUSE taking down the entire terminal dashboard after a restart.
+const studioWebAlreadyRunning = await checkPort(5007, 'localhost');
+const studioWeb = studioWebAlreadyRunning
+  ? null
+  : spawn('node', ['tools/serv.js', '5007'], {
+      cwd: studioWebDir,
+      stdio: ['inherit', 'pipe', 'pipe'],
+      env: { ...process.env, FORCE_COLOR: '1' },
+    });
+
+if (studioWebAlreadyRunning) {
+  console.log('\x1b[1;36m[dev]\x1b[0m Reusing the existing VOID·STUDIO Web server on :5007.');
+}
 
 // Prefix VOID·STUDIO Web stdout & stderr to match Turbo stream tags
 function attachPrefix(readableStream, prefix, writeTarget) {
@@ -111,8 +186,13 @@ function attachPrefix(readableStream, prefix, writeTarget) {
   });
 }
 
-attachPrefix(studioWeb.stdout, '\x1b[1;33m@void-space/studio-web:dev:\x1b[0m', process.stdout);
-attachPrefix(studioWeb.stderr, '\x1b[1;31m@void-space/studio-web:err:\x1b[0m', process.stderr);
+// Raw output from the separately managed Studio fork would overlap Turbo's full-screen TUI. Keep
+// it visible in the traditional stream fallback, while the server itself continues running in TUI
+// mode. Its logs remain available through `pnpm studio:fork:dev` when debugging the editor server.
+if (!interactiveTerminal) {
+  attachPrefix(studioWeb?.stdout, '\x1b[1;33m@void-space/studio-web:dev:\x1b[0m', process.stdout);
+  attachPrefix(studioWeb?.stderr, '\x1b[1;31m@void-space/studio-web:err:\x1b[0m', process.stderr);
+}
 
 let shuttingDown = false;
 function cleanup() {
@@ -123,12 +203,12 @@ function cleanup() {
     turbo.kill('SIGINT');
   } catch {}
   try {
-    studioWeb.kill('SIGINT');
+    studioWeb?.kill('SIGINT');
   } catch {}
   setTimeout(() => {
     try {
       turbo.kill('SIGKILL');
-      studioWeb.kill('SIGKILL');
+      studioWeb?.kill('SIGKILL');
     } catch {}
     process.exit(0);
   }, 1000);
@@ -146,7 +226,7 @@ turbo.on('exit', (code) => {
   }
 });
 
-studioWeb.on('exit', (code) => {
+studioWeb?.on('exit', (code) => {
   if (!shuttingDown) {
     if (code !== 0 && code !== null) {
       console.error(`\x1b[1;31m[dev]\x1b[0m Studio Web exited with code ${code}`);

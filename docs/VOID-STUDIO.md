@@ -254,7 +254,7 @@ without a policy, so skipping it fails loudly rather than silently widening acce
 The Studio API — one command, and the only thing it needs running is the data tier above:
 
 ```sh
-pnpm studio:dev            # apps/studio-api in watch mode on :4100
+pnpm studio:dev            # starts the data tier, then runs studio-api + studio-worker in watch mode
 curl -s http://localhost:4100/studio/api/v1/health
 ```
 

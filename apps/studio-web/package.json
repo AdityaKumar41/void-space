@@ -20,7 +20,7 @@
     "cyclecheck:list": "node tools/circular-ref-finder/dist/index.js scripts/core/appstate.ts",
     "check:layers": "node tools/check-layers.js",
     "check:lint": "node tools/check-lint.mjs",
-    "gen:paths": "node tools/gen-datapaths.mjs && node tools/gen-tsconfig-paths.mjs",
+    "gen:paths": "node tools/gen-tsconfig-paths.mjs && node tools/gen-datapaths.mjs",
     "typecheck": "pnpm gen:paths && turbo typecheck",
     "build:core": "node tools/esbuilder.js --distribution void-studio-core",
     "smoke": "node tools/distribution-smoke.mjs",
