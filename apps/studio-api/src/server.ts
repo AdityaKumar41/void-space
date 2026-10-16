@@ -7,7 +7,7 @@
  */
 import { loadRootEnv } from '@void-space/studio-db/env';
 
-loadRootEnv();
+loadRootEnv({ override: true });
 
 const { main } = await import('./main');
 

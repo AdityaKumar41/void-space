@@ -52,6 +52,10 @@ export const VOID_STUDIO_PALETTE = {
   accentWarm: '#ff7a3d',
   signal    : '#3ddc97',
 
+  // Status ramp used by the VOID·SPACE bridge panel (loading / error states).
+  gold: '#fbbf24',
+  heat: '#f43f5e',
+
   fontSans: 'Plus Jakarta Sans, Segoe UI, system-ui, sans-serif',
   fontMono: 'JetBrains Mono, ui-monospace, Menlo, monospace',
 } as const

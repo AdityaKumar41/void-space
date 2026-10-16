@@ -268,19 +268,27 @@ export function exportTrianglesToGLB(
     return new Uint8Array()
   }
 
+  // Convert from VOID·STUDIO (Z-up: +X right, +Y forward, +Z up)
+  // to glTF 2.0 standard (Y-up: +X right, +Y up, -Z forward)
   const posF32 = new Float32Array(tris.positions.length)
-  for (let i = 0; i < tris.positions.length; i++) {
-    posF32[i] = tris.positions[i]
+  for (let i = 0; i < vertCount; i++) {
+    const idx = i * 3
+    posF32[idx] = tris.positions[idx]         // glTF X = +X
+    posF32[idx + 1] = tris.positions[idx + 2]     // glTF Y = +Z (up)
+    posF32[idx + 2] = -tris.positions[idx + 1]    // glTF Z = -Y (forward)
   }
 
   const normF32 = new Float32Array(tris.positions.length)
   if (tris.normals && tris.normals.length === tris.positions.length) {
-    for (let i = 0; i < tris.normals.length; i++) {
-      normF32[i] = tris.normals[i]
+    for (let i = 0; i < vertCount; i++) {
+      const idx = i * 3
+      normF32[idx] = tris.normals[idx]
+      normF32[idx + 1] = tris.normals[idx + 2]
+      normF32[idx + 2] = -tris.normals[idx + 1]
     }
   } else {
     for (let i = 0; i < vertCount; i++) {
-      normF32[i * 3 + 2] = 1.0
+      normF32[i * 3 + 1] = 1.0
     }
   }
 

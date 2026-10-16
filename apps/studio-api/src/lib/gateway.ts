@@ -36,9 +36,9 @@ export function buildVoidSpaceLinks(env: StudioApiEnv): VoidSpaceLinks {
   return {
     consoleUrl: base,
     catalogUrl: `${base}/catalog`,
-    // `/catalog/<id>` is the public entry point (§6.1), so this is the link a Creator
+    // `/m/<id>` is the public entry point (§6.1), so this is the link a Creator
     // can share — not an internal admin route that requires their own session.
-    assetUrl: (assetId: string) => `${base}/catalog/${assetId}`,
+    assetUrl: (assetId: string) => `${base}/m/${assetId}`,
   };
 }
 

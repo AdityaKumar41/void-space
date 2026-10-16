@@ -94,7 +94,37 @@ function Verified({ children }: { children: React.ReactNode }) {
 
 export default async function ModelPage({ params }: PageProps) {
   const item = await marketplaceItem(params.assetId);
-  if (!item) notFound();
+  if (!item) {
+    return (
+      <div className="relative z-10 flex min-h-[100dvh] flex-col">
+        <MarketHeader current="model" />
+        <main className="mx-auto w-full max-w-[720px] px-5 flex-1 py-20 flex flex-col items-center justify-center text-center">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20 mb-4">
+            Pending Assessor Review
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-ink mb-2">Asset Not Yet Public</h1>
+          <p className="text-ink-dim max-w-md mb-8 text-[14px] leading-relaxed">
+            This model has been submitted to VOID·SPACE and is currently awaiting review and on-chain licensing. Once approved, its verified public listing will appear here.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href={`/console/assets/${params.assetId}`}
+              className="inline-flex items-center justify-center gap-2 rounded-control px-4 py-2 text-[13.5px] font-semibold bg-brand text-white hover:bg-brand-warm transition-all"
+            >
+              Manage in Console ↗
+            </Link>
+            <Link
+              href="/catalog"
+              className="inline-flex items-center justify-center gap-2 rounded-control px-4 py-2 text-[13.5px] font-semibold border border-hairline bg-surface text-ink hover:bg-veil-4 transition-all"
+            >
+              Browse Public Catalog
+            </Link>
+          </div>
+        </main>
+        <MarketFooter />
+      </div>
+    );
+  }
 
   // "More like this": the same category, minus the model being viewed.
   const related = await browseMarketplace({ category: item.category, limit: 5 });

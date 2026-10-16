@@ -34,14 +34,15 @@ function parseEnvFile(contents: string): Record<string, string> {
   return parsed;
 }
 
-/** Loads the repository-root .env (if present) without clobbering real env vars. */
-export function loadRootEnv(): Record<string, string> {
+/** Loads the repository-root .env (if present). Overrides process.env by default so .env edits take effect. */
+export function loadRootEnv(options: { override?: boolean } = { override: true }): Record<string, string> {
   const envPath = resolve(REPO_ROOT, '.env');
   if (!existsSync(envPath)) return {};
 
+  const override = options.override ?? true;
   const parsed = parseEnvFile(readFileSync(envPath, 'utf8'));
   for (const [key, value] of Object.entries(parsed)) {
-    if (process.env[key] === undefined) process.env[key] = value;
+    if (override || process.env[key] === undefined) process.env[key] = value;
   }
   return parsed;
 }

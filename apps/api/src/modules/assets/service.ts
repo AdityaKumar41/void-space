@@ -356,11 +356,23 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
         }
       }
 
+      // Attribute to the creator if publishing on behalf of a user in this tenant
+      let effectiveCreatorId = principal.userId;
+      if (metadata.creatorId) {
+        const targetCreator = await db.user.findFirst({
+          where: { id: metadata.creatorId, tenantId: principal.tenantId },
+          select: { id: true, fullName: true, email: true },
+        });
+        if (targetCreator) {
+          effectiveCreatorId = targetCreator.id;
+        }
+      }
+
       await db.asset.create({
         data: {
           id: assetId,
           tenantId: principal.tenantId,
-          creatorId: principal.userId,
+          creatorId: effectiveCreatorId,
           name: metadata.name,
           description: metadata.description ?? null,
           category: assignedCategory,
@@ -381,7 +393,7 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
           // FR-8.1 — the CID is unknown until the pin worker has run.
           pinStatus: 'pending',
           stagingPath: file.path,
-          createdById: principal.userId,
+          createdById: effectiveCreatorId,
           sourceTool: metadata.sourceTool ?? null,
           sourceLicense: metadata.sourceLicense ?? null,
           sourceAttribution: metadata.sourceAttribution ?? null,

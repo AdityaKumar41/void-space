@@ -31,6 +31,8 @@ export const createAssetMetadataSchema = z.object({
   sourceLicense: z.string().max(120).optional(),
   sourceAttribution: z.string().max(500).optional(),
   sourceUrl: z.string().url().max(1000).optional(),
+  /** The originating Creator ID when an ingestion bridge publishes on behalf of a user. */
+  creatorId: z.string().uuid().optional(),
 });
 export type CreateAssetMetadataInput = z.infer<typeof createAssetMetadataSchema>;
 

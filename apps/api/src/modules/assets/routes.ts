@@ -88,9 +88,19 @@ export async function assetRoutes(app: FastifyInstance, options: AssetRoutesOpti
   /** Turns collected text fields into the shape the Zod schemas expect. */
   function metadataFromFields(fields: Record<string, string>): unknown {
     const tags = fields['tags'];
+    let metadata: unknown = undefined;
+    if (fields['metadata']) {
+      try {
+        metadata = JSON.parse(fields['metadata']);
+      } catch {
+        metadata = fields['metadata'];
+      }
+    }
     return {
       name: fields['name'],
       category: fields['category'],
+      ...(fields['description'] ? { description: fields['description'] } : {}),
+      ...(metadata !== undefined ? { metadata } : {}),
       ...(tags
         ? {
             tags: tags
@@ -106,6 +116,7 @@ export async function assetRoutes(app: FastifyInstance, options: AssetRoutesOpti
       ...(fields['submitForReview'] !== undefined
         ? { submitForReview: fields['submitForReview'] }
         : {}),
+      ...(fields['creatorId'] ? { creatorId: fields['creatorId'] } : {}),
     };
   }
 
@@ -159,14 +170,15 @@ export async function assetRoutes(app: FastifyInstance, options: AssetRoutesOpti
       const { id } = parseParams(idParams, request.params);
       const asset = await assets.detail(principal, id);
 
-      // Read scope: unpublished work is visible to its creator and to reviewers only.
-      // A missing asset and a forbidden one answer identically, so the API cannot be
-      // used to enumerate another workspace's assets.
+      // Read scope: unpublished work is visible to its creator, to reviewers,
+      // and to creators within the same tenant workspace with upload permissions.
       const mayReview = principal.permissions.includes('review:decide');
       const owns = asset.creator?.id === principal.userId;
       const isPublished = asset.status === 'published';
+      const mayManageOwn = principal.permissions.includes('asset:upload-own');
+      const mayView = isPublished || mayReview || owns || mayManageOwn;
 
-      if (!isPublished && !mayReview && !owns) throw new NotFoundError('Asset');
+      if (!mayView) throw new NotFoundError('Asset');
       if (principal.readOnly && !isPublished) throw new NotFoundError('Asset');
 
       return reply.status(200).send({ asset });

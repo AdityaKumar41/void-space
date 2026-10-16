@@ -458,7 +458,44 @@ import type {Tri} from './triangulate.js'
 import {TriangulationCache} from './triangulate.js'
 import {buildDrawGeometry, gatherDrawAttr} from './draw_buffers.js'
 import {buildGlbBinary, exportTrianglesToGLB, type GlbBinaryOptions} from './glb_binary.js'
-export {buildGlbBinary, exportTrianglesToGLB} from './glb_binary.js'
+export function extractTextureBytesFromMaterial(mat: any): {bytes?: Uint8Array; mimeType?: string} {
+  if (!mat?.graph?.nodes) return {}
+  for (const node of mat.graph.nodes) {
+    if (node instanceof ImageNode || (node as any).constructor?.name === 'ImageNode') {
+      const imgBlock = (node as any).imageUser?.image || (node as any).image
+      if (!imgBlock) continue
+      let url: string = imgBlock.url || imgBlock.data || ''
+      if (!url && imgBlock._image?.src) {
+        url = imgBlock._image.src
+      }
+      if (!url && imgBlock._image?.image) {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = imgBlock.width || imgBlock._image.image.width || 512
+          canvas.height = imgBlock.height || imgBlock._image.image.height || 512
+          const g = canvas.getContext('2d')
+          if (g) {
+            g.putImageData(imgBlock._image.image, 0, 0)
+            url = canvas.toDataURL('image/png')
+          }
+        } catch {}
+      }
+      if (url && url.startsWith('data:')) {
+        try {
+          const [header, b64] = url.split(',')
+          const mimeType = header.split(':')[1]?.split(';')[0] || 'image/png'
+          const raw = atob(b64)
+          const bytes = new Uint8Array(raw.length)
+          for (let i = 0; i < raw.length; i++) {
+            bytes[i] = raw.charCodeAt(i)
+          }
+          return {bytes, mimeType}
+        } catch {}
+      }
+    }
+  }
+  return {}
+}
 
 export function exportLeafMeshToGLB(
   data: LeafMeshData,
@@ -496,25 +533,10 @@ export function exportLeafMeshToGLB(
   let baseColorFactor: [number, number, number, number] | undefined
 
   const mat = material || (data as any).material
-  if (mat && mat.graph) {
-    for (const node of mat.graph.nodes) {
-      if ((node instanceof ImageNode || (node as any).constructor?.name === 'ImageNode') && (node as any).image) {
-        const imgBlock = (node as any).image
-        const url: string = imgBlock.url || imgBlock.data || ''
-        if (url && url.startsWith('data:')) {
-          try {
-            const [header, b64] = url.split(',')
-            textureMimeType = header.split(':')[1]?.split(';')[0] || 'image/png'
-            const raw = atob(b64)
-            textureBytes = new Uint8Array(raw.length)
-            for (let i = 0; i < raw.length; i++) {
-              textureBytes[i] = raw.charCodeAt(i)
-            }
-          } catch {}
-          break
-        }
-      }
-    }
+  if (mat) {
+    const extracted = extractTextureBytesFromMaterial(mat)
+    textureBytes = extracted.bytes
+    textureMimeType = extracted.mimeType
   }
 
   return buildGlbBinary(name, position, normal, indices, {
@@ -528,7 +550,7 @@ export function exportLeafMeshToGLB(
 export function exportSceneToGLB(ctx: ToolContext, name = 'SceneModel'): Uint8Array {
   const sceneObs = ctx.scene?.objects ? [...ctx.scene.objects] : []
   const meshObs = sceneObs.filter(
-    (o: any) => o.data instanceof LeafMeshData || triangleSourceOf(o?.data)
+    (o: any) => o.data instanceof LeafMeshData || triangleSourceOf(o?.data) || typeof o.data?.extractTriangles === 'function' || o.data?.mesh
   )
 
   if (meshObs.length === 0) {
@@ -540,9 +562,16 @@ export function exportSceneToGLB(ctx: ToolContext, name = 'SceneModel'): Uint8Ar
     if (ob.data instanceof LeafMeshData) {
       return exportLeafMeshToGLB(ob.data, ob.name || name, (ob as any).material || ob.data.material)
     }
-    const src = triangleSourceOf(ob?.data)
+    const src = (typeof ob.data?.extractTriangles === 'function' ? ob.data : triangleSourceOf(ob?.data)) as any
     if (src) {
-      return exportTrianglesToGLB(src.extractTriangles(), ob.name || name)
+      try {
+        const tris = src.extractTriangles()
+        if (tris && tris.positions && tris.positions.length > 0) {
+          return exportTrianglesToGLB(tris, ob.name || name)
+        }
+      } catch (err) {
+        console.warn('Single object triangle extraction failed:', err)
+      }
     }
   }
 
@@ -576,14 +605,14 @@ export function exportSceneToGLB(ctx: ToolContext, name = 'SceneModel'): Uint8Ar
       for (let i = 0; i < position.length; i += 3) {
         v.loadXYZ(position[i], position[i + 1], position[i + 2])
         if (worldMatrix) v.multVecMatrix(worldMatrix)
-        allPositions.push(v[0], v[1], v[2])
+        allPositions.push(v[0], v[2], -v[1])
 
         n.loadXYZ(normal[i], normal[i + 1], normal[i + 2])
         if (worldMatrix) {
           n.multVecMatrix(worldMatrix)
           n.normalize()
         }
-        allNormals.push(n[0], n[1], n[2])
+        allNormals.push(n[0], n[2], -n[1])
 
         const uvIdx = Math.floor(i / 3) * 2
         if (uv && uvIdx + 1 < uv.length) {
@@ -595,23 +624,42 @@ export function exportSceneToGLB(ctx: ToolContext, name = 'SceneModel'): Uint8Ar
 
       if (!sharedTexBytes) {
         const mat = (ob as any).material || ob.data.material
-        if (mat?.graph) {
-          for (const node of mat.graph.nodes) {
-            if ((node instanceof ImageNode || (node as any).constructor?.name === 'ImageNode') && (node as any).image) {
-              const url = (node as any).image.url || ''
-              if (url.startsWith('data:')) {
-                try {
-                  const [header, b64] = url.split(',')
-                  sharedMimeType = header.split(':')[1]?.split(';')[0] || 'image/png'
-                  const raw = atob(b64)
-                  sharedTexBytes = new Uint8Array(raw.length)
-                  for (let k = 0; k < raw.length; k++) sharedTexBytes[k] = raw.charCodeAt(k)
-                } catch {}
-                break
-              }
-            }
+        if (mat) {
+          const extracted = extractTextureBytesFromMaterial(mat)
+          if (extracted.bytes) {
+            sharedTexBytes = extracted.bytes
+            sharedMimeType = extracted.mimeType
           }
         }
+      }
+    } else if (typeof ob.data?.extractTriangles === 'function' || triangleSourceOf(ob?.data)) {
+      const src = (typeof ob.data?.extractTriangles === 'function' ? ob.data : triangleSourceOf(ob.data)) as any
+      try {
+        const tris = src.extractTriangles()
+        if (tris && tris.positions && tris.positions.length > 0 && tris.indices && tris.indices.length > 0) {
+          const v = new Vector3()
+          const n = new Vector3()
+          for (let idx = 0; idx < tris.indices.length; idx++) {
+            const vi = tris.indices[idx]
+            v.loadXYZ(tris.positions[vi * 3], tris.positions[vi * 3 + 1], tris.positions[vi * 3 + 2])
+            if (worldMatrix) v.multVecMatrix(worldMatrix)
+            allPositions.push(v[0], v[2], -v[1])
+
+            if (tris.normals && vi * 3 + 2 < tris.normals.length) {
+              n.loadXYZ(tris.normals[vi * 3], tris.normals[vi * 3 + 1], tris.normals[vi * 3 + 2])
+              if (worldMatrix) {
+                n.multVecMatrix(worldMatrix)
+                n.normalize()
+              }
+              allNormals.push(n[0], n[2], -n[1])
+            } else {
+              allNormals.push(0, 1, 0)
+            }
+            allUVs.push(0, 0)
+          }
+        }
+      } catch (err) {
+        console.warn('Failed extracting triangles in multi-object glb export:', err)
       }
     }
   }

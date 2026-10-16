@@ -314,6 +314,7 @@ export async function projectRoutes(
       tags: body.tags,
       sourceTool: 'VOID·STUDIO' as const,
       submitForReview: true,
+      creatorId: me.userId,
       // FR-14.2 — "a reference back to the originating VOID·STUDIO project", so the
       // asset's provenance in VOID·SPACE names where it came from.
       metadata: { studioProjectId: project.id, studioProjectName: project.name },

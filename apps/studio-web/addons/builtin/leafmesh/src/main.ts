@@ -26,6 +26,7 @@ import {LEAFMESH_OBJ_FORMAT} from './obj.js'
 import {LEAFMESH_GLB_FORMAT} from './glb.js'
 import {LEAFMESH_STL_FORMAT} from './stl.js'
 import {LEAFMESH_PLY_FORMAT} from './ply.js'
+import {LEAFMESH_FBX_FORMAT} from './fbx.js'
 import {LEAFMESH_PRIMITIVE_OPS} from './primitive_ops.js'
 import {LEAFMESH_SELECT_OPS} from './select_ops.js'
 import {LeafMeshToolMode} from './toolmode.js'
@@ -65,6 +66,7 @@ export function register(api: AddonAPI<IAddon>) {
       ...LEAFMESH_GLB_FORMAT.extensions,
       ...LEAFMESH_STL_FORMAT.extensions,
       ...LEAFMESH_PLY_FORMAT.extensions,
+      ...LEAFMESH_FBX_FORMAT.extensions,
     ],
   })
 
@@ -75,6 +77,7 @@ export function register(api: AddonAPI<IAddon>) {
   api.registerFileFormat(LEAFMESH_GLB_FORMAT)
   api.registerFileFormat(LEAFMESH_STL_FORMAT)
   api.registerFileFormat(LEAFMESH_PLY_FORMAT)
+  api.registerFileFormat(LEAFMESH_FBX_FORMAT)
 
   // The modeling toolmode, its selection ops (P12 step 1) and its topology ops
   // (step 4). One `register` dispatch each — no module-scope side effect.
@@ -115,4 +118,4 @@ export function unregister() {}
 export function handleArgv() {}
 export function validArgv() {}
 
-export {LEAFMESH_OBJ_FORMAT, LEAFMESH_GLB_FORMAT, LEAFMESH_STL_FORMAT, LEAFMESH_PLY_FORMAT}
+export {LEAFMESH_OBJ_FORMAT, LEAFMESH_GLB_FORMAT, LEAFMESH_STL_FORMAT, LEAFMESH_PLY_FORMAT, LEAFMESH_FBX_FORMAT}

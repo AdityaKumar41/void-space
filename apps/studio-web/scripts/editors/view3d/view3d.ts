@@ -1861,7 +1861,7 @@ View3D {
     if (!gl) return
 
     gl.enable(gl.SCISSOR_TEST)
-    const glY = Math.max(0, this.canvas.height - (this.glPos[1] + this.glSize[1]))
+    const glY = Math.max(0, (this.canvas?.height ?? 0) - (this.glPos[1] + this.glSize[1]))
     gl.scissor(this.glPos[0], glY, this.glSize[0], this.glSize[1])
     gl.viewport(this.glPos[0], glY, this.glSize[0], this.glSize[1])
 

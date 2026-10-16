@@ -43,7 +43,7 @@ export interface PublishJobPayload {
 export function createPublishProcessor(logger: Logger) {
   const mode = process.env.VOIDSPACE_CLIENT_MODE ?? 'mock';
   const apiKey = process.env.STUDIO_VOIDSPACE_API_KEY;
-  const baseUrl = process.env.STUDIO_VOIDSPACE_API_BASE_URL ?? 'http://localhost:4000/api/v1';
+  const baseUrl = (process.env.STUDIO_VOIDSPACE_API_BASE_URL ?? 'http://localhost:4000').replace(/\/api\/v1\/?$/, '');
 
   const client =
     mode === 'live' && apiKey
@@ -96,6 +96,7 @@ export function createPublishProcessor(logger: Logger) {
         sourceTool: 'VOID·STUDIO' as const,
         tags: metadata.tags ?? ['void-studio'],
         submitForReview: true,
+        creatorId: userId,
       },
       file: {
         filename: file.filename,

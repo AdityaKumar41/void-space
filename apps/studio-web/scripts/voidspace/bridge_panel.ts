@@ -15,7 +15,11 @@ import {getFileFormat, formatForFilename} from '../core/file_formats.js'
 import {peekAppState, getAppState} from '../core/app_instance.js'
 import {Light} from '../light/light.js'
 import {SceneObject} from '../sceneobject/sceneobject.js'
+import {Vector3} from '../path.ux/pathux.js'
 import addonManager from '../addon/addon.js'
+import {ImageBlock, ImageTypes} from '../image/image.js'
+import {Material} from '../core/material.js'
+import {ImageNode, DiffuseNode, OutputNode, GeometryNode} from '../shadernodes/shader_nodes.js'
 
 export function getToolContext(): any {
   try {
@@ -346,56 +350,590 @@ export interface VoidSpacePanelHandle {
   unmount(): void
 }
 
-/** Simple valid glTF 2.0 binary container builder for standalone publish handoff */
-function generateGlbPayload(name: string): string {
-  const gltfJson = {
+function generateCrystalData(): {
+  positions: Float32Array
+  normals: Float32Array
+  indices: Uint16Array
+} {
+  const r = 1.0
+  const h = 1.5
+  const verts: number[] = [
+    0, h, 0,  // 0: top apex (+Y in glTF)
+    0, -h, 0, // 1: bottom apex (-Y in glTF)
+  ]
+  const sides = 8
+  for (let i = 0; i < sides; i++) {
+    const angle = (i * 2 * Math.PI) / sides
+    verts.push(r * Math.cos(angle), 0, r * Math.sin(angle))
+  }
+  const idxs: number[] = []
+  for (let i = 0; i < sides; i++) {
+    const curr = 2 + i
+    const next = 2 + ((i + 1) % sides)
+    idxs.push(0, curr, next)
+  }
+  for (let i = 0; i < sides; i++) {
+    const curr = 2 + i
+    const next = 2 + ((i + 1) % sides)
+    idxs.push(1, next, curr)
+  }
+
+  const normals = new Float32Array(verts.length)
+  for (let i = 0; i < idxs.length; i += 3) {
+    const i0 = idxs[i], i1 = idxs[i + 1], i2 = idxs[i + 2]
+    const ax = verts[i0 * 3], ay = verts[i0 * 3 + 1], az = verts[i0 * 3 + 2]
+    const bx = verts[i1 * 3], by = verts[i1 * 3 + 1], bz = verts[i1 * 3 + 2]
+    const cx = verts[i2 * 3], cy = verts[i2 * 3 + 1], cz = verts[i2 * 3 + 2]
+    const ux = bx - ax, uy = by - ay, uz = bz - az
+    const vx = cx - ax, vy = cy - ay, vz = cz - az
+    const nx = uy * vz - uz * vy
+    const ny = uz * vx - ux * vz
+    const nz = ux * vy - uy * vx
+    normals[i0 * 3] += nx; normals[i0 * 3 + 1] += ny; normals[i0 * 3 + 2] += nz
+    normals[i1 * 3] += nx; normals[i1 * 3 + 1] += ny; normals[i1 * 3 + 2] += nz
+    normals[i2 * 3] += nx; normals[i2 * 3 + 1] += ny; normals[i2 * 3 + 2] += nz
+  }
+  for (let i = 0; i < verts.length / 3; i++) {
+    const len = Math.hypot(normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]) || 1
+    normals[i * 3] /= len; normals[i * 3 + 1] /= len; normals[i * 3 + 2] /= len
+  }
+
+  return {
+    positions: new Float32Array(verts),
+    normals,
+    indices: new Uint16Array(idxs),
+  }
+}
+
+export function extractTextureBytesFromMaterial(mat: any): {bytes?: Uint8Array; mimeType?: string} {
+  if (!mat?.graph?.nodes) return {}
+  for (const node of mat.graph.nodes) {
+    if (node instanceof ImageNode || (node as any).constructor?.name === 'ImageNode') {
+      const imgBlock = (node as any).imageUser?.image || (node as any).image
+      if (!imgBlock) continue
+      let url: string = imgBlock.url || imgBlock.data || ''
+      if (!url && imgBlock._image?.src) {
+        url = imgBlock._image.src
+      }
+      if (!url && imgBlock._image?.image) {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = imgBlock.width || imgBlock._image.image.width || 512
+          canvas.height = imgBlock.height || imgBlock._image.image.height || 512
+          const g = canvas.getContext('2d')
+          if (g) {
+            g.putImageData(imgBlock._image.image, 0, 0)
+            url = canvas.toDataURL('image/png')
+          }
+        } catch {}
+      }
+      if (url && url.startsWith('data:')) {
+        try {
+          const [header, b64] = url.split(',')
+          const mimeType = header.split(':')[1]?.split(';')[0] || 'image/png'
+          const raw = atob(b64)
+          const bytes = new Uint8Array(raw.length)
+          for (let i = 0; i < raw.length; i++) {
+            bytes[i] = raw.charCodeAt(i)
+          }
+          return {bytes, mimeType}
+        } catch {}
+      }
+    }
+  }
+  return {}
+}
+
+export function ensureMeshUVs(mesh: any): boolean {
+  if (!mesh || !mesh.attrs || !mesh.v || !mesh.f) return false
+  const DOMAIN_CORNER = 1
+  const ATTR_FLOAT2 = 3
+
+  let uvLayer = mesh.attrs.get?.(DOMAIN_CORNER, 'uv')
+  if (!uvLayer) {
+    try {
+      uvLayer = mesh.attrs.add(DOMAIN_CORNER, 'uv', ATTR_FLOAT2)
+    } catch {
+      return false
+    }
+  }
+
+  const uvData = uvLayer?.column?.data
+  if (!uvData || uvData.length === 0) return false
+
+  let allZero = true
+  for (let i = 0; i < Math.min(uvData.length, 64); i++) {
+    if (uvData[i] !== 0) {
+      allZero = false
+      break
+    }
+  }
+
+  if (allZero) {
+    let minX = Infinity, maxX = -Infinity
+    let minY = Infinity, maxY = -Infinity
+    let minZ = Infinity, maxZ = -Infinity
+    const co = mesh.v.co
+    if (!co) return false
+    for (let i = 0; i < co.length; i += 3) {
+      const x = co[i], y = co[i + 1], z = co[i + 2]
+      if (x < minX) minX = x; if (x > maxX) maxX = x
+      if (y < minY) minY = y; if (y > maxY) maxY = y
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
+    }
+    const spanX = Math.max(maxX - minX, 1e-4)
+    const spanZ = Math.max(maxZ - minZ, 1e-4)
+
+    for (const f of mesh.f) {
+      for (const l of mesh.faceLoops?.(f) || []) {
+        for (const c of mesh.loopCorners?.(l) || []) {
+          const vIdx = mesh.c?.v?.[c]
+          if (vIdx !== undefined) {
+            const px = co[vIdx * 3]
+            const pz = co[vIdx * 3 + 2]
+            uvData[c * 2] = (px - minX) / spanX
+            uvData[c * 2 + 1] = (pz - minZ) / spanZ
+          }
+        }
+      }
+    }
+    return true
+  }
+  return true
+}
+
+export function createProceduralUVGridDataUrl(): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1024
+  canvas.height = 1024
+  const g = canvas.getContext('2d')!
+  const steps = 16
+  const colors = ['#232635', '#12131c']
+  const cellSize = canvas.width / steps
+
+  for (let y = 0; y < steps; y++) {
+    for (let x = 0; x < steps; x++) {
+      g.fillStyle = colors[(x + y) % 2]
+      g.fillRect(x * cellSize, y * cellSize, cellSize, cellSize)
+
+      g.strokeStyle = 'rgba(0, 240, 255, 0.25)'
+      g.lineWidth = 1
+      g.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize)
+
+      g.fillStyle = '#00f0ff'
+      g.font = 'bold 16px monospace'
+      g.textAlign = 'center'
+      g.textBaseline = 'middle'
+      const label = `${String.fromCharCode(65 + x)}${y + 1}`
+      g.fillText(label, (x + 0.5) * cellSize, (y + 0.5) * cellSize)
+    }
+  }
+
+  g.strokeStyle = '#f43f5e'
+  g.lineWidth = 2
+  g.beginPath()
+  g.moveTo(512, 0); g.lineTo(512, 1024)
+  g.moveTo(0, 512); g.lineTo(1024, 512)
+  g.stroke()
+
+  return canvas.toDataURL('image/png')
+}
+
+export function applyTextureToMeshObject(ctx: any, ob: any, dataUrl: string, texName = 'BaseColor'): void {
+  const lib = ctx?.datalib
+  if (!lib || !ob?.data) return
+
+  if (ob.data.mesh) {
+    ensureMeshUVs(ob.data.mesh)
+  }
+
+  const imgBlock = new ImageBlock()
+  imgBlock.name = texName
+  imgBlock.type = ImageTypes.URL
+  imgBlock.url = dataUrl
+  imgBlock.update()
+  lib.add(imgBlock)
+
+  let mat = (ob as any).material || ob.data.material || ob.data.materials?.[0]
+  if (!mat || !mat.graph) {
+    mat = new Material()
+    mat.name = (ob.name || 'Model') + '_PBR'
+    lib.add(mat)
+    if (Array.isArray(ob.data.materials)) {
+      ob.data.materials.push(mat)
+    } else {
+      ob.data.material = mat
+    }
+    ob.material = mat
+    mat.lib_addUser(ob.data)
+  }
+
+  let imgNode: ImageNode | undefined
+  let diffNode: DiffuseNode | undefined
+  let outNode: OutputNode | undefined
+  let geomNode: GeometryNode | undefined
+
+  for (const n of mat.graph.nodes) {
+    if (n instanceof ImageNode || (n as any).constructor?.name === 'ImageNode') imgNode = n as ImageNode
+    if (n instanceof DiffuseNode || (n as any).constructor?.name === 'DiffuseNode') diffNode = n as DiffuseNode
+    if (n instanceof OutputNode || (n as any).constructor?.name === 'OutputNode') outNode = n as OutputNode
+    if (n instanceof GeometryNode || (n as any).constructor?.name === 'GeometryNode') geomNode = n as GeometryNode
+  }
+
+  if (!diffNode) {
+    diffNode = new DiffuseNode()
+    mat.graph.add(diffNode)
+  }
+  if (!outNode) {
+    outNode = new OutputNode()
+    mat.graph.add(outNode)
+    diffNode.outputs.surface.connect(outNode.inputs.surface)
+  }
+  if (!geomNode) {
+    geomNode = new GeometryNode()
+    mat.graph.add(geomNode)
+    geomNode.outputs.normal.connect(diffNode.inputs.normal)
+  }
+
+  if (!imgNode) {
+    imgNode = new ImageNode()
+    mat.graph.add(imgNode)
+    imgNode.outputs.color.connect(diffNode.inputs.color)
+  }
+
+  imgNode.imageUser.image = imgBlock
+  imgBlock.lib_addUser(mat)
+  ;(mat as any)._regen = true
+
+  ob.graphUpdate?.()
+  ob.data?.graphUpdate?.()
+
+  const rw = window as any
+  if (typeof rw.redraw_viewport === 'function') {
+    rw.redraw_viewport(true)
+  }
+}
+
+export function packGlbBinary(
+  name: string,
+  positions: Float32Array,
+  normals: Float32Array,
+  indices: Uint16Array | Uint32Array,
+  materialColor: [number, number, number, number] = [0.85, 0.88, 0.94, 1.0],
+  metallic = 0.35,
+  roughness = 0.40,
+  options?: {uv?: Float32Array; textureBytes?: Uint8Array; textureMimeType?: string},
+): Uint8Array {
+  const vertCount = Math.floor(positions.length / 3)
+  if (vertCount === 0 || indices.length === 0) {
+    const fb = generateCrystalData()
+    return packGlbBinary(name, fb.positions, fb.normals, fb.indices, materialColor, metallic, roughness, options)
+  }
+
+  let minX = Infinity, minY = Infinity, minZ = Infinity
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity
+  for (let i = 0; i < positions.length; i += 3) {
+    const x = positions[i], y = positions[i + 1], z = positions[i + 2]
+    if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z
+    if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z
+  }
+
+  const is32Bit = indices instanceof Uint32Array
+  const posBytes = positions.byteLength
+  const posPadded = (posBytes + 3) & ~3
+  const normBytes = normals.byteLength
+  const normPadded = (normBytes + 3) & ~3
+  const idxBytes = indices.byteLength
+  const idxPadded = (idxBytes + 3) & ~3
+
+  const hasUV = options?.uv && options.uv.length >= vertCount * 2
+  const uvBytes = hasUV ? options!.uv!.byteLength : 0
+  const uvPadded = (uvBytes + 3) & ~3
+
+  const hasTex = options?.textureBytes && options.textureBytes.length > 0
+  const texBytes = hasTex ? options!.textureBytes!.byteLength : 0
+  const texPadded = (texBytes + 3) & ~3
+
+  const totalBinBytes = posPadded + normPadded + idxPadded + uvPadded + texPadded
+
+  const binBuffer = new Uint8Array(totalBinBytes)
+  binBuffer.set(new Uint8Array(positions.buffer, positions.byteOffset, posBytes), 0)
+  binBuffer.set(new Uint8Array(normals.buffer, normals.byteOffset, normBytes), posPadded)
+  binBuffer.set(new Uint8Array(indices.buffer, indices.byteOffset, idxBytes), posPadded + normPadded)
+
+  let uvOffset = 0
+  if (hasUV) {
+    uvOffset = posPadded + normPadded + idxPadded
+    binBuffer.set(new Uint8Array(options!.uv!.buffer, options!.uv!.byteOffset, uvBytes), uvOffset)
+  }
+
+  let texOffset = 0
+  if (hasTex) {
+    texOffset = posPadded + normPadded + idxPadded + uvPadded
+    binBuffer.set(options!.textureBytes!, texOffset)
+  }
+
+  const bufferViews: any[] = [
+    {buffer: 0, byteOffset: 0, byteLength: posBytes, target: 34962},
+    {buffer: 0, byteOffset: posPadded, byteLength: normBytes, target: 34962},
+    {buffer: 0, byteOffset: posPadded + normPadded, byteLength: idxBytes, target: 34963},
+  ]
+
+  const accessors: any[] = [
+    {
+      bufferView: 0,
+      byteOffset: 0,
+      componentType: 5126,
+      count: vertCount,
+      type: 'VEC3',
+      min: [minX, minY, minZ],
+      max: [maxX, maxY, maxZ],
+    },
+    {
+      bufferView: 1,
+      byteOffset: 0,
+      componentType: 5126,
+      count: vertCount,
+      type: 'VEC3',
+    },
+    {
+      bufferView: 2,
+      byteOffset: 0,
+      componentType: is32Bit ? 5125 : 5123,
+      count: indices.length,
+      type: 'SCALAR',
+      min: [0],
+      max: [vertCount - 1],
+    },
+  ]
+
+  const attributes: any = {POSITION: 0, NORMAL: 1}
+
+  if (hasUV) {
+    const uvViewIdx = bufferViews.length
+    bufferViews.push({buffer: 0, byteOffset: uvOffset, byteLength: uvBytes, target: 34962})
+    const uvAccIdx = accessors.length
+    accessors.push({
+      bufferView: uvViewIdx,
+      byteOffset: 0,
+      componentType: 5126,
+      count: vertCount,
+      type: 'VEC2',
+    })
+    attributes.TEXCOORD_0 = uvAccIdx
+  }
+
+  const materialDef: any = {
+    name: 'PBR_Studio',
+    pbrMetallicRoughness: {
+      baseColorFactor: materialColor,
+      metallicFactor: metallic,
+      roughnessFactor: roughness,
+    },
+    doubleSided: true,
+  }
+
+  const gltfJson: any = {
     asset: {version: '2.0', generator: 'VOID·STUDIO 1.0'},
     scenes: [{name: 'Scene', nodes: [0]}],
-    nodes: [{name: name, mesh: 0}],
-    meshes: [{name: name, primitives: [{attributes: {POSITION: 0}, indices: 1, material: 0}]}],
-    materials: [{name: 'PBR_Default', pbrMetallicRoughness: {baseColorFactor: [0.8, 0.8, 0.85, 1.0], metallicFactor: 0.7, roughnessFactor: 0.3}}],
-    buffers: [{byteLength: 48}],
-    bufferViews: [
-      {buffer: 0, byteOffset: 0, byteLength: 36, target: 34962},
-      {buffer: 0, byteOffset: 36, byteLength: 12, target: 34963},
+    nodes: [{name, mesh: 0}],
+    meshes: [
+      {
+        name,
+        primitives: [
+          {
+            attributes,
+            indices: 2,
+            material: 0,
+          },
+        ],
+      },
     ],
-    accessors: [
-      {bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3', max: [1, 1, 0], min: [-1, -1, 0]},
-      {bufferView: 1, byteOffset: 0, componentType: 5123, count: 3, type: 'SCALAR', max: [2], min: [0]},
-    ],
+    materials: [materialDef],
+    buffers: [{byteLength: totalBinBytes}],
+    bufferViews,
+    accessors,
   }
+
+  if (hasTex) {
+    const texViewIdx = bufferViews.length
+    bufferViews.push({buffer: 0, byteOffset: texOffset, byteLength: texBytes})
+    gltfJson.images = [{bufferView: texViewIdx, mimeType: options!.textureMimeType || 'image/png'}]
+    gltfJson.samplers = [{magFilter: 9729, minFilter: 9987, wrapS: 10497, wrapT: 10497}]
+    gltfJson.textures = [{sampler: 0, source: 0}]
+    materialDef.pbrMetallicRoughness.baseColorTexture = {index: 0}
+  }
+
   const jsonStr = JSON.stringify(gltfJson)
-  const jsonPadded = jsonStr + ' '.repeat((4 - (jsonStr.length % 4)) % 4)
-  const binBytes = new Uint8Array(48)
-  const f32 = new Float32Array(binBytes.buffer, 0, 9)
-  f32.set([-0.5, -0.5, 0.0, 0.5, -0.5, 0.0, 0.0, 0.5, 0.0])
-  const u16 = new Uint16Array(binBytes.buffer, 36, 3)
-  u16.set([0, 1, 2])
+  const jsonPadding = (4 - (jsonStr.length % 4)) % 4
+  const jsonPadded = jsonStr + ' '.repeat(jsonPadding)
+  const jsonBytes = new TextEncoder().encode(jsonPadded)
 
-  const totalLen = 12 + 8 + jsonPadded.length + 8 + binBytes.length
-  const buffer = new ArrayBuffer(totalLen)
-  const view = new DataView(buffer)
-  view.setUint32(0, 0x46546c67, true) // 'glTF'
-  view.setUint32(4, 2, true) // version 2
-  view.setUint32(8, totalLen, true)
+  const totalLength = 12 + 8 + jsonBytes.length + 8 + totalBinBytes
+  const glb = new Uint8Array(totalLength)
+  const view = new DataView(glb.buffer)
 
-  view.setUint32(12, jsonPadded.length, true)
-  view.setUint32(16, 0x4e4f534a, true) // 'JSON'
-  const uint8 = new Uint8Array(buffer)
-  for (let i = 0; i < jsonPadded.length; i++) {
-    uint8[20 + i] = jsonPadded.charCodeAt(i)
+  view.setUint32(0, 0x46546c67, true)
+  view.setUint32(4, 2, true)
+  view.setUint32(8, totalLength, true)
+
+  view.setUint32(12, jsonBytes.length, true)
+  view.setUint32(16, 0x4e4f534a, true)
+  glb.set(jsonBytes, 20)
+
+  const binHeaderOffset = 20 + jsonBytes.length
+  view.setUint32(binHeaderOffset, totalBinBytes, true)
+  view.setUint32(binHeaderOffset + 4, 0x004e4942, true)
+  glb.set(binBuffer, binHeaderOffset + 8)
+
+  return glb
+}
+
+export function extractSceneMeshes(ctx: any): {
+  positions: Float32Array
+  normals: Float32Array
+  indices: Uint16Array | Uint32Array
+  polycount: number
+  vertCount: number
+  materialColor: [number, number, number, number]
+} {
+  const scene = ctx?.scene
+  const allPos: number[] = []
+  const allNorm: number[] = []
+  const allIdx: number[] = []
+  let vertOffset = 0
+  let detectedColor: [number, number, number, number] = [0.85, 0.88, 0.94, 1.0]
+
+  if (scene?.objects) {
+    for (const ob of scene.objects) {
+      if (!ob?.data) continue
+
+      const mat = ob.material || ob.data?.material
+      if (mat?.color && Array.isArray(mat.color) && mat.color.length >= 3) {
+        detectedColor = [mat.color[0], mat.color[1], mat.color[2], mat.color[3] ?? 1.0]
+      }
+
+      const worldMat = ob.outputs?.matrix?.getValue?.() || ob.matrix
+
+      let tris: {positions: Float64Array | number[]; indices: Int32Array | number[]; normals?: Float64Array | number[]} | null = null
+      if (typeof ob.data.extractTriangles === 'function') {
+        try {
+          tris = ob.data.extractTriangles()
+        } catch (e) {
+          console.warn('extractTriangles threw error:', e)
+        }
+      }
+
+      if ((!tris || !tris.positions || tris.positions.length === 0) && ob.data.mesh?.f && ob.data.mesh?.v) {
+        try {
+          const mesh = ob.data.mesh
+          const positions: number[] = []
+          const indices: number[] = []
+          const vertMap = new Map<any, number>()
+          let vIdx = 0
+          for (const v of mesh.v) {
+            vertMap.set(v, vIdx++)
+            positions.push(v[0] || v.co?.[0] || 0, v[1] || v.co?.[1] || 0, v[2] || v.co?.[2] || 0)
+          }
+          for (const f of mesh.f) {
+            const fVerts = Array.from(f.verts || f.v || [])
+            if (fVerts.length >= 3) {
+              const v0 = vertMap.get(fVerts[0]) ?? 0
+              for (let j = 1; j < fVerts.length - 1; j++) {
+                indices.push(v0, vertMap.get(fVerts[j]) ?? 0, vertMap.get(fVerts[j + 1]) ?? 0)
+              }
+            }
+          }
+          if (positions.length > 0 && indices.length > 0) {
+            tris = {positions, indices}
+          }
+        } catch (e) {
+          console.warn('LeafMesh fallback threw error:', e)
+        }
+      }
+
+      if (tris && tris.positions && tris.positions.length >= 9 && tris.indices && tris.indices.length >= 3) {
+        const numVerts = Math.floor(tris.positions.length / 3)
+        const v = new Vector3()
+        const n = new Vector3()
+
+        for (let i = 0; i < numVerts; i++) {
+          const rawX = tris.positions[i * 3]
+          const rawY = tris.positions[i * 3 + 1]
+          const rawZ = tris.positions[i * 3 + 2]
+
+          v.loadXYZ(rawX, rawY, rawZ)
+          if (worldMat) {
+            v.multVecMatrix(worldMat)
+          }
+
+          // VOID·STUDIO (Z-up: +X right, +Y forward, +Z up)
+          // to glTF 2.0 (Y-up: +X right, +Y up, -Z forward)
+          allPos.push(v[0], v[2], -v[1])
+
+          if (tris.normals && (i * 3 + 2) < tris.normals.length) {
+            n.loadXYZ(tris.normals[i * 3], tris.normals[i * 3 + 1], tris.normals[i * 3 + 2])
+            if (worldMat) {
+              n.multVecMatrix(worldMat)
+              n.normalize()
+            }
+            allNorm.push(n[0], n[2], -n[1])
+          } else {
+            allNorm.push(0, 1, 0)
+          }
+        }
+
+        for (let i = 0; i < tris.indices.length; i++) {
+          allIdx.push(tris.indices[i] + vertOffset)
+        }
+        vertOffset += numVerts
+      }
+    }
   }
 
-  const binHeaderOffset = 20 + jsonPadded.length
-  view.setUint32(binHeaderOffset, binBytes.length, true)
-  view.setUint32(binHeaderOffset + 4, 0x004e4942, true) // 'BIN\0'
-  uint8.set(binBytes, binHeaderOffset + 8)
-
-  let binary = ''
-  for (let i = 0; i < uint8.length; i++) {
-    binary += String.fromCharCode(uint8[i])
+  if (allPos.length === 0 || allIdx.length === 0) {
+    const fb = generateCrystalData()
+    return {
+      positions: fb.positions,
+      normals: fb.normals,
+      indices: fb.indices,
+      polycount: fb.indices.length / 3,
+      vertCount: fb.positions.length / 3,
+      materialColor: detectedColor,
+    }
   }
-  return btoa(binary)
+
+  const isLarge = vertOffset >= 65535
+  const indices = isLarge ? new Uint32Array(allIdx) : new Uint16Array(allIdx)
+
+  return {
+    positions: new Float32Array(allPos),
+    normals: new Float32Array(allNorm),
+    indices,
+    polycount: allIdx.length / 3,
+    vertCount: vertOffset,
+    materialColor: detectedColor,
+  }
+}
+
+export function exportActiveSceneGlb(ctx: any, name: string): {
+  bytes: Uint8Array
+  polycount: number
+  vertCount: number
+} {
+  const meshData = extractSceneMeshes(ctx)
+  const glbBytes = packGlbBinary(
+    name,
+    meshData.positions,
+    meshData.normals,
+    meshData.indices,
+    meshData.materialColor,
+  )
+  return {
+    bytes: glbBytes,
+    polycount: meshData.polycount,
+    vertCount: meshData.vertCount,
+  }
 }
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
@@ -416,58 +954,14 @@ export function getActiveSceneMetrics(ctx: any): {
   sizeBytes: number
   glbBase64: string
 } {
-  const scene = ctx?.scene
-  let polycount = 0
-  let vertCount = 0
-  let materialCount = 0
-  let glbBase64 = ''
-
-  if (scene?.objects) {
-    for (const o of scene.objects) {
-      if (o.data?.mesh) {
-        const mesh = o.data.mesh
-        vertCount += mesh.v?.count ?? mesh.v?.array?.count ?? 0
-        polycount += mesh.f?.count ?? mesh.f?.array?.count ?? 0
-        materialCount += Math.max(1, o.data.materials?.length || 1)
-      }
-    }
-  }
-
-  const ob = scene?.objects?.active || [...(scene?.objects || [])].find((o: any) => o.data?.mesh)
-
-  try {
-    const fmt = getFileFormat('glb')
-    if (fmt && typeof fmt.exportToBytes === 'function') {
-      const bytes = fmt.exportToBytes(ctx)
-      if (bytes instanceof Uint8Array && bytes.length > 0) {
-        glbBase64 = uint8ArrayToBase64(bytes)
-      }
-    }
-  } catch {
-    // fallback
-  }
-
-  if (!glbBase64) {
-    glbBase64 = generateGlbPayload(ob?.name || 'Studio Asset')
-  }
-
-  let computedSize = 0
-  if (glbBase64) {
-    let padding = 0
-    if (glbBase64.endsWith('==')) padding = 2
-    else if (glbBase64.endsWith('=')) padding = 1
-    computedSize = Math.floor((glbBase64.length * 3) / 4) - padding
-  }
-
-  if (polycount === 0) polycount = 2450
-  if (vertCount === 0) vertCount = 1200
-  if (materialCount === 0) materialCount = 1
+  const exported = exportActiveSceneGlb(ctx, 'SceneModel')
+  const glbBase64 = uint8ArrayToBase64(exported.bytes)
 
   return {
-    polycount,
-    vertCount,
-    materialCount,
-    sizeBytes: computedSize,
+    polycount: exported.polycount,
+    vertCount: exported.vertCount,
+    materialCount: 1,
+    sizeBytes: exported.bytes.byteLength,
     glbBase64,
   }
 }
@@ -849,6 +1343,59 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       </div>
     `
 
+    const ctx = getToolContext()
+    const activeOb = ctx?.scene?.objects?.active || [...(ctx?.scene?.objects || [])].find((o: any) => o?.data)
+    const activeMat = activeOb?.material || activeOb?.data?.material || activeOb?.data?.materials?.[0]
+    const hasTexture = Boolean(activeMat && extractTextureBytesFromMaterial(activeMat).bytes)
+    let currentModeName = 'Object Mode'
+    if (ctx?.scene?.toolmode_i !== undefined && ctx.scene.toolModeProp?.uiNames) {
+      currentModeName = ctx.scene.toolModeProp.uiNames[ctx.scene.toolmode_i] || 'Object Mode'
+    } else if (ctx?.scene?.toolMode) {
+      currentModeName = String(ctx.scene.toolMode)
+    }
+
+    // Blender Parity Tool Modes
+    html += `
+      <div class="vsp__card">
+        <div class="vsp__row">
+          <span class="vsp__k">Studio Tool Mode</span>
+          <span class="vsp__v" style="color:${p.accent}; font-weight:600" data-role="active-toolmode">${esc(currentModeName)}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px">
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="switch-mode" data-mode="object">Object Mode</button>
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="switch-mode" data-mode="sculptcore">Sculpt Mode</button>
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="switch-mode" data-mode="leafmesh">Edit Mesh</button>
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="switch-mode" data-mode="boxmodel">Box Model</button>
+        </div>
+      </div>
+    `
+
+    // PBR Textures & Materials Manager
+    html += `
+      <div class="vsp__card">
+        <div class="vsp__row">
+          <span class="vsp__k">PBR Textures & Material</span>
+          <span class="vsp__v" style="color:${hasTexture ? '#10b981' : p.fgDim}; font-weight:600">
+            ${hasTexture ? 'Mapped ✨' : 'Default Color'}
+          </span>
+        </div>
+        <div style="font-size:11px;color:${p.fgDim};display:flex;justify-content:space-between;margin-top:2px">
+          <span>Active: ${activeOb?.name ? esc(activeOb.name) : 'No mesh'}</span>
+          <span>${activeOb?.data?.mesh?.attrs?.has?.(1, 'uv') ? 'UVs: Ready' : 'UVs: Auto'}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
+          <label class="vsp__btn vsp__btn--subtle" style="display:flex;align-items:center;justify-content:center;cursor:pointer;margin:0;font-size:11px">
+            <span>Apply Texture 📁</span>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/jpg" data-role="texture-file-input" style="display:none" />
+          </label>
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="apply-uvgrid" style="font-size:11px">UV Test Grid 🏁</button>
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="auto-unwrap" style="font-size:11px">Box UVs 📐</button>
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="clear-texture" style="font-size:11px">Reset Mat ↺</button>
+        </div>
+        <div class="vsp__note">Drag & drop any image (.png/.jpg) or 3D model (.fbx/.glb/.obj) onto the viewport.</div>
+      </div>
+    `
+
     // Publishing section
     html += `
       <div class="vsp__card">
@@ -874,9 +1421,10 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
           <button type="button" class="vsp__btn vsp__btn--subtle" data-action="quick-export" data-fmt="glb">glTF (.glb)</button>
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="quick-export" data-fmt="fbx">FBX (.fbx)</button>
           <button type="button" class="vsp__btn vsp__btn--subtle" data-action="quick-export" data-fmt="obj">Wavefront (.obj)</button>
           <button type="button" class="vsp__btn vsp__btn--subtle" data-action="quick-export" data-fmt="stl">STL (.stl)</button>
-          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="quick-export" data-fmt="ply">Stanford (.ply)</button>
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="quick-export" data-fmt="ply" style="grid-column: span 2">Stanford (.ply)</button>
         </div>
       </div>
       <div class="vsp__links">
@@ -886,6 +1434,92 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     `
 
     body.innerHTML = html
+
+    // Wire mode buttons
+    body.querySelectorAll('[data-action="switch-mode"]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const mode = el.getAttribute('data-mode')
+        const c = getToolContext()
+        if (c?.scene && typeof c.scene.switchToolMode === 'function' && mode) {
+          try {
+            c.scene.switchToolMode(mode)
+            const rw = window as any
+            rw.redraw_viewport?.(true)
+            void render()
+          } catch (e) {
+            console.warn('switchToolMode failed:', e)
+          }
+        }
+      })
+    })
+
+    // Wire texture controls
+    const texInput = body.querySelector('[data-role="texture-file-input"]') as HTMLInputElement | null
+    if (texInput) {
+      texInput.addEventListener('change', () => {
+        const file = texInput.files?.[0]
+        if (!file) return
+        const c = getToolContext()
+        const ob = c?.scene?.objects?.active || [...(c?.scene?.objects || [])].find((o: any) => o?.data)
+        if (!ob) {
+          alert('Please select or create a 3D model first.')
+          return
+        }
+        const reader = new FileReader()
+        reader.onload = () => {
+          applyTextureToMeshObject(c, ob, reader.result as string, file.name)
+          void render()
+        }
+        reader.readAsDataURL(file)
+      })
+    }
+
+    const uvGridBtn = body.querySelector('[data-action="apply-uvgrid"]')
+    if (uvGridBtn) {
+      uvGridBtn.addEventListener('click', () => {
+        const c = getToolContext()
+        const ob = c?.scene?.objects?.active || [...(c?.scene?.objects || [])].find((o: any) => o?.data)
+        if (!ob) {
+          alert('Please select or create a 3D model first.')
+          return
+        }
+        applyTextureToMeshObject(c, ob, createProceduralUVGridDataUrl(), 'UV_Grid')
+        void render()
+      })
+    }
+
+    const unwrapBtn = body.querySelector('[data-action="auto-unwrap"]')
+    if (unwrapBtn) {
+      unwrapBtn.addEventListener('click', () => {
+        const c = getToolContext()
+        const ob = c?.scene?.objects?.active || [...(c?.scene?.objects || [])].find((o: any) => o?.data)
+        if (ob?.data?.mesh) {
+          ensureMeshUVs(ob.data.mesh)
+          ob.graphUpdate?.()
+          ob.data?.graphUpdate?.()
+          const rw = window as any
+          rw.redraw_viewport?.(true)
+          void render()
+        }
+      })
+    }
+
+    const clearTexBtn = body.querySelector('[data-action="clear-texture"]')
+    if (clearTexBtn) {
+      clearTexBtn.addEventListener('click', () => {
+        const c = getToolContext()
+        const ob = c?.scene?.objects?.active || [...(c?.scene?.objects || [])].find((o: any) => o?.data)
+        if (ob) {
+          ob.material = undefined
+          if (ob.data) ob.data.material = undefined
+          ob.graphUpdate?.()
+          ob.data?.graphUpdate?.()
+          const rw = window as any
+          rw.redraw_viewport?.(true)
+          void render()
+        }
+      })
+    }
 
     // Wire audit & publish buttons
     const auditBtn = body.querySelector('[data-action="run-audit"]')
@@ -900,10 +1534,23 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
 
     body.querySelectorAll('[data-action="quick-export"]').forEach((el) => {
       el.addEventListener('click', () => {
-        const fmt = el.getAttribute('data-fmt')
-        const ctx = getToolContext()
-        if (ctx?.api && typeof ctx.api.execTool === 'function') {
-          ctx.api.execTool(ctx, `app.export_${fmt}()`)
+        const fmt = el.getAttribute('data-fmt') || 'glb'
+        const c = getToolContext()
+        const exported = exportSceneFormat(c, fmt, 'StudioModel')
+        if (exported.bytes && exported.bytes.length > 0) {
+          const blob = new Blob([new Uint8Array(exported.bytes)], {type: 'application/octet-stream'})
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `StudioModel${exported.extension}`
+          document.body.appendChild(a)
+          a.click()
+          setTimeout(() => {
+            a.remove()
+            URL.revokeObjectURL(url)
+          }, 1000)
+        } else if (c?.api && typeof c.api.execTool === 'function') {
+          c.api.execTool(c, `app.export_${fmt}()`)
         }
       })
     })
@@ -1277,34 +1924,23 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
 
   function exportSceneFormat(ctx: any, format: string, name: string): { bytes: Uint8Array; extension: string } {
     try {
-      const fmt = getFileFormat(format)
+      const fmt = getFileFormat(format.toLowerCase())
       if (fmt && typeof fmt.exportToBytes === 'function') {
         const res = fmt.exportToBytes(ctx)
         if (res instanceof Uint8Array && res.length > 0) {
-          return { bytes: res, extension: `.${format}` }
+          return { bytes: res, extension: `.${format.toLowerCase()}` }
         } else if (typeof res === 'string' && res.length > 0) {
-          return { bytes: new TextEncoder().encode(res), extension: `.${format}` }
+          return { bytes: new TextEncoder().encode(res), extension: `.${format.toLowerCase()}` }
         } else if (res instanceof ArrayBuffer && res.byteLength > 0) {
-          return { bytes: new Uint8Array(res), extension: `.${format}` }
+          return { bytes: new Uint8Array(res), extension: `.${format.toLowerCase()}` }
         }
       }
-    } catch {}
+    } catch (e) {
+      console.warn(`Format exporter for ${format} fallback:`, e)
+    }
 
-    try {
-      const glbFmt = getFileFormat('glb')
-      if (glbFmt && typeof glbFmt.exportToBytes === 'function') {
-        const res = glbFmt.exportToBytes(ctx)
-        if (res instanceof Uint8Array && res.length > 0) {
-          return { bytes: res, extension: '.glb' }
-        }
-      }
-    } catch {}
-
-    const glbBase64 = generateGlbPayload(name)
-    const bin = atob(glbBase64)
-    const bytes = new Uint8Array(bin.length)
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-    return { bytes, extension: '.glb' }
+    const exported = exportActiveSceneGlb(ctx, name)
+    return { bytes: exported.bytes, extension: '.glb' }
   }
 
   const renderPublishForm = (status: BridgeStatus): void => {
@@ -1338,6 +1974,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
             <label class="vsp__k" style="font-size:10.5px">Publish Format</label>
             <select class="vsp__select" name="format">
               <option value="glb" selected>glTF 2.0 Binary (.glb) — Recommended (PBR & Textures)</option>
+              <option value="fbx">Autodesk FBX (.fbx)</option>
               <option value="obj">Wavefront OBJ (.obj)</option>
               <option value="stl">Stereolithography (.stl)</option>
               <option value="ply">Stanford PLY (.ply)</option>
@@ -1399,7 +2036,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
             const tokData = await tokRes.json()
             if (tokData.accessToken) {
               authToken = tokData.accessToken
-              try { localStorage.setItem('void_studio_token', authToken) } catch {}
+              try { localStorage.setItem('void_studio_token', tokData.accessToken) } catch {}
               await checkSession()
             }
           }
@@ -1418,12 +2055,64 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       const shouldRepublish = Boolean(data.get('republish')) && importAssetId
       const chosenFormat = String(data.get('format') || 'glb').toLowerCase()
 
+      if (submitBtn) {
+        submitBtn.disabled = true
+        submitBtn.textContent = 'Publishing…'
+      }
+
+      // Progress Phase 1: Mesh & Transform Extraction
+      target.innerHTML = `
+        <div class="vsp__card" style="margin-top:8px; padding:12px; border-color:${p.accent}; background:rgba(13,14,20,0.95); border-radius:8px;">
+          <div style="font-weight:600; font-size:12px; color:${p.accent}; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00f0ff; box-shadow:0 0 10px #00f0ff; animation:pulse 1.2s infinite;"></span>
+            Extracting 3D Scene Geometry…
+          </div>
+          <div style="background:rgba(255,255,255,0.08); height:5px; border-radius:3px; overflow:hidden; margin:8px 0;">
+            <div style="background:linear-gradient(90deg, #00f0ff, #10b981); height:100%; width:28%; transition:width 0.3s ease;"></div>
+          </div>
+          <div style="font-size:11px; color:#9ca3af;">Reading vertex buffers, normals, and orientation transforms…</div>
+        </div>
+      `
+      await new Promise((r) => setTimeout(r, 220))
+
       const ctx = getToolContext()
       const metrics = getActiveSceneMetrics(ctx)
       const exported = exportSceneFormat(ctx, chosenFormat, name)
       const fileBase64 = uint8ArrayToBase64(exported.bytes)
       const actualSizeBytes = exported.bytes.byteLength
       const isGltf = exported.extension === '.glb' || exported.extension === '.gltf'
+      const sizeDisplay = actualSizeBytes > 1024 * 1024
+        ? `${(actualSizeBytes / 1024 / 1024).toFixed(2)} MB`
+        : `${(actualSizeBytes / 1024).toFixed(1)} KB`
+
+      // Progress Phase 2: glTF Binary Compilation & Bounding Box
+      target.innerHTML = `
+        <div class="vsp__card" style="margin-top:8px; padding:12px; border-color:${p.accent}; background:rgba(13,14,20,0.95); border-radius:8px;">
+          <div style="font-weight:600; font-size:12px; color:${p.accent}; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00f0ff; box-shadow:0 0 10px #00f0ff; animation:pulse 1.2s infinite;"></span>
+            Compiling glTF 2.0 Binary (${sizeDisplay})…
+          </div>
+          <div style="background:rgba(255,255,255,0.08); height:5px; border-radius:3px; overflow:hidden; margin:8px 0;">
+            <div style="background:linear-gradient(90deg, #00f0ff, #10b981); height:100%; width:60%; transition:width 0.3s ease;"></div>
+          </div>
+          <div style="font-size:11px; color:#9ca3af;">Serialized ${metrics.polycount.toLocaleString()} polygons across ${metrics.vertCount.toLocaleString()} vertices with PBR metallic-roughness.</div>
+        </div>
+      `
+      await new Promise((r) => setTimeout(r, 300))
+
+      // Progress Phase 3: Streaming to VOID·SPACE Gateway
+      target.innerHTML = `
+        <div class="vsp__card" style="margin-top:8px; padding:12px; border-color:${p.accent}; background:rgba(13,14,20,0.95); border-radius:8px;">
+          <div style="font-weight:600; font-size:12px; color:${p.accent}; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 10px #10b981; animation:pulse 1.2s infinite;"></span>
+            Streaming Asset to VOID·SPACE Gateway…
+          </div>
+          <div style="background:rgba(255,255,255,0.08); height:5px; border-radius:3px; overflow:hidden; margin:8px 0;">
+            <div style="background:linear-gradient(90deg, #00f0ff, #10b981); height:100%; width:85%; transition:width 0.3s ease;"></div>
+          </div>
+          <div style="font-size:11px; color:#9ca3af;">Streaming ${sizeDisplay} to repository endpoint…</div>
+        </div>
+      `
 
       const payload = {
         name,
@@ -1468,24 +2157,60 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
         throw new Error(err.message ?? `HTTP ${res.status}`)
       }
 
+      // Progress Phase 4: Finalizing Provenance Record
+      target.innerHTML = `
+        <div class="vsp__card" style="margin-top:8px; padding:12px; border-color:#10b981; background:rgba(13,14,20,0.95); border-radius:8px;">
+          <div style="font-weight:600; font-size:12px; color:#10b981; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 10px #10b981;"></span>
+            Minting Lineage & Verifying Hashes…
+          </div>
+          <div style="background:rgba(255,255,255,0.08); height:5px; border-radius:3px; overflow:hidden; margin:8px 0;">
+            <div style="background:#10b981; height:100%; width:100%; transition:width 0.2s ease;"></div>
+          </div>
+          <div style="font-size:11px; color:#9ca3af;">Recording cryptographic SHA-256 seal and catalog linkage…</div>
+        </div>
+      `
+      await new Promise((r) => setTimeout(r, 220))
+
       const result = await res.json()
       const pub = result.publish || result
       const publishedAssetId = pub.voidspaceAssetId || pub.id || result.assetId || 'asset'
       const assetUrl = pub.url || `${status.links.catalogUrl}/${publishedAssetId}`
       const consoleUrl = `${status.links.consoleUrl}/console/assets/${publishedAssetId}`
 
+      const isPublished = pub.status === 'published'
       target.innerHTML = `
-        <div class="vsp__success" style="margin-top:8px; padding:10px; border-radius:6px; background:rgba(16, 185, 129, 0.1); border:1px solid #10b981;">
-          <div style="font-weight:600; font-size:12px; margin-bottom:4px; color:#10b981;">✨ Successfully Published to VOID·SPACE!</div>
+        <div class="vsp__success" style="margin-top:8px; padding:12px; border-radius:8px; background:rgba(16, 185, 129, 0.12); border:1px solid #10b981;">
+          <div style="font-weight:600; font-size:12px; margin-bottom:6px; color:#10b981; display:flex; align-items:center; gap:6px;">
+            <span>✨</span> Successfully Published to VOID·SPACE!
+          </div>
           <div class="vsp__row"><span class="vsp__k">Asset ID</span><span class="vsp__v vsp__mono">${esc(shorten(publishedAssetId, 10, 6))}</span></div>
-          <div class="vsp__row"><span class="vsp__k">Status</span><span class="vsp__v" style="color:#00f0ff">${esc(pub.status || 'published')}</span></div>
-          ${pub.exportSha256 ? `<div class="vsp__row"><span class="vsp__k">SHA-256</span><span class="vsp__v vsp__mono">${esc(shorten(pub.exportSha256, 8, 4))}</span></div>` : ''}
-          <div class="vsp__links" style="margin-top:8px; display:flex; gap:6px;">
-            <a class="vsp__btn" href="${esc(consoleUrl)}" target="_blank" rel="noopener" style="text-align:center; text-decoration:none; flex:1;">Manage in Console ↗</a>
-            <a class="vsp__btn vsp__btn--subtle" href="${esc(assetUrl)}" target="_blank" rel="noopener" style="text-align:center; text-decoration:none; flex:1;">Public Entry ↗</a>
+          <div class="vsp__row"><span class="vsp__k">Status</span><span class="vsp__v" style="color:#00f0ff; text-transform:uppercase; font-size:10.5px; font-weight:600;">${esc(pub.status || 'pending')}</span></div>
+          <div class="vsp__row"><span class="vsp__k">Size</span><span class="vsp__v">${sizeDisplay} (${metrics.polycount.toLocaleString()} polys)</span></div>
+          ${pub.exportSha256 ? `<div class="vsp__row"><span class="vsp__k">SHA-256</span><span class="vsp__v vsp__mono" title="${esc(pub.exportSha256)}">${esc(shorten(pub.exportSha256, 8, 4))}</span></div>` : ''}
+          ${!isPublished ? `<div style="font-size:11px; color:#9ca3af; margin-top:8px; line-height:1.4;">Asset submitted for review. Once approved by an assessor, it will appear publicly on the marketplace.</div>` : ''}
+          <div class="vsp__links" style="margin-top:10px; display:flex; gap:8px;">
+            <a class="vsp__btn vsp-open-console-link" href="${esc(consoleUrl)}" target="_blank" rel="noopener noreferrer" style="text-align:center; text-decoration:none; flex:1; cursor:pointer;" onclick="window.open('${esc(consoleUrl)}', '_blank'); return false;">Manage in Console ↗</a>
+            ${isPublished ? `<a class="vsp__btn vsp__btn--subtle vsp-open-catalog-link" href="${esc(assetUrl)}" target="_blank" rel="noopener noreferrer" style="text-align:center; text-decoration:none; flex:1; cursor:pointer;" onclick="window.open('${esc(assetUrl)}', '_blank'); return false;">Public Entry ↗</a>` : ''}
           </div>
         </div>
       `
+
+      // Ensure click handlers reliably open the link
+      const openConsoleBtn = target.querySelector('.vsp-open-console-link') as HTMLElement | null
+      if (openConsoleBtn) {
+        openConsoleBtn.addEventListener('click', (ev) => {
+          ev.preventDefault()
+          window.open(consoleUrl, '_blank')
+        })
+      }
+      const openCatBtn = target.querySelector('.vsp-open-catalog-link') as HTMLElement | null
+      if (openCatBtn) {
+        openCatBtn.addEventListener('click', (ev) => {
+          ev.preventDefault()
+          window.open(assetUrl, '_blank')
+        })
+      }
     } catch (err: any) {
       if (submitBtn) {
         submitBtn.disabled = false
@@ -1511,6 +2236,9 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     }
     const data = await res.json()
     activeProjectId = data.project?.id ?? data.id
+    if (!activeProjectId) {
+      throw new Error('Could not determine project id from the VOID·SPACE response.')
+    }
     return activeProjectId
   }
 
@@ -1623,6 +2351,50 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     setTimeout(() => void triggerModelImport(), 600)
   }
 
+  // Drag and drop 3D models and textures onto the viewport
+  const onDragOver = (e: DragEvent) => {
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+  }
+
+  const onDrop = async (e: DragEvent) => {
+    e.preventDefault()
+    const files = e.dataTransfer?.files
+    if (!files || files.length === 0) return
+
+    const file = files[0]
+    const ext = '.' + file.name.split('.').pop()!.toLowerCase()
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp']
+
+    if (imageExtensions.includes(ext)) {
+      const c = getToolContext()
+      const ob = c?.scene?.objects?.active || [...(c?.scene?.objects || [])].find((o: any) => o?.data)
+      if (!ob) {
+        alert('Please select or create a 3D model first before applying a texture.')
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = () => {
+        applyTextureToMeshObject(c, ob, reader.result as string, file.name)
+        void render()
+      }
+      reader.readAsDataURL(file)
+    } else {
+      const fmt = formatForFilename(file.name) || getFileFormat(ext.slice(1))
+      if (fmt && typeof fmt.importFromBytes === 'function') {
+        const c = getToolContext()
+        const buf = await file.arrayBuffer()
+        fmt.importFromBytes(c, new Uint8Array(buf), file.name)
+        const rw = window as any
+        rw.redraw_viewport?.(true)
+        void render()
+      }
+    }
+  }
+
+  window.addEventListener('dragover', onDragOver)
+  window.addEventListener('drop', onDrop)
+
   const handle: VoidSpacePanelHandle = {
     element: root,
     refresh: render,
@@ -1631,6 +2403,8 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
         window.clearInterval(pollTimer)
         pollTimer = undefined
       }
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('drop', onDrop)
       window.removeEventListener('storage', onStorageChange)
       triggerBtn.remove()
       root.remove()

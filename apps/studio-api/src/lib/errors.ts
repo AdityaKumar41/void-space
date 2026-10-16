@@ -79,7 +79,7 @@ export class ConflictError extends AppError {
  */
 export class UpstreamError extends AppError {
   constructor(message: string, details?: unknown) {
-    super(message, { statusCode: 502, code: 'UPSTREAM_FAILURE', details });
+    super(message, { statusCode: 502, code: 'UPSTREAM_FAILURE', details, expose: true });
   }
 }
 

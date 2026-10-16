@@ -32,7 +32,10 @@ const nextConfig = {
    * stack they are never reached, because nginx resolves `/api/*` before the request arrives here.
    */
   async rewrites() {
-    return [{ source: '/api/:path*', destination: `${API_INTERNAL_URL}/api/:path*` }];
+    return [
+      { source: '/catalog/:assetId', destination: '/m/:assetId' },
+      { source: '/api/:path*', destination: `${API_INTERNAL_URL}/api/:path*` },
+    ];
   },
   async headers() {
     return [
