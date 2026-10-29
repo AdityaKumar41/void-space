@@ -1,0 +1,4 @@
+CREATE TABLE "venture_plans" ("id" UUID NOT NULL DEFAULT gen_random_uuid(), "tenant_id" UUID NOT NULL, "title" VARCHAR(200) NOT NULL, "problem" VARCHAR(4000) NOT NULL, "customer" VARCHAR(2000) NOT NULL, "solution" VARCHAR(4000) NOT NULL, "next_milestone" VARCHAR(1000) NOT NULL, "created_by_id" UUID NOT NULL, "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL, CONSTRAINT "venture_plans_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "venture_plans_tenant_id_updated_at_idx" ON "venture_plans"("tenant_id", "updated_at");
+ALTER TABLE "venture_plans" ADD CONSTRAINT "venture_plans_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "venture_plans" ADD CONSTRAINT "venture_plans_created_by_id_fkey" FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

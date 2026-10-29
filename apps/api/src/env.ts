@@ -5,6 +5,7 @@
  * mis-set DATABASE_URL can never silently disable tenant isolation.
  */
 import { z } from 'zod';
+import { textAiEnvSchema } from '@void-space/studio-ai/text';
 
 const booleanish = z
   .string()
@@ -39,7 +40,9 @@ export const envSchema = z.object({
   /** Comma-separated allow-list for browser calls (the edge proxy in front of us). */
   CORS_ORIGINS: z
     .string()
-    .default('https://localhost,http://localhost:3000,https://localhost:3000,http://localhost:5007,https://localhost:8443')
+    .default(
+      'https://localhost,http://localhost:3000,https://localhost:3000,http://localhost:5007,https://localhost:8443',
+    )
     .transform((value) =>
       value
         .split(',')
@@ -53,9 +56,9 @@ export const envSchema = z.object({
   REDIS_URL: z.string().url(),
   IPFS_API_URL: z.string().url(),
   IPFS_GATEWAY_URL: z.string().url(),
-  /** Avalanche Fuji RPC used by the licensing contract and chain health check. */
-  CHAIN_RPC_URL: z.string().url(),
-  CHAIN_ID: z.coerce.number().int().positive().default(43113),
+  /** Local Anvil is the no-credentials development default; production must configure its chain. */
+  CHAIN_RPC_URL: z.preprocess(blankAsUnset, z.string().url().default('http://localhost:8545')),
+  CHAIN_ID: z.coerce.number().int().positive().default(31337),
   CHAIN_EXPLORER_URL: optionalUrl,
 
   // --- auth (FR-2.3) -------------------------------------------------------
@@ -71,6 +74,8 @@ export const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => value !== 'false' && value !== '0'),
+
+  ...textAiEnvSchema.shape,
 
   // --- optional integrations (absent => graceful degradation, NFR-REL.1) ---
   ANTHROPIC_API_KEY: optionalString,
@@ -114,7 +119,11 @@ export const envSchema = z.object({
    */
   STAGING_DIR: z.string().default('.staging'),
   /** Hard ceiling on total bytes the staging area may hold (NFR-SCAL.3). */
-  STAGING_MAX_BYTES: z.coerce.number().int().positive().default(5 * 1024 * 1024 * 1024),
+  STAGING_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5 * 1024 * 1024 * 1024),
 
   // --- AI enrichment (FR-7.x, optional) ------------------------------------
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5-20250929'),
@@ -124,7 +133,18 @@ export const envSchema = z.object({
 export type ApiEnv = z.infer<typeof envSchema>;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
-  const parsed = envSchema.safeParse(source);
+  // A blank RPC is the documented no-provider local setup: use the Anvil node started by
+  // `pnpm dev:up`, even when an older .env still contains CHAIN_ID=43113 from the Fuji template.
+  const effectiveSource = { ...source };
+  if (source.NODE_ENV !== 'production' && !source.CHAIN_RPC_URL?.trim()) {
+    effectiveSource.CHAIN_RPC_URL = 'http://localhost:8545';
+    effectiveSource.CHAIN_ID = '31337';
+    // A Fuji contract address is not meaningful on a fresh local Anvil chain.
+    effectiveSource.CONTRACT_ADDRESS = '';
+  } else if (!source.CHAIN_ID?.trim() && source.NODE_ENV !== 'production') {
+    effectiveSource.CHAIN_ID = '43113';
+  }
+  const parsed = envSchema.safeParse(effectiveSource);
   if (!parsed.success) {
     const details = parsed.error.issues
       .map((issue) => `  • ${issue.path.join('.') || '(root)'}: ${issue.message}`)
@@ -133,6 +153,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
       `[api] invalid environment configuration:\n${details}\n` +
         'Check your .env against .env.example (SRS §9.4).',
     );
+  }
+  if (
+    parsed.data.NODE_ENV === 'production' &&
+    (!source.CHAIN_RPC_URL?.trim() || !source.CHAIN_ID?.trim())
+  ) {
+    throw new Error('[api] production requires explicit CHAIN_RPC_URL and CHAIN_ID configuration.');
   }
   return parsed.data;
 }

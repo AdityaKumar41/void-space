@@ -122,6 +122,7 @@ export class FetchTransport implements HttpTransport {
     // check against `fetch`'s `RequestInit`, which does not know about `cache`.
     const init: FetchInit = {
       method: request.method,
+      redirect: 'error',
       headers: request.headers,
       ...(request.body === undefined ? {} : { body: request.body }),
       signal: request.signal,
@@ -171,6 +172,6 @@ export type AiProviderName = 'anthropic' | 'meshy';
  * in would redeclare globals (`fetch`, `Response`, `AbortController`) that `@types/node` already owns.
  */
 interface FetchInit extends RequestInit {
-  readonly cache?: 'default' | 'no-store' | 'reload' | 'no-cache' | 'force-cache' | 'only-if-cached';
+  readonly cache?:
+    'default' | 'no-store' | 'reload' | 'no-cache' | 'force-cache' | 'only-if-cached';
 }
-

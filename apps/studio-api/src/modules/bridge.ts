@@ -36,6 +36,52 @@ export interface BridgeRoutesOptions {
   readonly bridge: VoidSpaceBridge;
 }
 
+const BLOCKED_PROXY_HOSTS = new Set(['169.254.169.254', 'metadata.google.internal']);
+
+/**
+ * The model proxy exists so the editor can read a mesh the browser cannot fetch
+ * directly. It is not a general HTTP client: an open `?url=` would let the Studio
+ * API reach whatever the caller names, including cloud metadata addresses.
+ *
+ * Allowed targets are the configured VOID·SPACE origins, plus loopback, which is
+ * where a local IPFS gateway and the dev console live.
+ */
+export function modelProxyTargetAllowed(raw: string, allowedOrigins: readonly string[]): string | null {
+  let target: URL;
+  try {
+    target = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (target.username || target.password) return null;
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') return null;
+
+  const host = target.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (BLOCKED_PROXY_HOSTS.has(host)) return null;
+
+  const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  if (loopback) return target.toString();
+
+  const originAllowed = allowedOrigins.some((allowed) => {
+    try {
+      return new URL(allowed).origin === target.origin;
+    } catch {
+      return false;
+    }
+  });
+  return originAllowed ? target.toString() : null;
+}
+
+/** Reads the workspace category list without failing the rest of the status payload. */
+async function workspaceCategories(bridge: VoidSpaceBridge): Promise<readonly string[]> {
+  if (!bridge.publishEnabled) return [];
+  try {
+    return await bridge.gateway.workspaceCategories();
+  } catch {
+    return [];
+  }
+}
+
 export async function bridgeRoutes(
   app: FastifyInstance,
   options: BridgeRoutesOptions,
@@ -100,6 +146,22 @@ export async function bridgeRoutes(
 
     const featured = newest.items[0];
 
+    // A key that is present but rejected must not read as "publishing enabled".
+    // The panel would otherwise let a Creator export a scene and fail at the last step.
+    let credentialOk = bridge.publishEnabled;
+    let credentialProblem: string | null = null;
+    if (bridge.mode === 'live' && bridge.publishEnabled) {
+      try {
+        await bridge.gateway.verifyCredentials();
+      } catch (error) {
+        credentialOk = false;
+        credentialProblem =
+          error instanceof Error
+            ? error.message
+            : 'VOID·SPACE rejected the publish credential.';
+      }
+    }
+
     return {
       mode: bridge.mode,
       /** Where the Studio is talking to. Shown so a mis-set URL is visible, not inferred. */
@@ -107,11 +169,12 @@ export async function bridgeRoutes(
       links: bridge.links,
       reachable,
       publish: {
-        enabled: bridge.publishEnabled,
+        enabled: credentialOk,
         /** The exact remedy, so the UI can tell a Creator what to ask an admin for. */
-        requirement: bridge.publishEnabled
+        requirement: credentialOk
           ? null
-          : 'A tenant Developer API key (VS-SRS-2.0 FR-12.3) is needed to publish. Browsing works without one.',
+          : credentialProblem ??
+            'A tenant Developer API key (VS-SRS-2.0 FR-12.3) is needed to publish. Browsing works without one.',
         /**
          * FR-14.3, and the reason it is here rather than in the editor: publishing is asynchronous
          * on VOID·SPACE's side, so a status is only ever as fresh as the last read. One value
@@ -122,6 +185,11 @@ export async function bridgeRoutes(
       catalog: {
         publishedAssets: all.total,
         categories: [...new Set(newest.items.map((item) => item.category))].filter(Boolean),
+        /**
+         * What a publish form may offer. Empty when the credential cannot read the
+         * workspace; the editor then falls back to the platform defaults.
+         */
+        allowedCategories: credentialOk ? await workspaceCategories(bridge) : [],
       },
       /**
        * Provenance of the newest asset, taken from VOID·SPACE rather than the chain — it
@@ -163,28 +231,19 @@ export async function bridgeRoutes(
   });
 
   /**
-   * Session / token acquisition for the Studio editor.
-   * If the Studio is configured with a valid Developer API key, returns an active
-   * bearer token from VOID·SPACE so local authoring and showcase work without manual token pasting.
+   * The tenant developer key stays on this server.
+   *
+   * An earlier build exchanged that key and returned the bearer to the browser so the
+   * editor could publish without a Creator session. That made every person who could
+   * open the editor able to publish as the tenant. Creators launch from VOID·SPACE,
+   * which attaches their own token. This route remains so an old panel fails closed
+   * instead of looking like a missing feature.
    */
   app.get('/auth/token', async (_request, reply) => {
-    if (!bridge.publishEnabled || !bridge.apiBaseUrl || !bridge.apiKey) {
-      return reply.status(404).send({ error: 'Publish credential unconfigured' });
-    }
-    try {
-      const upstream = await fetch(`${bridge.apiBaseUrl}/api/v1/auth/token`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ apiKey: bridge.apiKey }),
-      });
-      if (!upstream.ok) {
-        return reply.status(upstream.status).send({ error: 'Failed to exchange API key' });
-      }
-      const data = await upstream.json();
-      return reply.send(data);
-    } catch (err: any) {
-      return reply.status(502).send({ error: err.message });
-    }
+    return reply.status(404).send({
+      error:
+        'Open VOID·STUDIO from the VOID·SPACE console. The tenant publish credential is not handed to the browser.',
+    });
   });
 
   /**
@@ -223,10 +282,24 @@ export async function bridgeRoutes(
       return reply.status(400).send({ error: 'Missing url query parameter' });
     }
 
+    const allowedOrigins = [
+      bridge.links.consoleUrl,
+      ...(bridge.apiBaseUrl?.startsWith('http') ? [bridge.apiBaseUrl] : []),
+    ];
+    const target = modelProxyTargetAllowed(url, allowedOrigins);
+    if (!target) {
+      return reply.status(400).send({ error: 'That model URL is not on VOID·SPACE.' });
+    }
+
     try {
-      const upstream = await fetch(url, {
+      const upstream = await fetch(target, {
+        redirect: 'manual',
         signal: AbortSignal.timeout(30_000),
       });
+
+      if (upstream.status >= 300 && upstream.status < 400) {
+        return reply.status(502).send({ error: 'The model host redirected, which this proxy does not follow.' });
+      }
 
       if (!upstream.ok) {
         return reply.status(upstream.status).send({ error: `Upstream returned HTTP ${upstream.status}` });

@@ -139,6 +139,7 @@ export interface AssetSummary {
   readonly xrManifestRef: string | null;
   readonly thumbnailUrl: string | null;
   readonly canDelete: boolean;
+  readonly canEdit: boolean;
   readonly canPublish: boolean;
   readonly canRevoke: boolean;
 }

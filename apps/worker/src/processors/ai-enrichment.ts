@@ -1,3 +1,4 @@
+import type { TextAiConfig } from '@void-space/studio-ai/text';
 /**
  * `ai-enrichment` processor (SRS FR-7.x, §3.10).
  *
@@ -21,6 +22,7 @@ import {
 } from '../lib/job-tracking';
 
 export interface AiEnrichmentDeps {
+  readonly textAi?: TextAiConfig;
   readonly logger: Logger;
   readonly apiKey: string | undefined;
   readonly model: string;
@@ -32,7 +34,12 @@ export interface AiEnrichmentDeps {
 export function createAiEnrichmentProcessor(deps: AiEnrichmentDeps) {
   const enricher =
     deps.enricher ??
-    selectEnricher({ apiKey: deps.apiKey, model: deps.model, timeoutMs: deps.timeoutMs });
+    selectEnricher({
+      apiKey: deps.apiKey,
+      model: deps.model,
+      timeoutMs: deps.timeoutMs,
+      textAi: deps.textAi,
+    });
 
   return async function processAiEnrichment(
     job: Job<JobPayload>,

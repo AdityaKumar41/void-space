@@ -47,7 +47,13 @@ export const STUDIO_TEST_ENV: Readonly<Record<string, string>> = {
 export function applyStudioTestEnv(
   overrides: Readonly<Record<string, string | undefined>> = {},
 ): StudioApiEnv {
-  for (const [key, value] of Object.entries({ ...STUDIO_TEST_ENV, ...overrides })) {
+  for (const [key, value] of Object.entries({
+    ...STUDIO_TEST_ENV,
+    AI_BASE_URL: undefined,
+    AI_TEXT_BASE_URL: undefined,
+    OPENROUTER_API_KEY: undefined,
+    ...overrides,
+  })) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }

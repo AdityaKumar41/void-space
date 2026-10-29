@@ -20,17 +20,22 @@
  * documented behaviour and is worth seeing once.
  */
 import { randomUUID } from 'node:crypto';
-import { extname } from 'node:path';
+import { extname, join } from 'node:path';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { withPlatform, withTenant } from '@void-space/db';
+import { buildGlbFixture, withPlatform, withTenant } from '@void-space/db';
 
 import { createBlenderOptimizeProcessor } from '../src/processors/blender-optimize';
 
 /** The workspace the seed puts the demo catalogue in. Resolved by slug, not by a derived id. */
 let AURORA = '';
 let jobDir = '';
+let fixtureAssetId = '';
+let fixtureVersionId = '';
+let fixturePath = '';
 
 beforeAll(async () => {
   const tenant = await withPlatform((db) =>
@@ -38,33 +43,58 @@ beforeAll(async () => {
   );
   if (!tenant) throw new Error('Seed the database first (pnpm db:seed) — Aurora not found');
   AURORA = tenant.id;
-  jobDir = `/tmp/vs-blender-test-${process.pid}`;
+  jobDir = await mkdtemp(join(tmpdir(), 'vs-blender-test-'));
+  fixturePath = join(jobDir, 'source.glb');
+  const bytes = buildGlbFixture(12);
+  await writeFile(fixturePath, bytes);
+  await withTenant(AURORA, async (db) => {
+    const creator = await db.user.findFirst({ where: { tenantId: AURORA }, select: { id: true } });
+    if (!creator) throw new Error('Expected a seeded workspace user');
+    const asset = await db.asset.create({
+      data: {
+        tenantId: AURORA,
+        creatorId: creator.id,
+        name: 'Blender worker test fixture',
+        category: 'Prop',
+      },
+    });
+    fixtureAssetId = asset.id;
+    const version = await db.assetVersion.create({
+      data: {
+        tenantId: AURORA,
+        assetId: asset.id,
+        versionNumber: 1,
+        format: '.glb',
+        sizeBytes: BigInt(bytes.length),
+        stagingPath: fixturePath,
+      },
+    });
+    fixtureVersionId = version.id;
+  });
+});
+
+afterAll(async () => {
+  if (fixtureAssetId)
+    await withTenant(AURORA, (db) => db.asset.deleteMany({ where: { id: fixtureAssetId } }));
+  if (jobDir) await rm(jobDir, { recursive: true, force: true });
 });
 
 function silentLogger() {
   return { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never;
 }
 
-/** A seeded version that still has its staged file, which is what the processor consumes. */
+/** An owned fixture; seeded production examples may already have completed ingestion. */
 async function aVersion(): Promise<{
   assetId: string;
   versionId: string;
   stagingPath: string;
   versionNumber: number;
 }> {
-  const row = await withTenant(AURORA, (db) =>
-    db.assetVersion.findFirst({
-      where: { tenantId: AURORA, stagingPath: { not: null }, isDerivative: false },
-      select: { id: true, assetId: true, stagingPath: true, versionNumber: true },
-      orderBy: { versionNumber: 'desc' },
-    }),
-  );
-  if (!row?.stagingPath) throw new Error('No staged, non-derivative version found in the seed');
   return {
-    assetId: row.assetId,
-    versionId: row.id,
-    stagingPath: row.stagingPath,
-    versionNumber: row.versionNumber,
+    assetId: fixtureAssetId,
+    versionId: fixtureVersionId,
+    stagingPath: fixturePath,
+    versionNumber: 1,
   };
 }
 
@@ -93,7 +123,6 @@ function jobFor(data: Record<string, unknown>) {
     attemptsMade: 0,
   } as never;
 }
-
 
 describe('FR-6.3 blender-optimize', () => {
   it('records a real derivative from what the runner reports', async () => {
@@ -300,4 +329,3 @@ describe('FR-6.3 blender-optimize', () => {
     );
   });
 });
-

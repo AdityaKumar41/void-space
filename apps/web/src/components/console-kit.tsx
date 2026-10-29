@@ -26,7 +26,7 @@ import { useState } from 'react';
 
 import { cn } from '../lib/cn';
 import { formatNumber } from '../lib/format';
-import { thumbnailUrl, hasRender } from '../lib/public-api';
+import { thumbnailUrl } from '../lib/public-api';
 import { toggleBookmark, useBookmarks } from '../lib/bookmarks';
 import { StatusChip } from './ui/chip';
 import { SearchField } from './ui/field';
@@ -275,11 +275,11 @@ export function ItemCard({
       <div className="relative aspect-[4/3] overflow-hidden border-b border-hairline bg-deeper">
         <Link href={href} aria-label={`Open ${name}`} className="block h-full w-full">
           {/*
-            A render is only requested for an asset that can have one. Everything else gets the drawn
-            figure directly — see `hasRender` for why, and for the pipeline rule this follows.
+            Ask for the content-addressed render whenever a CID exists. A missing file falls back
+            inside ConsoleThumb, so an unpublished asset still shows a figure instead of a broken image.
           */}
           <ConsoleThumb
-            cid={cid !== null && status !== undefined && hasRender(status) ? cid : null}
+            cid={cid}
             alt={`Render of ${name}`}
             seed={assetId}
           />

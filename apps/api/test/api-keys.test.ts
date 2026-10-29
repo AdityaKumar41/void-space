@@ -87,7 +87,12 @@ describe('FR-2.5 API-key tokens', () => {
       expect(claims.kid).toBe(id);
       expect(claims.roles).toEqual(['Developer']);
       // FR-2.5 — exactly the Developer role's permission set (§3.6), nothing more.
-      expect([...claims.perms].sort()).toEqual(['api:call', 'apikey:manage', 'catalog:view']);
+      expect([...claims.perms].sort()).toEqual([
+        'api:call',
+        'apikey:manage',
+        'catalog:view',
+        'spatial:join',
+      ]);
       expect(claims.perms).not.toContain('tenant:manage');
       expect(claims.perms).not.toContain('audit:view');
       expect(claims.perms).not.toContain('asset:upload-own');

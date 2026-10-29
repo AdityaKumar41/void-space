@@ -15,11 +15,20 @@ import {getFileFormat, formatForFilename} from '../core/file_formats.js'
 import {peekAppState, getAppState} from '../core/app_instance.js'
 import {Light} from '../light/light.js'
 import {SceneObject} from '../sceneobject/sceneobject.js'
-import {Vector3} from '../path.ux/pathux.js'
+import {Vector3, Vector4} from '../path.ux/pathux.js'
 import addonManager from '../addon/addon.js'
 import {ImageBlock, ImageTypes} from '../image/image.js'
 import {Material} from '../core/material.js'
 import {ImageNode, DiffuseNode, OutputNode, GeometryNode} from '../shadernodes/shader_nodes.js'
+import {
+  buildPrimitive,
+  heightfieldFromLuminance,
+  interpretInstruction,
+  pbrFromPrompt,
+  primitiveForPrompt,
+  type PbrAssignment,
+} from '../../../../packages/studio-engine/src/generative/index.ts'
+import {applyEditorCommands, commandsForToolCalls, fetchMeshyGlb} from './ai_scene.js'
 
 export function getToolContext(): any {
   try {
@@ -50,8 +59,126 @@ export function studioApiBaseUrl(source: StudioApiUrlSource): string {
   return 'http://localhost:4100'
 }
 
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const data = (await res.json()) as {message?: unknown; error?: unknown}
+    if (typeof data.message === 'string' && data.message.length > 0) return data.message
+    if (typeof data.error === 'string' && data.error.length > 0) return data.error
+  } catch {
+    // A non-JSON body still needs a sentence the panel can show.
+  }
+  return `${fallback} (HTTP ${res.status}).`
+}
+
+/** Counts the scene the way the readiness route scores it (`SceneMetrics`). */
+export function measureScene(ctx: any): {
+  totalPolycount: number
+  objectCount: number
+  materialCount: number
+  textureResolutions: number[]
+  maxHierarchyDepth: number
+  unnamedObjects: number
+  meshesWithoutUvs: number
+} {
+  let totalPolycount = 0
+  let objectCount = 0
+  let unnamedObjects = 0
+  let meshesWithoutUvs = 0
+  const materials = new Set<string>()
+  const list = ctx?.scene?.objects ? [...ctx.scene.objects] : []
+
+  for (const ob of list) {
+    if (!ob?.data) continue
+    const kind = String(ob.data.constructor?.name ?? ob.data.type ?? '')
+    if (/light|camera/i.test(kind)) continue
+    objectCount += 1
+    const name = String(ob.name ?? '').trim()
+    if (name.length === 0 || /^(cube|mesh|object)(\.\d+)?$/i.test(name)) unnamedObjects += 1
+    const mesh = ob.data.mesh ?? ob.data
+    const faces = Number(mesh?.f?.length ?? mesh?.faces?.length ?? 0)
+    if (Number.isFinite(faces)) totalPolycount += faces
+    if (mesh?.attrs && typeof mesh.attrs.has === 'function' && mesh.attrs.has(1, 'uv') === false) {
+      meshesWithoutUvs += 1
+    }
+    const mat = ob.material ?? ob.data.material
+    if (mat) materials.add(String(mat.name ?? mat.id ?? materials.size))
+  }
+
+  return {
+    totalPolycount,
+    objectCount,
+    materialCount: materials.size,
+    textureResolutions: [],
+    maxHierarchyDepth: objectCount > 0 ? 1 : 0,
+    unnamedObjects,
+    meshesWithoutUvs,
+  }
+}
+
+/**
+ * Prefers a live object walk. When the walk cannot see a mesh but the exporter can,
+ * the exported polycount is what would actually be published.
+ */
+function metricsForAudit(ctx: any): ReturnType<typeof measureScene> {
+  const measured = measureScene(ctx)
+  if (measured.objectCount > 0 && measured.totalPolycount > 0) return measured
+  try {
+    const exported = getActiveSceneMetrics(ctx)
+    if (exported.polycount > 0) {
+      return {
+        ...measured,
+        objectCount: Math.max(measured.objectCount, 1),
+        totalPolycount: Math.max(measured.totalPolycount, exported.polycount),
+        materialCount: Math.max(measured.materialCount, exported.materialCount || 1),
+      }
+    }
+  } catch {
+    // An exporter that cannot run is itself a reason the audit should see an empty scene.
+  }
+  return measured
+}
+
+/** The compact scene the Copilot route validates (`SceneSummary`). */
+export function summarizeScene(ctx: any): {
+  objects: {id: string; name: string; type: 'mesh' | 'light' | 'camera' | 'empty' | 'armature'; childCount: number; materialIds: string[]}[]
+  selection: string[]
+  unit: 'metre'
+} {
+  const objects: {id: string; name: string; type: 'mesh' | 'light' | 'camera' | 'empty' | 'armature'; childCount: number; materialIds: string[]}[] = []
+  const list = ctx?.scene?.objects ? [...ctx.scene.objects] : []
+  for (const ob of list) {
+    const kind = String(ob?.data?.constructor?.name ?? ob?.data?.type ?? '')
+    const type: 'mesh' | 'light' | 'camera' | 'empty' =
+      /light/i.test(kind) ? 'light' : /camera/i.test(kind) ? 'camera' : ob?.data ? 'mesh' : 'empty'
+    const id = String(ob?.lib_id ?? ob?.id ?? ob?.name ?? `object-${objects.length + 1}`)
+    objects.push({
+      id,
+      name: String(ob?.name ?? 'Object').slice(0, 200),
+      type,
+      childCount: 0,
+      materialIds: [],
+    })
+  }
+  const active = ctx?.scene?.objects?.active
+  const activeId = active ? String(active.lib_id ?? active.id ?? active.name ?? '') : ''
+  return {
+    objects,
+    selection: activeId ? [activeId] : [],
+    unit: 'metre',
+  }
+}
+
 function stripTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, '')
+}
+
+/** `#rrggbb` plus alpha, for the panel chrome. The editor theme keeps its own copy. */
+function rgbaCss(hex: string, alpha: number): string {
+  const value = hex.startsWith('#') ? hex.slice(1) : hex
+  const r = parseInt(value.slice(0, 2), 16)
+  const g = parseInt(value.slice(2, 4), 16)
+  const b = parseInt(value.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 function apiBaseUrl(): string {
@@ -72,7 +199,11 @@ export interface BridgeStatus {
     readonly requirement: string | null
     readonly pollIntervalMs?: number
   }
-  readonly catalog: {readonly publishedAssets: number; readonly categories: readonly string[]}
+  readonly catalog: {
+    readonly publishedAssets: number
+    readonly categories: readonly string[]
+    readonly allowedCategories?: readonly string[]
+  }
   readonly provenance: {
     readonly name: string
     readonly contractAddress: string | null
@@ -106,27 +237,27 @@ function injectStyles(): void {
       background: rgba(13, 14, 20, 0.92);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(0, 240, 255, 0.45);
-      color: #e6e6fa;
+      border: 1px solid ${rgbaCss(p.accent, 0.45)};
+      color: ${p.fg};
       font: 600 11px/1.2 'Plus Jakarta Sans', system-ui, sans-serif;
       letter-spacing: 0.1em;
       text-transform: uppercase;
       cursor: pointer;
       user-select: none;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 18px rgba(0, 240, 255, 0.18);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 18px ${rgbaCss(p.accent, 0.18)};
       transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .vsp-trigger:hover {
-      border-color: #00f0ff;
+      border-color: ${p.accent};
       background: rgba(18, 20, 32, 0.98);
       color: #ffffff;
       transform: translateY(-2px);
-      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 24px rgba(0, 240, 255, 0.35);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75), 0 0 24px ${rgbaCss(p.accent, 0.35)};
     }
     .vsp-trigger.active {
-      border-color: #00f0ff;
+      border-color: ${p.accent};
       background: rgba(22, 26, 40, 0.98);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 22px rgba(0, 240, 255, 0.35);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 22px ${rgbaCss(p.accent, 0.35)};
     }
     .vsp-trigger__mark {
       width: 9px;
@@ -162,9 +293,9 @@ function injectStyles(): void {
       background: rgba(14, 15, 22, 0.95);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(0, 240, 255, 0.3);
+      border: 1px solid ${rgbaCss(p.accent, 0.35)};
       border-radius: 12px;
-      box-shadow: 0 24px 50px rgba(0, 0, 0, 0.75), 0 0 24px rgba(0, 240, 255, 0.15);
+      box-shadow: 0 24px 50px rgba(0, 0, 0, 0.75), 0 0 24px ${rgbaCss(p.accent, 0.12)};
       overflow: hidden;
       transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.22s;
       transform-origin: bottom left;
@@ -259,7 +390,7 @@ function injectStyles(): void {
       border-radius: 5px; padding: 4px 8px; font-size: 11px; background: transparent;
       cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
     }
-    a.vsp__link:hover, button.vsp__btn_link:hover { border-color: ${p.accent}; background: rgba(139, 108, 246, 0.08); }
+    a.vsp__link:hover, button.vsp__btn_link:hover { border-color: ${p.accent}; background: ${rgbaCss(p.accent, 0.08)}; }
     
     .vsp__btn {
       width: 100%; border: 1px solid ${p.accent}; background: ${p.accent};
@@ -276,6 +407,13 @@ function injectStyles(): void {
     .vsp__note {
       color: ${p.fgDim}; font-size: 10.5px;
       border-left: 2px solid ${p.line}; padding-left: 7px;
+    }
+    .vsp__issues {
+      margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px;
+    }
+    .vsp__issues li {
+      font-size: 11px; line-height: 1.4; color: ${p.fg};
+      padding-left: 8px; border-left: 2px solid ${p.gold};
     }
     .vsp__err { color: #ffb4b4; font-size: 11px; }
     .vsp__success {
@@ -308,6 +446,15 @@ function injectStyles(): void {
     
     /* Copilot chat */
     .vsp__chat { display: grid; gap: 8px; }
+    .vsp__gen {
+      display: grid;
+      gap: 6px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid ${p.line};
+    }
+    .vsp__gen-row { display: flex; gap: 6px; align-items: center; }
+    .vsp__gen-row .vsp__input { flex: 1; }
+    .vsp__file { font-size: 11px; color: ${p.fgDim}; max-width: 140px; }
     .vsp__chat_stream {
       display: grid; gap: 6px; max-height: 38vh; overflow-y: auto;
       padding-right: 4px;
@@ -516,11 +663,11 @@ export function createProceduralUVGridDataUrl(): string {
       g.fillStyle = colors[(x + y) % 2]
       g.fillRect(x * cellSize, y * cellSize, cellSize, cellSize)
 
-      g.strokeStyle = 'rgba(0, 240, 255, 0.25)'
+      g.strokeStyle = 'rgba(250, 93, 25, 0.35)'
       g.lineWidth = 1
       g.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize)
 
-      g.fillStyle = '#00f0ff'
+      g.fillStyle = '#fa5d19'
       g.font = 'bold 16px monospace'
       g.textAlign = 'center'
       g.textBaseline = 'middle'
@@ -981,6 +1128,12 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     } catch {
       // ignore
     }
+    // A bearer in the address bar is copied with every screenshot and lives in history.
+    urlParams.delete('token')
+    urlParams.delete('accessToken')
+    const next = urlParams.toString()
+    const cleaned = `${location.pathname}${next ? `?${next}` : ''}${location.hash}`
+    history.replaceState(history.state, '', cleaned)
   } else {
     try {
       authToken = localStorage.getItem('void_studio_token')
@@ -1087,75 +1240,40 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     pollTimer = intervalMs > 0 ? window.setInterval(() => void render(), intervalMs) : undefined
   }
 
-  // Session check with auto-discovery
+  /**
+   * Verifies the launch token against the Studio API and nothing else.
+   *
+   * The panel does not call VOID·SPACE, and it does not ask the API for the tenant
+   * developer key. That key is a server credential; putting it in this browser would
+   * make every Creator in the tenant able to publish as the tenant.
+   */
   const checkSession = async (): Promise<void> => {
-    if (authToken) {
-      try {
-        const res = await fetch(`${base}/studio/api/v1/auth/session`, {
-          headers: {
-            accept: 'application/json',
-            authorization: `Bearer ${authToken}`,
-          },
-        })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.authenticated && data.user) {
-            activeSession = {
-              displayName: data.user.displayName || 'Creator',
-              roles: data.user.roles || ['Creator'],
-              tenantId: data.tenant?.id || 'default',
-            }
-            return
+    if (!authToken) {
+      activeSession = null
+      return
+    }
+    try {
+      const res = await fetch(`${base}/studio/api/v1/auth/session`, {
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${authToken}`,
+        },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.authenticated && data.user) {
+          activeSession = {
+            displayName: data.user.displayName || 'Creator',
+            roles: data.user.roles || ['Creator'],
+            tenantId: data.tenant?.id || 'default',
           }
-        }
-      } catch {
-        // fallback
-      }
-    }
-
-    // Auto-probe VOID·SPACE web (port 3000) for active session handoff
-    try {
-      const probeRes = await fetch('http://localhost:3000/api/v1/auth/studio-token', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {accept: 'application/json'},
-      })
-      if (probeRes.ok) {
-        const tokenData = await probeRes.json()
-        const token = tokenData.token || tokenData.accessToken
-        if (token) {
-          authToken = token
-          try {
-            localStorage.setItem('void_studio_token', token)
-          } catch {}
-          await checkSession()
           return
         }
       }
     } catch {
-      // not signed in on port 3000
+      // The Studio API is the only origin this panel contacts.
     }
-
-    // Auto-probe Studio API backend for configured developer token
-    try {
-      const devRes = await fetch(`${base}/studio/api/v1/auth/token`, {
-        headers: {accept: 'application/json'},
-      })
-      if (devRes.ok) {
-        const tokData = await devRes.json()
-        const token = tokData.token || tokData.accessToken
-        if (token) {
-          authToken = token
-          try {
-            localStorage.setItem('void_studio_token', token)
-          } catch {}
-          await checkSession()
-          return
-        }
-      }
-    } catch {
-      // unconfigured
-    }
+    activeSession = null
   }
 
   const onStorageChange = (e: StorageEvent): void => {
@@ -1201,7 +1319,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     }
 
     if (triggerDot) {
-      const dotColor = status.mode === 'live' ? '#10b981' : '#00f0ff'
+      const dotColor = status.mode === 'live' ? '#10b981' : p.accent
       triggerDot.style.background = dotColor
       triggerDot.style.boxShadow = `0 0 8px ${dotColor}`
     }
@@ -1246,11 +1364,11 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       `
     } else {
       html += `
-        <div class="vsp__card" style="border-color: rgba(0, 240, 255, 0.45); background: rgba(0, 240, 255, 0.04);">
-          <div style="font-weight:600; font-size:11px; color:#00f0ff; margin-bottom:3px;">Connect VOID·SPACE Account</div>
-          <div class="vsp__note">Sign in to verify provenance and publish directly to the decentralized catalogue.</div>
+        <div class="vsp__card" style="border-color: ${rgbaCss(p.accent, 0.55)}; background: ${rgbaCss(p.accent, 0.06)};">
+          <div style="font-weight:600; font-size:11px; color:${p.accent}; margin-bottom:3px;">Connect VOID·SPACE Account</div>
+          <div class="vsp__note">Sign in on VOID·SPACE, then open Studio from the console so this editor receives your session.</div>
           <div style="display:flex; gap:6px; margin-top:8px;">
-            <a href="http://localhost:3000/auth/login" target="_blank" rel="noopener" class="vsp__btn" style="text-align:center; text-decoration:none; flex:1.2;">
+            <a href="${esc(stripTrailingSlashes(status.links.consoleUrl))}/login" target="_blank" rel="noopener" class="vsp__btn" style="text-align:center; text-decoration:none; flex:1.2;">
               Sign in on VOID·SPACE ↗
             </a>
             <button type="button" class="vsp__btn vsp__btn--subtle" data-action="toggle-token-input" style="flex:1;">
@@ -1340,6 +1458,14 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
         <button type="button" class="vsp__btn vsp__btn--subtle" data-action="run-audit" style="margin-top:6px">
           Run Readiness Audit
         </button>
+        ${
+          latestAudit && latestAudit.issues.length > 0
+            ? `<ul class="vsp__issues">${latestAudit.issues
+                .slice(0, 6)
+                .map((issue) => `<li>${esc(issue.message || issue.category || 'Issue')}</li>`)
+                .join('')}</ul>`
+            : ''
+        }
       </div>
     `
 
@@ -1882,18 +2008,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
 
     try {
       const projId = await ensureActiveProject()
-      const ctx = getToolContext()
-      const metrics = getActiveSceneMetrics(ctx)
-
-      const exportCandidate = {
-        extension: '.glb',
-        sizeBytes: metrics.sizeBytes,
-        polycount: metrics.polycount,
-        textureResolutions: [1024, 1024],
-        materialCount: metrics.materialCount,
-        gltfHeaderValid: true,
-        unsupportedMaterialFeatures: [],
-      }
+      const metrics = metricsForAudit(getToolContext())
 
       const res = await fetch(`${base}/studio/api/v1/projects/${projId}/audit`, {
         method: 'POST',
@@ -1901,22 +2016,36 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
           'content-type': 'application/json',
           ...(authToken ? {authorization: `Bearer ${authToken}`} : {}),
         },
-        body: JSON.stringify({export: exportCandidate}),
+        body: JSON.stringify({metrics, persist: false}),
       })
 
       if (!res.ok) {
-        latestAudit = {
-          score: metrics.polycount > 500_000 ? 75 : 94,
-          passed: true,
-          threshold: 85,
-          issues: [{rule: 'polycount', severity: 'info', message: `Geometry: ${metrics.polycount.toLocaleString()} triangles`}],
-        }
-      } else {
-        const auditRes = await res.json()
-        latestAudit = auditRes.report ?? {score: 92, passed: true, threshold: 85, issues: []}
+        throw new Error(await errorMessage(res, 'Readiness audit failed'))
       }
-    } catch {
-      latestAudit = {score: 92, passed: true, threshold: 85, issues: []}
+      const auditRes = await res.json()
+      const report = auditRes.report
+      if (!report || typeof report.score !== 'number') {
+        throw new Error('The audit response did not include a score.')
+      }
+      latestAudit = {
+        score: report.score,
+        passed: Boolean(report.passed),
+        threshold: typeof report.threshold === 'number' ? report.threshold : 80,
+        issues: Array.isArray(report.issues) ? report.issues : [],
+      }
+    } catch (error) {
+      latestAudit = {
+        score: 0,
+        passed: false,
+        threshold: 80,
+        issues: [
+          {
+            severity: 'critical',
+            category: 'format',
+            message: error instanceof Error ? error.message : 'The Studio API could not run the audit.',
+          },
+        ],
+      }
     }
 
     void render()
@@ -1947,20 +2076,22 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     const target = body.querySelector('[data-role="publish-target"]') as HTMLElement | null
     if (!target) return
 
-    const availableCategories = Array.from(
-      new Set([
-        ...(status.catalog?.categories || []),
-        'Prop',
-        'Machinery',
-        'Vehicle',
-        'Anatomy',
-        'Sci-Fi',
-        'Industrial',
-        'Environment',
-        'Characters',
-        'Architecture',
-      ]),
-    );
+    // These are VOID·SPACE's defaults. A workspace may replace them; when the
+    // status payload names that list, it wins, because a category outside it is
+    // rejected after the export has already been built.
+    const fallbackCategories = [
+      'Machinery',
+      'Safety Equipment',
+      'Environment',
+      'Character',
+      'Prop',
+      'Tooling',
+      'Vehicle',
+      'Architecture',
+      'Other',
+    ]
+    const fromWorkspace = status.catalog?.allowedCategories ?? []
+    const availableCategories = fromWorkspace.length > 0 ? [...fromWorkspace] : fallbackCategories
 
     target.innerHTML = `
       <div class="vsp__card" style="margin-top:8px; border-color:${p.accent}">
@@ -2003,7 +2134,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
               : ''
           }
           <button type="submit" class="vsp__btn" data-role="submit-publish">
-            Sign & Deliver to Chain & IPFS
+            Publish to VOID·SPACE
           </button>
         </form>
       </div>
@@ -2021,6 +2152,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     data: FormData,
     status: BridgeStatus,
     target: HTMLElement,
+    acknowledge = false,
   ): Promise<void> => {
     const submitBtn = target.querySelector('[data-role="submit-publish"]') as HTMLButtonElement | null
     if (submitBtn) {
@@ -2029,20 +2161,6 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     }
 
     try {
-      if (!authToken) {
-        try {
-          const tokRes = await fetch(`${base}/studio/api/v1/auth/token`)
-          if (tokRes.ok) {
-            const tokData = await tokRes.json()
-            if (tokData.accessToken) {
-              authToken = tokData.accessToken
-              try { localStorage.setItem('void_studio_token', tokData.accessToken) } catch {}
-              await checkSession()
-            }
-          }
-        } catch {}
-      }
-
       if (!authToken) {
         throw new Error('Please connect your VOID·SPACE account before publishing. Click "Sign in on VOID·SPACE" or "Token Link" above.')
       }
@@ -2055,6 +2173,64 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       const shouldRepublish = Boolean(data.get('republish')) && importAssetId
       const chosenFormat = String(data.get('format') || 'glb').toLowerCase()
 
+      target.innerHTML = `
+        <div class="vsp__card" style="margin-top:8px; padding:12px; border-color:${p.accent};">
+          <div style="font-weight:600; font-size:12px; color:${p.accent};">Checking readiness…</div>
+          <div class="vsp__note" style="margin-top:6px">Scoring the scene before anything is uploaded.</div>
+        </div>
+      `
+
+      const auditResponse = await fetch(`${base}/studio/api/v1/projects/${projId}/audit`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(authToken ? {authorization: `Bearer ${authToken}`} : {}),
+        },
+        body: JSON.stringify({metrics: metricsForAudit(getToolContext()), persist: false}),
+      })
+      if (!auditResponse.ok) {
+        throw new Error(await errorMessage(auditResponse, 'Readiness audit failed'))
+      }
+      const auditBody = await auditResponse.json()
+      const report = auditBody.report
+      if (!report || typeof report.score !== 'number') {
+        throw new Error('The audit response did not include a score.')
+      }
+      latestAudit = {
+        score: report.score,
+        passed: Boolean(report.passed),
+        threshold: typeof report.threshold === 'number' ? report.threshold : 80,
+        issues: Array.isArray(report.issues) ? report.issues : [],
+      }
+
+      if (!latestAudit.passed && !acknowledge) {
+        const issueList = latestAudit.issues
+          .slice(0, 6)
+          .map((issue) => `<li>${esc(issue.message || issue.category || 'Issue')}</li>`)
+          .join('')
+        target.innerHTML = `
+          <div class="vsp__card" style="margin-top:8px; border-color:${p.gold};">
+            <div class="vsp__name">Readiness ${latestAudit.score}/100</div>
+            <div class="vsp__note">Below the recommended ${latestAudit.threshold}. Review can still accept it if you publish anyway.</div>
+            ${issueList ? `<ul class="vsp__issues">${issueList}</ul>` : ''}
+            <button type="button" class="vsp__btn" data-action="publish-anyway" style="margin-top:8px">Publish anyway</button>
+            <button type="button" class="vsp__btn vsp__btn--subtle" data-action="publish-back" style="margin-top:6px">Back</button>
+          </div>
+        `
+        target.querySelector('[data-action="publish-anyway"]')?.addEventListener('click', () => {
+          void handlePublishSubmit(data, status, target, true)
+        })
+        target.querySelector('[data-action="publish-back"]')?.addEventListener('click', () => {
+          void render()
+        })
+        return
+      }
+
+      const readiness = latestAudit
+      if (!readiness) {
+        throw new Error('The readiness audit did not produce a score.')
+      }
+
       if (submitBtn) {
         submitBtn.disabled = true
         submitBtn.textContent = 'Publishing…'
@@ -2064,11 +2240,11 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       target.innerHTML = `
         <div class="vsp__card" style="margin-top:8px; padding:12px; border-color:${p.accent}; background:rgba(13,14,20,0.95); border-radius:8px;">
           <div style="font-weight:600; font-size:12px; color:${p.accent}; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
-            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00f0ff; box-shadow:0 0 10px #00f0ff; animation:pulse 1.2s infinite;"></span>
+            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${p.accent}; box-shadow:0 0 10px ${p.accent}; animation:pulse 1.2s infinite;"></span>
             Extracting 3D Scene Geometry…
           </div>
           <div style="background:rgba(255,255,255,0.08); height:5px; border-radius:3px; overflow:hidden; margin:8px 0;">
-            <div style="background:linear-gradient(90deg, #00f0ff, #10b981); height:100%; width:28%; transition:width 0.3s ease;"></div>
+            <div style="background:linear-gradient(90deg, ${p.accent}, #10b981); height:100%; width:28%; transition:width 0.3s ease;"></div>
           </div>
           <div style="font-size:11px; color:#9ca3af;">Reading vertex buffers, normals, and orientation transforms…</div>
         </div>
@@ -2089,11 +2265,11 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       target.innerHTML = `
         <div class="vsp__card" style="margin-top:8px; padding:12px; border-color:${p.accent}; background:rgba(13,14,20,0.95); border-radius:8px;">
           <div style="font-weight:600; font-size:12px; color:${p.accent}; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
-            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00f0ff; box-shadow:0 0 10px #00f0ff; animation:pulse 1.2s infinite;"></span>
+            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${p.accent}; box-shadow:0 0 10px ${p.accent}; animation:pulse 1.2s infinite;"></span>
             Compiling glTF 2.0 Binary (${sizeDisplay})…
           </div>
           <div style="background:rgba(255,255,255,0.08); height:5px; border-radius:3px; overflow:hidden; margin:8px 0;">
-            <div style="background:linear-gradient(90deg, #00f0ff, #10b981); height:100%; width:60%; transition:width 0.3s ease;"></div>
+            <div style="background:linear-gradient(90deg, ${p.accent}, #10b981); height:100%; width:60%; transition:width 0.3s ease;"></div>
           </div>
           <div style="font-size:11px; color:#9ca3af;">Serialized ${metrics.polycount.toLocaleString()} polygons across ${metrics.vertCount.toLocaleString()} vertices with PBR metallic-roughness.</div>
         </div>
@@ -2108,7 +2284,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
             Streaming Asset to VOID·SPACE Gateway…
           </div>
           <div style="background:rgba(255,255,255,0.08); height:5px; border-radius:3px; overflow:hidden; margin:8px 0;">
-            <div style="background:linear-gradient(90deg, #00f0ff, #10b981); height:100%; width:85%; transition:width 0.3s ease;"></div>
+            <div style="background:linear-gradient(90deg, ${p.accent}, #10b981); height:100%; width:85%; transition:width 0.3s ease;"></div>
           </div>
           <div style="font-size:11px; color:#9ca3af;">Streaming ${sizeDisplay} to repository endpoint…</div>
         </div>
@@ -2123,21 +2299,20 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
           extension: exported.extension,
           sizeBytes: actualSizeBytes,
           polycount: metrics.polycount,
-          textureResolutions: [1024, 1024],
+          textureResolutions: [],
           materialCount: metrics.materialCount,
           gltfHeaderValid: isGltf,
           unsupportedMaterialFeatures: [],
         },
-        readiness: latestAudit ?? {
-          score: 95,
-          passed: true,
-          threshold: 85,
-          issues: [],
-        },
-        acknowledgment: {
-          acknowledgedBy: activeSession?.displayName ?? 'Studio Creator',
-          acknowledgedAt: new Date().toISOString(),
-        },
+        readiness,
+        ...(!readiness.passed
+          ? {
+              acknowledgment: {
+                acknowledgedBy: activeSession?.displayName ?? 'Studio Creator',
+                acknowledgedAt: new Date().toISOString(),
+              },
+            }
+          : {}),
         ...(shouldRepublish ? {republishAssetId: importAssetId} : {}),
         fileBase64,
         filename: `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}${exported.extension}`,
@@ -2153,24 +2328,8 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       })
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.message ?? `HTTP ${res.status}`)
+        throw new Error(await errorMessage(res, 'Publish failed'))
       }
-
-      // Progress Phase 4: Finalizing Provenance Record
-      target.innerHTML = `
-        <div class="vsp__card" style="margin-top:8px; padding:12px; border-color:#10b981; background:rgba(13,14,20,0.95); border-radius:8px;">
-          <div style="font-weight:600; font-size:12px; color:#10b981; margin-bottom:6px; display:flex; align-items:center; gap:8px;">
-            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 10px #10b981;"></span>
-            Minting Lineage & Verifying Hashes…
-          </div>
-          <div style="background:rgba(255,255,255,0.08); height:5px; border-radius:3px; overflow:hidden; margin:8px 0;">
-            <div style="background:#10b981; height:100%; width:100%; transition:width 0.2s ease;"></div>
-          </div>
-          <div style="font-size:11px; color:#9ca3af;">Recording cryptographic SHA-256 seal and catalog linkage…</div>
-        </div>
-      `
-      await new Promise((r) => setTimeout(r, 220))
 
       const result = await res.json()
       const pub = result.publish || result
@@ -2185,7 +2344,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
             <span>✨</span> Successfully Published to VOID·SPACE!
           </div>
           <div class="vsp__row"><span class="vsp__k">Asset ID</span><span class="vsp__v vsp__mono">${esc(shorten(publishedAssetId, 10, 6))}</span></div>
-          <div class="vsp__row"><span class="vsp__k">Status</span><span class="vsp__v" style="color:#00f0ff; text-transform:uppercase; font-size:10.5px; font-weight:600;">${esc(pub.status || 'pending')}</span></div>
+          <div class="vsp__row"><span class="vsp__k">Status</span><span class="vsp__v" style="color:${p.accent}; text-transform:uppercase; font-size:10.5px; font-weight:600;">${esc(pub.status || 'pending')}</span></div>
           <div class="vsp__row"><span class="vsp__k">Size</span><span class="vsp__v">${sizeDisplay} (${metrics.polycount.toLocaleString()} polys)</span></div>
           ${pub.exportSha256 ? `<div class="vsp__row"><span class="vsp__k">SHA-256</span><span class="vsp__v vsp__mono" title="${esc(pub.exportSha256)}">${esc(shorten(pub.exportSha256, 8, 4))}</span></div>` : ''}
           ${!isPublished ? `<div style="font-size:11px; color:#9ca3af; margin-top:8px; line-height:1.4;">Asset submitted for review. Once approved by an assessor, it will appear publicly on the marketplace.</div>` : ''}
@@ -2211,12 +2370,17 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
           window.open(assetUrl, '_blank')
         })
       }
-    } catch (err: any) {
-      if (submitBtn) {
-        submitBtn.disabled = false
-        submitBtn.textContent = 'Retry Publish'
-      }
-      target.innerHTML += `<div class="vsp__err" style="margin-top:6px">Publish failed: ${esc(err.message)}</div>`
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Publish failed.'
+      target.innerHTML = `
+        <div class="vsp__card" style="margin-top:8px;">
+          <div class="vsp__err">Publish failed: ${esc(message)}</div>
+          <button type="button" class="vsp__btn vsp__btn--subtle" data-action="publish-back" style="margin-top:8px">Back</button>
+        </div>
+      `
+      target.querySelector('[data-action="publish-back"]')?.addEventListener('click', () => {
+        void render()
+      })
     }
   }
 
@@ -2245,12 +2409,203 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
   // Copilot View
   let copilotSessionId: string | null = null
   const copilotMessages: {role: 'user' | 'assistant'; text: string}[] = [
-    {role: 'assistant', text: 'Hello! I am your 3D Copilot. Ask me to optimize topology, inspect WebXR readiness, or create scene objects.'},
+    {
+      role: 'assistant',
+      text: 'Ask for a change to this scene. Accepted commands are applied in the viewport as one undo step. Image-to-3D and PBR maps are below.',
+    },
   ]
+
+  const objectKey = (ob: any): string => String(ob?.lib_id ?? ob?.id ?? ob?.name ?? '')
+
+  const placeImported = (ob: any, name: string, location: readonly number[], scale: readonly number[]): void => {
+    ob.name = name
+    if (ob.inputs?.loc) {
+      const loc = new Vector3()
+      loc[0] = location[0] ?? 0
+      loc[1] = location[1] ?? 0
+      loc[2] = location[2] ?? 0
+      ob.inputs.loc.setValue(loc)
+      ob.inputs.loc.graphUpdate?.()
+    }
+    if (ob.inputs?.scale) {
+      const sc = new Vector3()
+      sc[0] = scale[0] ?? 1
+      sc[1] = scale[1] ?? 1
+      sc[2] = scale[2] ?? 1
+      ob.inputs.scale.setValue(sc)
+      ob.inputs.scale.graphUpdate?.()
+    }
+    ob.graphUpdate?.()
+  }
+
+  const importMeshBytes = (
+    ctx: any,
+    name: string,
+    bytes: Uint8Array,
+    location: readonly [number, number, number],
+    scale: readonly [number, number, number],
+  ): string => {
+    if (addonManager && !addonManager.isEnabled('leafmesh')) addonManager.enable('leafmesh')
+    const fmt = formatForFilename(`${name}.glb`) || getFileFormat('glb')
+    if (!fmt || typeof fmt.importFromBytes !== 'function') {
+      throw new Error('The GLB importer is not ready yet. Wait for the editor to finish loading.')
+    }
+    const before = new Set((ctx.scene?.objects ? [...ctx.scene.objects] : []).map(objectKey))
+    fmt.importFromBytes(ctx, bytes, `${name}.glb`)
+    const list = ctx.scene?.objects ? [...ctx.scene.objects] : []
+    const created = list.find((ob) => !before.has(objectKey(ob))) ?? ctx.scene?.objects?.active
+    if (!created) throw new Error('The mesh imported, but no new object appeared in the scene.')
+    placeImported(created, name, location, scale)
+    ctx.scene?.objects?.setActive?.(created)
+    ctx.scene?.objects?.setSelect?.(created, true)
+    return objectKey(created)
+  }
+
+  const pixelsToDataUrl = (pixels: Uint8ClampedArray, size: number): string => {
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const g = canvas.getContext('2d')
+    if (!g) throw new Error('Could not draw a texture.')
+    g.putImageData(new ImageData(new Uint8ClampedArray(pixels), size, size), 0, 0)
+    return canvas.toDataURL('image/png')
+  }
+
+  const reliefFromDataUrl = async (dataUrl: string) => {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('Could not read that image.'))
+      img.src = dataUrl
+    })
+    const edge = 48
+    const canvas = document.createElement('canvas')
+    canvas.width = edge
+    canvas.height = edge
+    const g = canvas.getContext('2d')
+    if (!g) throw new Error('Could not sample that image.')
+    g.drawImage(image, 0, 0, edge, edge)
+    const data = g.getImageData(0, 0, edge, edge).data
+    const luminance = new Float32Array(edge * edge)
+    for (let i = 0; i < edge * edge; i++) {
+      const offset = i * 4
+      luminance[i] = (0.2126 * data[offset] + 0.7152 * data[offset + 1] + 0.0722 * data[offset + 2]) / 255
+    }
+    return heightfieldFromLuminance(luminance, edge, edge)
+  }
+
+  const sceneIo = () => ({
+    importBuffers: (ctx: any, name: string, buffers: {positions: Float32Array; normals: Float32Array; indices: Uint32Array; uvs: Float32Array}, location: readonly [number, number, number], scale: readonly [number, number, number]) => {
+      const bytes = packGlbBinary(name, buffers.positions, buffers.normals, buffers.indices, [0.85, 0.88, 0.94, 1], 0.35, 0.4, {uv: buffers.uvs})
+      return importMeshBytes(ctx, name, bytes, location, scale)
+    },
+    importGlb: importMeshBytes,
+    applyMaps: (ctx: any, objectId: string, maps: PbrAssignment) => {
+      const list = ctx.scene?.objects ? [...ctx.scene.objects] : []
+      const ob = list.find((item) => objectKey(item) === objectId || String(item?.name ?? '') === objectId)
+      if (!ob) throw new Error('No object is selected for the PBR maps.')
+      applyTextureToMeshObject(ctx, ob, pixelsToDataUrl(maps.albedo, maps.size), 'Albedo')
+      const channels: ReadonlyArray<readonly [string, Uint8ClampedArray]> = [
+        ['Normal', maps.normal],
+        ['Roughness', maps.roughness],
+        ['Metallic', maps.metallic],
+      ]
+      for (const [label, pixels] of channels) {
+        const block = new ImageBlock()
+        block.name = `${ob.name || 'Mesh'}_${label}`
+        block.type = ImageTypes.URL
+        block.url = pixelsToDataUrl(pixels, maps.size)
+        block.update()
+        ctx.datalib.add(block)
+      }
+      const mat = ob.material || ob.data?.material || ob.data?.materials?.[0]
+      const nodes = mat?.graph?.nodes
+      if (nodes) {
+        for (const node of nodes) {
+          if (node instanceof DiffuseNode || node?.constructor?.name === 'DiffuseNode') {
+            node.inputs?.roughness?.setValue?.(maps.roughnessValue)
+            if (node.inputs?.color?.setValue) {
+              const color = new Vector4()
+              const hex = maps.baseColor.replace('#', '')
+              color[0] = Number.parseInt(hex.slice(0, 2), 16) / 255
+              color[1] = Number.parseInt(hex.slice(2, 4), 16) / 255
+              color[2] = Number.parseInt(hex.slice(4, 6), 16) / 255
+              color[3] = 1
+              node.inputs.color.setValue(color)
+            }
+          }
+        }
+      }
+      if (mat) {
+        mat.metallic = maps.metallicValue
+        mat._regen = true
+      }
+      ob.graphUpdate?.()
+    },
+  })
+
+  const prepareMesh = async (input: Record<string, unknown>) => {
+    const prompt = typeof input.prompt === 'string' ? input.prompt : ''
+    const imageRef = typeof input.imageRef === 'string' ? input.imageRef : ''
+    if (imageRef.startsWith('data:image')) {
+      if (authToken) {
+        const meshy = await fetchMeshyGlb(base, authToken, {kind: 'image-to-3d', imageUrl: imageRef, ...(prompt ? {prompt} : {})})
+        if ('bytes' in meshy) return {glb: meshy.bytes, note: 'Meshy image-to-3D.'}
+        const buffers = await reliefFromDataUrl(imageRef)
+        const why = 'failed' in meshy ? meshy.failed : 'Meshy is not configured.'
+        return {buffers, note: `${why} Local relief mesh from the image. This is a height field, not a reconstructed object.`}
+      }
+      const buffers = await reliefFromDataUrl(imageRef)
+      return {buffers, note: 'Local relief mesh from the image. Meshy is not configured, so this is a height field, not a reconstructed object.'}
+    }
+    if (prompt && authToken) {
+      const meshy = await fetchMeshyGlb(base, authToken, {kind: 'text-to-3d', prompt})
+      if ('bytes' in meshy) return {glb: meshy.bytes, note: 'Meshy text-to-3D.'}
+      if ('failed' in meshy) {
+        const kind = primitiveForPrompt(prompt)
+        return {buffers: buildPrimitive(kind), note: `${meshy.failed} Local ${kind} stand-in instead.`}
+      }
+    }
+    const kind = primitiveForPrompt(prompt || 'object')
+    return {
+      buffers: buildPrimitive(kind),
+      note: `Local ${kind} stand-in. Meshy is not configured, so the prompt did not become a generated model.`,
+    }
+  }
+
+  const runSceneCalls = async (
+    calls: {name: string; input: Record<string, unknown>}[],
+  ): Promise<{lines: string[]; commandId: string}> => {
+    const prepared = await Promise.all(
+      calls.map(async (call) => {
+        if (call.name === 'generateMesh') return prepareMesh(call.input)
+        if (call.name === 'generateTexture') {
+          const prompt = String(call.input.prompt ?? 'surface')
+          const maps = pbrFromPrompt(prompt, 128)
+          return {
+            maps,
+            note: `Local ${maps.label} PBR maps assigned. Albedo is on the material. Normal, roughness and metallic are stored with it. A Meshy texture needs a public mesh URL, which this draft does not have.`,
+          }
+        }
+        return null
+      }),
+    )
+    return applyEditorCommands(getToolContext(), commandsForToolCalls(calls, prepared), sceneIo())
+  }
 
   const renderCopilotView = (): void => {
     body.innerHTML = `
       <div class="vsp__chat">
+        <div class="vsp__gen">
+          <div class="vsp__gen-row">
+            <input class="vsp__file" data-role="image-file" type="file" accept="image/png,image/jpeg,image/webp" />
+            <button type="button" class="vsp__btn" data-role="image-go" style="width:auto; padding:5px 10px">Image to 3D</button>
+          </div>
+          <form class="vsp__gen-row" data-role="pbr-form">
+            <input class="vsp__input" name="pbr" placeholder="PBR prompt, e.g. brushed chrome" />
+            <button type="submit" class="vsp__btn" style="width:auto; padding:5px 10px">PBR maps</button>
+          </form>
+        </div>
         <div class="vsp__chips">
           <span class="vsp__chip" data-prompt="Check topology and polygon budget">Audit budget</span>
           <span class="vsp__chip" data-prompt="Create metallic industrial crate">Add crate</span>
@@ -2292,6 +2647,55 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
         if (text) void sendCopilotMessage(text)
       })
     })
+
+    body.querySelector('[data-role="image-go"]')?.addEventListener('click', () => {
+      const file = (body.querySelector('[data-role="image-file"]') as HTMLInputElement | null)?.files?.[0]
+      if (file) void sendImageToMesh(file)
+    })
+
+    const pbrForm = body.querySelector('[data-role="pbr-form"]') as HTMLFormElement | null
+    pbrForm?.addEventListener('submit', (event) => {
+      event.preventDefault()
+      const prompt = (pbrForm.querySelector('input[name="pbr"]') as HTMLInputElement | null)?.value.trim() ?? ''
+      if (prompt) void sendPbrPrompt(prompt)
+    })
+  }
+
+  const pushAssistant = (text: string): void => {
+    copilotMessages.push({role: 'assistant', text})
+    renderCopilotView()
+  }
+
+  const sendImageToMesh = async (file: File): Promise<void> => {
+    copilotMessages.push({role: 'user', text: `Image to 3D: ${file.name}`})
+    renderCopilotView()
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(new Error('Could not read that image.'))
+        reader.readAsDataURL(file)
+      })
+      const applied = await runSceneCalls([
+        {name: 'generateMesh', input: {imageRef: dataUrl, name: file.name.replace(/\.[^.]+$/, '') || 'Image draft'}},
+      ])
+      pushAssistant(applied.lines.join('\n'))
+    } catch (error) {
+      pushAssistant(error instanceof Error ? error.message : 'Image-to-3D failed.')
+    }
+  }
+
+  const sendPbrPrompt = async (promptText: string): Promise<void> => {
+    copilotMessages.push({role: 'user', text: `PBR: ${promptText}`})
+    renderCopilotView()
+    try {
+      const scene = summarizeScene(getToolContext())
+      const objectId = scene.selection[0] ?? '$active'
+      const applied = await runSceneCalls([{name: 'generateTexture', input: {objectId, prompt: promptText}}])
+      pushAssistant(applied.lines.join('\n'))
+    } catch (error) {
+      pushAssistant(error instanceof Error ? error.message : 'The PBR maps could not be built.')
+    }
   }
 
   const sendCopilotMessage = async (promptText: string): Promise<void> => {
@@ -2299,48 +2703,119 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     renderCopilotView()
 
     try {
+      const localCalls = () =>
+        interpretInstruction(promptText, summarizeScene(getToolContext())).map((call) => ({
+          name : call.name,
+          input: call.input,
+        }))
+
+      if (!authToken) {
+        const local = localCalls()
+        if (local.length === 0) {
+          throw new Error('Sign in from VOID·SPACE before using the Copilot. The editor does not keep a model credential of its own.')
+        }
+        const applied = await runSceneCalls(local)
+        copilotMessages.push({
+          role: 'assistant',
+          text: `${applied.lines.join('\n')}\n\nSigned out, so this was a local command rather than the model. Undo reverses the whole step.`,
+        })
+        renderCopilotView()
+        return
+      }
+
       if (!copilotSessionId) {
+        const projId = await ensureActiveProject()
         const sessRes = await fetch(`${base}/studio/api/v1/copilot/sessions`, {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            ...(authToken ? {authorization: `Bearer ${authToken}`} : {}),
+            authorization: `Bearer ${authToken}`,
           },
-          body: JSON.stringify({initialPrompt: promptText}),
+          body: JSON.stringify({projectId: projId, title: promptText.slice(0, 80)}),
         })
-        if (sessRes.ok) {
-          const sess = await sessRes.json()
-          copilotSessionId = sess.sessionId ?? sess.id
+        if (!sessRes.ok) {
+          throw new Error(await errorMessage(sessRes, 'Could not open a Copilot session'))
+        }
+        const sess = await sessRes.json()
+        copilotSessionId = sess.session?.id ?? null
+        if (!copilotSessionId) {
+          throw new Error('The Studio API did not return a Copilot session.')
         }
       }
 
-      if (copilotSessionId) {
-        const msgRes = await fetch(`${base}/studio/api/v1/copilot/sessions/${copilotSessionId}/messages`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            ...(authToken ? {authorization: `Bearer ${authToken}`} : {}),
-          },
-          body: JSON.stringify({prompt: promptText}),
-        })
-        if (msgRes.ok) {
-          const res = await msgRes.json()
+      const msgRes = await fetch(`${base}/studio/api/v1/copilot/sessions/${copilotSessionId}/messages`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          instruction: promptText,
+          scene: summarizeScene(getToolContext()),
+        }),
+      })
+      if (!msgRes.ok) {
+        throw new Error(await errorMessage(msgRes, 'The Copilot could not answer'))
+      }
+      const res = await msgRes.json()
+      const prose = String(res.messages?.assistant?.content ?? '').trim()
+      const modelCalls = Array.isArray(res.applied)
+        ? res.applied
+            .filter((call: {name?: string}) => typeof call?.name === 'string')
+            .map((call: {name: string; input?: Record<string, unknown>}) => ({
+              name : call.name,
+              input: call.input ?? {},
+            }))
+        : []
+      const rejected = Array.isArray(res.rejected) ? res.rejected.length : 0
+      const parts = [prose || 'The Copilot returned no explanation.']
+      const calls = modelCalls.length > 0 ? modelCalls : localCalls()
+      if (calls.length > 0) {
+        const applied = await runSceneCalls(calls)
+        parts.push(applied.lines.join('\n'))
+        parts.push(
+          modelCalls.length > 0
+            ? 'Applied in the viewport as one undo step.'
+            : 'The model returned no scene command, so a local reading of the instruction was applied. Undo reverses the whole step.',
+        )
+        const messageId = res.messages?.assistant?.id
+        if (messageId && copilotSessionId) {
+          void fetch(`${base}/studio/api/v1/copilot/sessions/${copilotSessionId}/messages/${messageId}/applied`, {
+            method : 'POST',
+            headers: {'content-type': 'application/json', authorization: `Bearer ${authToken}`},
+            body   : JSON.stringify({appliedCommandIds: [applied.commandId]}),
+          }).catch(() => undefined)
+        }
+      }
+      if (rejected > 0) {
+        const why = res.rejected
+          .map((call: {message?: string; reason?: string}) => call.message || call.reason)
+          .filter(Boolean)
+          .slice(0, 3)
+        parts.push(`${rejected} proposal${rejected === 1 ? '' : 's'} refused.${why.length ? ` ${why.join(' ')}` : ''}`)
+      }
+      copilotMessages.push({role: 'assistant', text: parts.join('\n\n')})
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The Copilot could not answer.'
+      const local = interpretInstruction(promptText, summarizeScene(getToolContext())).map((call) => ({
+        name : call.name,
+        input: call.input,
+      }))
+      if (local.length === 0) {
+        copilotMessages.push({role: 'assistant', text: message})
+      } else {
+        try {
+          const applied = await runSceneCalls(local)
           copilotMessages.push({
             role: 'assistant',
-            text: res.explanation ?? res.reply ?? 'Command executed. Tool proposed: ' + (res.toolCalls?.[0]?.toolName ?? 'None'),
+            text: `${message}\n\n${applied.lines.join('\n')}\n\nA local reading of the instruction was applied instead. Undo reverses the whole step.`,
           })
-          renderCopilotView()
-          return
+        } catch (applyError) {
+          const why = applyError instanceof Error ? applyError.message : 'The local command also failed.'
+          copilotMessages.push({role: 'assistant', text: `${message}\n\n${why}`})
         }
       }
-    } catch {
-      // simulate fallback
     }
-
-    copilotMessages.push({
-      role: 'assistant',
-      text: `Inspected prompt "${promptText}". Scene geometry is compliant with WebXR thresholds and PBR shaders are intact.`,
-    })
     renderCopilotView()
   }
 

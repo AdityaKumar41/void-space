@@ -9,6 +9,7 @@
 import React, { useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { cn } from '../lib/cn';
+import { useToast } from './toast';
 import { SparklesIcon } from './ui/icons';
 
 export interface VoidStudioLaunchButtonProps {
@@ -35,16 +36,25 @@ export function VoidStudioLaunchButton({
   children,
 }: VoidStudioLaunchButtonProps) {
   const [busy, setBusy] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const toast = useToast();
 
   const handleLaunch = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setBusy(true);
-    setErrorMsg(null);
+
+    // Open during the click. Waiting for the token first drops the user gesture,
+    // and the browser then blocks the window with no message on the button.
+    const pending = window.open('about:blank', '_blank');
+    if (!pending) {
+      setBusy(false);
+      toast.failure('Studio did not open', 'Allow pop-ups for this site, then try again.');
+      return;
+    }
 
     let token: string | null = null;
     let handoffStudioUrl: string | null = null;
+    let sessionNote: string | null = null;
     try {
       const res = await apiFetch<{ token?: string; accessToken?: string; expiresIn: number; studioUrl?: string }>(
         '/auth/studio-token',
@@ -54,10 +64,12 @@ export function VoidStudioLaunchButton({
       if (res.studioUrl) {
         handoffStudioUrl = res.studioUrl;
       }
+      if (!token) {
+        sessionNote = 'Studio opened without a signed-in session. Publishing from the editor will ask you to sign in.';
+      }
     } catch (err) {
       console.warn('Could not mint studio handoff token; launching without auth session', err);
-    } finally {
-      setBusy(false);
+      sessionNote = 'Studio opened without a signed-in session. Publishing from the editor will ask you to sign in.';
     }
 
     const studioBase =
@@ -91,7 +103,23 @@ export function VoidStudioLaunchButton({
     const query = params.toString();
     const finalUrl = query.length > 0 ? `${studioBase}/?${query}` : studioBase;
 
-    window.open(finalUrl, '_blank', 'noopener,noreferrer');
+    try {
+      pending.location.href = finalUrl;
+      try {
+        pending.opener = null;
+      } catch {
+        // Some browsers lock the opened window as soon as it navigates.
+      }
+      if (sessionNote) {
+        toast.info('Studio opened', sessionNote);
+      }
+    } catch (err) {
+      console.warn('Could not navigate the Studio window', err);
+      pending.close();
+      toast.failure('Studio did not open', 'Check that the editor is running, then try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (variant === 'nav') {

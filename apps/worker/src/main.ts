@@ -1,3 +1,4 @@
+import { textAiEnvSchema } from '@void-space/studio-ai/text';
 /**
  * Worker runtime (SRS §3.10) — imported by server.ts after the root .env is loaded.
  *
@@ -42,21 +43,20 @@ type Processor = (job: never) => Promise<unknown>;
 const PROCESSORS: Partial<Record<QueueName, Processor>> = {};
 
 export async function main(): Promise<void> {
-  const chainRpcUrl = process.env.CHAIN_RPC_URL;
-  const chainId = Number(process.env.CHAIN_ID ?? 43113);
-  if (!chainRpcUrl) {
-    throw new Error('[worker] CHAIN_RPC_URL is not set — configure the Avalanche Fuji RPC in .env');
+  const configuredRpcUrl = process.env.CHAIN_RPC_URL?.trim();
+  const chainRpcUrl = configuredRpcUrl || 'http://localhost:8545';
+  const chainId = configuredRpcUrl ? Number(process.env.CHAIN_ID || 43113) : 31337;
+  const chainEnabled = Boolean(
+    configuredRpcUrl &&
+    chainId === 43113 &&
+    process.env.CONTRACT_ADDRESS?.trim() &&
+    process.env.PLATFORM_SIGNER_SEED?.trim(),
+  );
+  if (![31337, 43113].includes(chainId)) {
+    throw new Error(
+      `[worker] CHAIN_ID must be 31337 (local Anvil) or 43113 (Avalanche Fuji), received ${chainId}`,
+    );
   }
-  if (chainId !== 43113) {
-    throw new Error(`[worker] CHAIN_ID must be 43113 (Avalanche Fuji), received ${chainId}`);
-  }
-  if (!process.env.CONTRACT_ADDRESS) {
-    throw new Error('[worker] CONTRACT_ADDRESS is not set — configure the deployed Fuji contract in .env');
-  }
-  if (!process.env.PLATFORM_SIGNER_SEED) {
-    throw new Error('[worker] PLATFORM_SIGNER_SEED is not set — configure the Fuji publisher key in .env');
-  }
-
   const redisUrl = process.env.REDIS_URL;
   if (!redisUrl) {
     throw new Error('[worker] REDIS_URL is not set — copy .env.example to .env (SRS §9.4)');
@@ -80,6 +80,7 @@ export async function main(): Promise<void> {
   }) as Processor;
 
   PROCESSORS['ai-enrichment'] = createAiEnrichmentProcessor({
+    textAi: textAiEnvSchema.parse(process.env),
     logger,
     apiKey: process.env.ANTHROPIC_API_KEY,
     model: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-5-20250929',
@@ -88,15 +89,21 @@ export async function main(): Promise<void> {
 
   PROCESSORS['notify'] = createNotifyProcessor({ logger }) as Processor;
 
-  PROCESSORS['chain-license'] = createChainLicenseProcessor({
-    logger,
-    rpcUrl: chainRpcUrl,
-    chainId,
-    contractAddress: process.env.CONTRACT_ADDRESS ?? '',
-    privateKey: process.env.PLATFORM_SIGNER_SEED ?? '',
-    ipfsApiUrl: process.env.IPFS_API_URL ?? 'http://localhost:5001',
-    producer,
-  }) as Processor;
+  if (chainEnabled) {
+    PROCESSORS['chain-license'] = createChainLicenseProcessor({
+      logger,
+      rpcUrl: chainRpcUrl,
+      chainId,
+      contractAddress: process.env.CONTRACT_ADDRESS!,
+      privateKey: process.env.PLATFORM_SIGNER_SEED!,
+      ipfsApiUrl: process.env.IPFS_API_URL ?? 'http://localhost:5001',
+      producer,
+    }) as Processor;
+  } else {
+    logger.warn(
+      'chain-license processor is disabled: configure an Avalanche Fuji RPC, contract address and publisher key; queued licensing jobs will remain pending',
+    );
+  }
 
   PROCESSORS['xr-publish'] = createXrPublishProcessor({
     logger,
@@ -117,6 +124,10 @@ export async function main(): Promise<void> {
   const workers: Worker[] = [];
 
   for (const name of QUEUE_NAMES) {
+    // Do not consume licensing jobs as no-ops without a deployed contract and signer. Keeping them
+    // queued makes local app functionality available while preserving work for later activation.
+    if (name === 'chain-license' && !chainEnabled) continue;
+
     const processor = PROCESSORS[name];
     const worker = new Worker(
       name,

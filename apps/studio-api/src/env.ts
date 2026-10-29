@@ -1,3 +1,4 @@
+import { textAiEnvSchema } from '@void-space/studio-ai/text';
 /**
  * Environment validation for the Studio API (VS2-SRS-1.0 §9.4).
  *
@@ -45,6 +46,7 @@ const originOnlyUrl = z.preprocess(
 );
 
 export const envSchema = z.object({
+  ...textAiEnvSchema.shape,
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   /**
@@ -143,6 +145,11 @@ export const envSchema = z.object({
    * Server-side only. A model credential in the browser would be every Creator's to spend.
    */
   ANTHROPIC_API_KEY: optionalString,
+  /**
+   * Meshy image-to-3D, text-to-3D and text-to-texture. Absent is supported: the editor
+   * builds a local relief mesh and procedural PBR maps and says that Meshy did not run.
+   */
+  MESHY_API_KEY: optionalString,
   /** Pinned to a dated snapshot rather than a floating alias — see `DEFAULT_CLAUDE_MODEL`. */
   ANTHROPIC_MODEL: z.string().default(DEFAULT_CLAUDE_MODEL),
   /**

@@ -1,3 +1,4 @@
+import { generateText, isTextAiConfigured, type TextAiConfig } from '@void-space/studio-ai/text';
 /**
  * AI metadata enrichment (SRS FR-7.1–FR-7.7).
  *
@@ -260,12 +261,49 @@ export function createOfflineEnricher(): Enricher {
   };
 }
 
+export function createCompatibleEnricher(
+  config: TextAiConfig,
+  fetchImpl: typeof fetch = fetch,
+): Enricher {
+  return {
+    modelVersion: config.AI_TEXT_MODEL ?? 'compatible',
+    async enrich(input) {
+      const started = Date.now();
+      const response = await generateText(
+        config,
+        {
+          messages: [
+            { role: 'system', content: systemPrompt(input.strict) },
+            { role: 'user', content: userPrompt(input) },
+          ],
+          json: true,
+          maxTokens: 1200,
+          validate: (text) => {
+            enrichmentSchema.parse(parseEnrichmentResponse(text));
+          },
+        },
+        fetchImpl,
+      );
+      return {
+        result: enrichmentSchema.parse(parseEnrichmentResponse(response.text)),
+        modelVersion: response.model,
+        promptVersion: input.strict ? STRICT_PROMPT_VERSION : PROMPT_VERSION,
+        latencyMs: Date.now() - started,
+        rawResponse: { provider: response.provider, model: response.model, text: response.text },
+      };
+    },
+  };
+}
+
 /** Chooses the enricher for this deployment (NFR-REL.1 graceful degradation). */
 export function selectEnricher(options: {
   readonly apiKey: string | undefined;
   readonly model: string;
   readonly timeoutMs: number;
+  readonly textAi?: TextAiConfig;
 }): Enricher {
+  if (options.textAi && isTextAiConfigured(options.textAi))
+    return createCompatibleEnricher(options.textAi);
   return options.apiKey
     ? createAnthropicEnricher({
         apiKey: options.apiKey,

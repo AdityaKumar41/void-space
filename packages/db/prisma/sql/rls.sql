@@ -103,7 +103,26 @@ DECLARE
     'notifications',
     'audit_logs',
     'jobs',
-    'sessions'
+    'sessions',
+    'lessons',
+    'lesson_attempts',
+    'skill_credentials',
+    'courses',
+    'course_lessons',
+    'course_enrollments',
+    'spatial_rooms',
+    'spatial_participants',
+    'iot_devices',
+    'device_telemetry',
+    'digital_twins',
+    'simulation_scenarios',
+    'scenario_attempts',
+    'experience_runs',
+    'lesson_progress',
+    'experience_events',
+    'field_guides',
+    'field_guide_runs',
+    'venture_plans'
   ];
 BEGIN
   FOREACH target_table IN ARRAY tenant_tables LOOP
@@ -142,6 +161,10 @@ CREATE POLICY tenants_active_only ON tenants
 -- `roles` is a fixed platform-defined lookup table with no tenant data (§5.3),
 -- so it is intentionally left without a policy; void_app only ever reads it.
 GRANT SELECT ON TABLE roles TO void_app;
+
+-- @statement
+-- Runtime action history is append-only. Parent-run cleanup still cascades.
+REVOKE UPDATE, DELETE ON TABLE experience_events FROM void_app;
 
 -- @statement
 -- Helpful diagnostics: how many policies protect each table after this run.

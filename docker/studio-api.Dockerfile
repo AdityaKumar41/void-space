@@ -31,6 +31,7 @@ COPY packages/studio-db/package.json ./packages/studio-db/package.json
 COPY packages/studio-engine/package.json ./packages/studio-engine/package.json
 COPY packages/voidspace-client/package.json ./packages/voidspace-client/package.json
 COPY packages/types/package.json ./packages/types/package.json
+COPY packages/studio-ai/package.json ./packages/studio-ai/package.json
 RUN pnpm install --frozen-lockfile
 
 # ---- runtime --------------------------------------------------------------

@@ -67,7 +67,13 @@ describe('offline enricher', () => {
   it('flags missing geometry metadata instead of inventing numbers', async () => {
     const outcome = await createOfflineEnricher().enrich(
       input({
-        mesh: { polycount: null, vertices: null, materials: null, animations: null, textures: null },
+        mesh: {
+          polycount: null,
+          vertices: null,
+          materials: null,
+          animations: null,
+          textures: null,
+        },
       }),
     );
     expect(outcome.result.qualityFlags).toContain('metadata-incomplete');
@@ -134,9 +140,9 @@ describe('enricher selection', () => {
   });
 
   it('uses the Claude enricher when a key is configured', () => {
-    expect(selectEnricher({ apiKey: 'sk-test', model: 'claude-test', timeoutMs: 1000 }).modelVersion).toBe(
-      'claude-test',
-    );
+    expect(
+      selectEnricher({ apiKey: 'sk-test', model: 'claude-test', timeoutMs: 1000 }).modelVersion,
+    ).toBe('claude-test');
   });
 });
 
@@ -202,5 +208,41 @@ describe('Anthropic enricher', () => {
     });
 
     await expect(enricher.enrich(input())).rejects.toThrow(/529/);
+  });
+});
+
+import { createCompatibleEnricher } from '../src/lib/enricher';
+import { vi } from 'vitest';
+describe('Qwen metadata enrichment', () => {
+  it('validates suggestions and records the answering model and provider', async () => {
+    const result = {
+      tags: ['drill', 'tool', 'equipment'],
+      description: 'A reviewed cordless drill for equipment training.',
+      qualityFlags: [],
+      confidence: 0.8,
+    };
+    const f = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ response: JSON.stringify(result), done: true, model: 'served-qwen' }),
+      );
+    const enriched = await createCompatibleEnricher(
+      { AI_TEXT_BASE_URL: 'https://qwen.example/api/generate', AI_TEXT_MODEL: 'qwen-model' },
+      f,
+    ).enrich(input());
+    expect(enriched.result).toEqual(result);
+    expect(enriched.modelVersion).toBe('served-qwen');
+    expect(enriched.rawResponse).toMatchObject({ provider: 'compatible' });
+  });
+  it('rejects invalid output instead of storing an invented successful suggestion', async () => {
+    const f = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ response: '{}', done: true }));
+    await expect(
+      createCompatibleEnricher(
+        { AI_TEXT_BASE_URL: 'https://qwen.example/api/generate', AI_TEXT_MODEL: 'qwen-model' },
+        f,
+      ).enrich(input()),
+    ).rejects.toThrow();
   });
 });

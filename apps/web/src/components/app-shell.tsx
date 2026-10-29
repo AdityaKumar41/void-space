@@ -1,26 +1,28 @@
 'use client';
 
-/**
- * Application shell (SRS §6.1).
- *
- * The layout is a marketplace's, because the work is: a sticky top bar with the workspace search,
- * the chain readout and the account; a row of section tabs under it; then the screen's own banner,
- * filters and grid. What an operator does all day in this product — find an asset, decide on it,
- * trace what happened to it — maps onto that shape directly, and it is the shape the audience
- * already reads fluently.
- *
- * Two rows rather than one. OpenSea fits its whole nav and its search into a single bar; with seven
- * destinations, a search field and three controls, one row would either crush the search or hide
- * half the destinations behind a chevron. The tabs get their own row, exactly as a collection page's
- * Items / Activity / Offers tabs do.
- *
- * Navigation is filtered by the §3.6 permission matrix, so a role never sees a door it cannot open.
- * That is courtesy, not security: every endpoint re-checks the caller independently.
- */
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import {
+  BookOpen,
+  Boxes,
+  CircleHelp,
+  Compass,
+  FolderOpen,
+  GraduationCap,
+  History,
+  LayoutDashboard,
+  Menu,
+  Radio,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  Wrench,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import type { Permission } from '@void-space/types';
 
 import { apiFetch } from '../lib/api';
@@ -29,7 +31,7 @@ import { SessionProvider, useSession } from '../lib/session';
 import type { SessionView } from '../lib/session-types';
 import { Avatar } from './ui/avatar';
 import { Chip } from './ui/chip';
-import { CubeIcon, SparklesIcon } from './ui/icons';
+import { CubeIcon } from './ui/icons';
 import { BellIcon, SearchIcon } from './console-kit';
 import { ErrorNote } from './ui/feedback';
 import { VoidStudioLaunchButton } from './studio-launch';
@@ -37,23 +39,81 @@ import { VoidStudioLaunchButton } from './studio-launch';
 export { VoidStudioLaunchButton };
 
 interface NavItem {
-  readonly href: string;
-  readonly label: string;
-  readonly permission: Permission;
+  href: string;
+  label: string;
+  permission: Permission;
+  icon: LucideIcon;
 }
-
-const NAV: readonly NavItem[] = [
-  { href: '/console', label: 'Overview', permission: 'catalog:view' },
-  { href: '/console/library', label: 'Library', permission: 'asset:upload-own' },
-  { href: '/console/review', label: 'Review', permission: 'review:view-queue' },
-  { href: '/console/catalog', label: 'Marketplace', permission: 'catalog:view' },
-  { href: '/console/licenses', label: 'Licences', permission: 'catalog:view' },
-  { href: '/console/audit', label: 'Audit', permission: 'audit:view' },
-  { href: '/console/admin', label: 'Team', permission: 'tenant:manage-users' },
-  // FR-14.1 — the SuperAdmin's cross-workspace view. Separate from Team, which is a single
-  // workspace's members: one screen is the tenant, the other is the platform.
-  { href: '/console/tenants', label: 'Workspaces', permission: 'tenant:manage' },
+const GROUPS: readonly { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Your learning',
+    items: [
+      { href: '/console', label: 'Home', permission: 'catalog:view', icon: LayoutDashboard },
+      {
+        href: '/console/campus',
+        label: 'Programs',
+        permission: 'catalog:view',
+        icon: GraduationCap,
+      },
+      { href: '/console/lessons', label: 'Lessons', permission: 'catalog:view', icon: BookOpen },
+      {
+        href: '/console/simulations',
+        label: 'Practice',
+        permission: 'catalog:view',
+        icon: Compass,
+      },
+      { href: '/console/spaces', label: 'Spaces', permission: 'spatial:join', icon: Users },
+      {
+        href: '/console/field-guides',
+        label: 'Field guides',
+        permission: 'catalog:view',
+        icon: Wrench,
+      },
+    ],
+  },
+  {
+    label: 'Content workspace',
+    items: [
+      {
+        href: '/console/library',
+        label: 'Library',
+        permission: 'asset:upload-own',
+        icon: FolderOpen,
+      },
+      {
+        href: '/console/review',
+        label: 'Review queue',
+        permission: 'review:view-queue',
+        icon: ShieldCheck,
+      },
+      { href: '/console/catalog', label: 'Marketplace', permission: 'catalog:view', icon: Boxes },
+      {
+        href: '/console/licenses',
+        label: 'Licences',
+        permission: 'catalog:view',
+        icon: ShieldCheck,
+      },
+      { href: '/console/twins', label: 'Digital twins', permission: 'iot:manage', icon: Radio },
+    ],
+  },
+  {
+    label: 'Workspace',
+    items: [
+      {
+        href: '/console/operations',
+        label: 'Operations',
+        permission: 'catalog:view',
+        icon: History,
+      },
+      { href: '/console/career', label: 'Career', permission: 'catalog:view', icon: Compass },
+      { href: '/console/ventures', label: 'Ventures', permission: 'catalog:view', icon: Sparkles },
+      { href: '/console/audit', label: 'Audit', permission: 'audit:view', icon: History },
+      { href: '/console/admin', label: 'Team', permission: 'tenant:manage-users', icon: Settings },
+      { href: '/console/tenants', label: 'Workspaces', permission: 'tenant:manage', icon: Users },
+    ],
+  },
 ];
+const NAV = GROUPS.flatMap((g) => g.items);
 
 /**
  * The wordmark.
@@ -65,7 +125,12 @@ const NAV: readonly NavItem[] = [
 export function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
-      <CubeIcon className="text-brand" width={compact ? 17 : 20} height={compact ? 17 : 20} strokeWidth={1.3} />
+      <CubeIcon
+        className="text-brand"
+        width={compact ? 17 : 20}
+        height={compact ? 17 : 20}
+        strokeWidth={1.3}
+      />
       <span
         className={cn(
           'font-semibold tracking-[-0.02em] text-ink',
@@ -89,10 +154,7 @@ function HoldingScreen() {
     <div className="flex min-h-screen items-center justify-center bg-base">
       <div className="flex flex-col items-center gap-5">
         <Wordmark />
-        <div
-          aria-hidden
-          className="h-0.5 w-16 animate-dot-pulse rounded-full bg-brand"
-        />
+        <div aria-hidden className="h-0.5 w-16 animate-dot-pulse rounded-full bg-brand" />
         <p className="text-[12.5px] text-ink-faint">Checking your session</p>
       </div>
     </div>
@@ -126,7 +188,6 @@ function NotificationBell() {
   );
 }
 
-
 /**
  * The workspace search.
  *
@@ -136,6 +197,8 @@ function NotificationBell() {
  */
 function WorkspaceSearch() {
   const router = useRouter();
+  const { can } = useSession();
+  const destination = can('asset:upload-own') ? '/console/library' : '/console/catalog';
   const inputId = useId();
   const [value, setValue] = useState('');
 
@@ -146,7 +209,9 @@ function WorkspaceSearch() {
       onSubmit={(event) => {
         event.preventDefault();
         const query = value.trim();
-        router.push(query.length > 0 ? `/console/library?q=${encodeURIComponent(query)}` : '/console/library');
+        router.push(
+          query.length > 0 ? `${destination}?q=${encodeURIComponent(query)}` : destination,
+        );
       }}
     >
       <span className="pointer-events-none absolute left-3.5 text-ink-faint">
@@ -177,10 +242,10 @@ function WorkspaceSwitcher() {
   if (memberships.length <= 1) {
     return (
       <span
-        className="inline-flex items-center gap-2 rounded-full border border-hairline-strong bg-surface px-3 py-1.5 font-mono text-[12px] text-ink-dim"
+        className="block truncate text-[12px] text-ink-dim"
         title={`Workspace: ${session.tenant.name}`}
       >
-        <span aria-hidden className="h-1.5 w-1.5 animate-dot-pulse rounded-full bg-state-published" />
+        <span aria-hidden className="hidden" />
         {session.tenant.name}
       </span>
     );
@@ -306,7 +371,6 @@ function AccountMenu() {
   );
 }
 
-
 /**
  * The two rows of navigation.
  *
@@ -315,68 +379,129 @@ function AccountMenu() {
  * `role="tablist"` here would tell a screen reader to expect arrow-key navigation that does not
  * exist.
  */
-function Header() {
+function Header({ openNavigation }: { openNavigation: () => void }) {
   const pathname = usePathname();
+  const current =
+    NAV.find((item) => item.href === pathname) ??
+    NAV.find((item) => item.href !== '/console' && pathname.startsWith(item.href + '/'));
   const { can } = useSession();
-  const visible = NAV.filter((item) => can(item.permission));
-
   return (
-    <header className="sticky top-0 z-50 border-b border-hairline bg-[rgba(10,10,10,0.94)] backdrop-blur-xl backdrop-saturate-150">
-      <div className="mx-auto flex h-16 w-full max-w-[1560px] items-center gap-4 px-6">
-        <Link href="/console" className="shrink-0" aria-label="VOID·SPACE console home">
-          <Wordmark compact />
-        </Link>
-
-        <div className="min-w-0 flex-1 lg:hidden">
-          <WorkspaceSearch />
-        </div>
-
-        <div className="mx-auto hidden w-full max-w-[520px] lg:block">
-          <WorkspaceSearch />
-        </div>
-
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <span className="hidden xl:inline-flex">
-            <WorkspaceSwitcher />
-          </span>
-          <VoidStudioLaunchButton variant="nav" />
-          <NotificationBell />
-          <AccountMenu />
-        </div>
+    <header className="workspace-topbar">
+      <div className="flex min-w-0 items-center gap-3">
+        <button
+          className="workspace-menu-button"
+          aria-label="Open navigation"
+          onClick={openNavigation}
+        >
+          <Menu size={20} />
+        </button>
+        <span className="hidden text-sm text-ink-faint sm:inline">Workspace</span>
+        <span aria-hidden className="hidden text-ink-faint sm:inline">
+          /
+        </span>
+        <span className="truncate text-sm font-semibold text-ink">
+          {current?.label ?? 'Details'}
+        </span>
       </div>
-
-      <nav aria-label="Sections" className="border-t border-hairline">
-        <div className="mx-auto flex w-full max-w-[1560px] gap-1 overflow-x-auto px-6">
-          {visible.map((item) => {
-            const active =
-              pathname === item.href ||
-              (item.href !== '/console' && pathname.startsWith(`${item.href}/`));
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  // The active marker is a 2px bar on the leading edge, not a filled pill: a nav that
-                  // shouts makes every screen look like a notification.
-                  'relative whitespace-nowrap px-3.5 py-3 text-[13.5px] transition-colors duration-150 ease-standard',
-                  active ? 'font-semibold text-ink' : 'text-ink-dim hover:text-ink',
-                )}
-              >
-                {item.label}
-                {active ? (
-                  <span aria-hidden className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-brand" />
-                ) : null}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      <div className="ml-auto hidden w-full max-w-[330px] lg:block">
+        <WorkspaceSearch />
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {can('asset:upload-own') ? <VoidStudioLaunchButton variant="nav" /> : null}
+        <NotificationBell />
+        <AccountMenu />
+      </div>
     </header>
   );
 }
-
+function Sidebar({ open, close }: { open: boolean; close: () => void }) {
+  const pathname = usePathname();
+  const { can, session } = useSession();
+  useEffect(() => {
+    if (!open) return;
+    const listener = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    window.addEventListener('keydown', listener);
+    return () => window.removeEventListener('keydown', listener);
+  }, [open, close]);
+  return (
+    <>
+      {open ? (
+        <button
+          aria-label="Close navigation overlay"
+          className="workspace-nav-overlay"
+          onClick={close}
+        />
+      ) : null}
+      <aside
+        className={cn('workspace-sidebar', open && 'is-open')}
+        aria-label="Workspace navigation"
+      >
+        <div className="flex items-center justify-between px-6 pb-6 pt-7">
+          <Link href="/console" aria-label="VOID·SPACE console home" onClick={close}>
+            <Wordmark />
+          </Link>
+          <button className="workspace-mobile-close" aria-label="Close navigation" onClick={close}>
+            <X size={20} />
+          </button>
+        </div>
+        <div className="mx-4 mb-6 rounded-xl border border-hairline bg-surface px-4 py-3">
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[.14em] text-ink-faint">
+            Learning workspace
+          </span>
+          <WorkspaceSwitcher />
+        </div>
+        <nav aria-label="Sections" className="min-h-0 flex-1 space-y-6 overflow-y-auto px-3 pb-6">
+          {GROUPS.map((group) => {
+            const items = group.items.filter((item) => can(item.permission));
+            return items.length ? (
+              <div key={group.label}>
+                <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[.13em] text-ink-faint">
+                  {group.label}
+                </p>
+                <div className="space-y-1">
+                  {items.map((item) => {
+                    const active =
+                      pathname === item.href ||
+                      (item.href !== '/console' && pathname.startsWith(item.href + '/'));
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        aria-current={active ? 'page' : undefined}
+                        onClick={close}
+                        className={cn('workspace-nav-link', active && 'is-active')}
+                      >
+                        <Icon size={17} strokeWidth={1.7} />
+                        <span>{item.label}</span>
+                        {active ? (
+                          <span className="ml-auto h-1.5 w-1.5 rounded-full bg-brand" />
+                        ) : null}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null;
+          })}
+        </nav>
+        <div className="border-t border-hairline p-4">
+          <Link
+            href="/console/field-guides"
+            onClick={close}
+            className="flex items-center gap-3 rounded-lg px-2 py-2 text-xs text-ink-dim hover:text-ink"
+          >
+            <CircleHelp size={17} />
+            <span>Guidance when you need it</span>
+          </Link>
+          <p className="mt-3 truncate px-2 text-[10px] text-ink-faint">{session?.tenant.name}</p>
+        </div>
+      </aside>
+    </>
+  );
+}
 
 /**
  * The frame around every authenticated screen.
@@ -386,6 +511,7 @@ function Header() {
  */
 function Shell({ children }: { children: React.ReactNode }) {
   const { session, isLoading, error } = useSession();
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const status = (error as { status?: number } | null)?.status;
 
   // 401 is not a fault, it is "not signed in": the provider has already asked the router to show the
@@ -397,11 +523,16 @@ function Shell({ children }: { children: React.ReactNode }) {
     return (
       <div className="mx-auto max-w-lg px-6 py-20">
         <ErrorNote
-          message={status ? `The session check failed with HTTP ${status}.` : 'No session was returned.'}
+          message={
+            status ? `The session check failed with HTTP ${status}.` : 'No session was returned.'
+          }
           code="SESSION_UNAVAILABLE"
           hint="The API may still be starting — retry in a moment, or sign in again."
         />
-        <a className="h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-4 inline-flex" href="/login">
+        <a
+          className="h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-4 inline-flex"
+          href="/login"
+        >
           Go to sign in
         </a>
       </div>
@@ -409,21 +540,18 @@ function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-base">
-      <Header />
-
-      <main id="main" className="mx-auto w-full max-w-[1560px] flex-1 px-6 py-8">
-        {children}
-      </main>
-
-      <footer className="border-t border-hairline">
-        <div className="mx-auto flex w-full max-w-[1560px] flex-wrap items-center justify-between gap-3 px-6 py-5 font-mono text-[11.5px] text-ink-faint">
-          <span>VOID·SPACE · 3D asset lifecycle · ERC-721 licence registry</span>
-          <span>
-            {session.tenant.name} · {session.user.roles.join(' / ')}
-          </span>
-        </div>
-      </footer>
+    <div className="workspace-theme">
+      <Sidebar open={navigationOpen} close={() => setNavigationOpen(false)} />
+      <div className="workspace-body">
+        <Header openNavigation={() => setNavigationOpen(true)} />
+        <main id="main" className="workspace-main">
+          {children}
+        </main>
+        <footer className="workspace-footer">
+          <span>VOID·SPACE</span>
+          <span>Learn by exploring. Build through practice.</span>
+        </footer>
+      </div>
     </div>
   );
 }
@@ -442,4 +570,3 @@ export function AppShell({
     </SessionProvider>
   );
 }
-

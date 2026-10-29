@@ -1,3 +1,4 @@
+import { isTextAiConfigured } from '@void-space/studio-ai/text';
 /**
  * Studio API application factory (VS2-SRS-1.0 §6.4).
  *
@@ -20,6 +21,7 @@ import { buildVoidSpaceBridge, type VoidSpaceBridge } from './lib/gateway';
 import { auditRoutes } from './modules/audit';
 import { bridgeRoutes } from './modules/bridge';
 import { copilotRoutes } from './modules/copilot';
+import { generativeRoutes } from './modules/generative';
 import { registerJobRoutes } from './modules/jobs';
 import { projectRoutes } from './modules/projects';
 
@@ -39,6 +41,7 @@ export interface StudioApp {
  */
 export interface StudioAppOptions {
   readonly transport?: HttpTransport;
+  readonly meshyTransport?: HttpTransport;
 }
 
 export async function buildStudioApp(
@@ -146,6 +149,11 @@ export async function buildStudioApp(
   await app.register(bridgeRoutes, { prefix: '/studio/api/v1', bridge });
   await app.register(projectRoutes, { prefix: '/studio/api/v1', bridge });
   await app.register(copilotRoutes, { prefix: '/studio/api/v1', ai });
+  await app.register(generativeRoutes, {
+    prefix: '/studio/api/v1',
+    ...(env.MESHY_API_KEY === undefined ? {} : { apiKey: env.MESHY_API_KEY }),
+    ...(options.meshyTransport === undefined ? {} : { transport: options.meshyTransport }),
+  });
   await app.register(auditRoutes, { prefix: '/studio/api/v1', ai });
   await app.register(registerJobRoutes, { prefix: '/studio/api/v1' });
 
@@ -188,7 +196,7 @@ export async function preflightStudio(env: StudioApiEnv): Promise<string[]> {
   if (!env.STUDIO_JWT_ACCESS_SECRET) {
     warnings.push('STUDIO_JWT_ACCESS_SECRET is unset — no session can be verified');
   }
-  if (!env.ANTHROPIC_API_KEY) {
+  if (!env.ANTHROPIC_API_KEY && !isTextAiConfigured(env)) {
     warnings.push(
       'ANTHROPIC_API_KEY is unset — the Copilot is unavailable and the pre-publish check runs on ' +
         'measurements alone; publishing is unaffected (§7.5)',

@@ -42,7 +42,12 @@ export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-5-20250929';
 /** Request/response shapes, limited to the parts this product uses. */
 export type ClaudeContentBlock =
   | { readonly type: 'text'; readonly text: string }
-  | { readonly type: 'tool_use'; readonly id: string; readonly name: string; readonly input: unknown }
+  | {
+      readonly type: 'tool_use';
+      readonly id: string;
+      readonly name: string;
+      readonly input: unknown;
+    }
   | {
       readonly type: 'tool_result';
       readonly tool_use_id: string;
@@ -66,6 +71,7 @@ export interface ClaudeToolDefinition {
 export interface ClaudeMessageResponse {
   readonly id: string;
   readonly model: string;
+  readonly provider?: string;
   readonly content: readonly ClaudeContentBlock[];
   readonly stopReason: ClaudeStopReason | null;
   readonly usage: { readonly inputTokens: number; readonly outputTokens: number };
@@ -91,6 +97,7 @@ export interface ClaudeClientOptions {
   readonly sink?: AiInvocationSink;
   readonly limiter?: TenantRateLimiter;
   readonly baseUrl?: string;
+  readonly providerName?: string;
   /** Injected for deterministic retry tests. */
   readonly sleep?: (ms: number) => Promise<void>;
 }
@@ -131,6 +138,7 @@ function parseContent(value: unknown): readonly ClaudeContentBlock[] {
 }
 
 export class ClaudeClient {
+  private readonly providerName: string;
   private readonly apiKey: string;
   private readonly transport: HttpTransport;
   private readonly model: string;
@@ -142,6 +150,7 @@ export class ClaudeClient {
 
   constructor(options: ClaudeClientOptions) {
     if (!options.apiKey) throw new Error('ClaudeClient requires an apiKey');
+    this.providerName = options.providerName ?? 'anthropic';
     this.apiKey = options.apiKey;
     this.transport = options.transport;
     this.model = options.model ?? DEFAULT_CLAUDE_MODEL;
@@ -214,6 +223,7 @@ export class ClaudeClient {
           // snapshot than the alias resolved to, and §7.5's reproducibility guarantee is about what
           // actually produced the response.
           model: response.model,
+          provider: response.provider ?? this.providerName,
         });
         return response;
       } catch (err) {
@@ -237,12 +247,14 @@ export class ClaudeClient {
 
         // Exponential backoff, capped. A provider that is rate limiting us should be given more room
         // on each attempt; an uncapped doubling would exceed the job's own timeout on attempt four.
-        const delay = Math.min(this.policy.backoffBaseMs * 2 ** (attempt - 1), this.policy.maxBackoffMs);
+        const delay = Math.min(
+          this.policy.backoffBaseMs * 2 ** (attempt - 1),
+          this.policy.maxBackoffMs,
+        );
         await this.sleep(delay);
       }
     }
   }
-
 
   /**
    * A single attempt, including redaction and the hard timeout.
@@ -305,7 +317,11 @@ export class ClaudeClient {
 
     const body = response.body as Record<string, unknown> | undefined;
     if (body === undefined || typeof body !== 'object') {
-      throw new AiProviderError('anthropic', 'MALFORMED_RESPONSE', 'Response body was not an object');
+      throw new AiProviderError(
+        'anthropic',
+        'MALFORMED_RESPONSE',
+        'Response body was not an object',
+      );
     }
 
     const usage = (body['usage'] ?? {}) as Record<string, unknown>;
@@ -314,6 +330,7 @@ export class ClaudeClient {
     return {
       id: typeof body['id'] === 'string' ? body['id'] : 'unknown',
       model: typeof body['model'] === 'string' ? body['model'] : this.model,
+      provider: typeof body['provider'] === 'string' ? body['provider'] : this.providerName,
       content: parseContent(body['content']),
       stopReason: typeof stopReason === 'string' ? (stopReason as ClaudeStopReason) : null,
       usage: {
@@ -334,12 +351,13 @@ export class ClaudeClient {
     readonly failureKind?: string;
     /** The model the provider reported. Falls back to the configured one when the call failed. */
     readonly model?: string;
+    readonly provider?: string;
   }): void {
     const entry: AiInvocationLog = {
       tenantId: input.request.tenantId,
       userId: input.request.userId,
       feature: input.request.feature,
-      provider: 'anthropic',
+      provider: input.provider ?? this.providerName,
       model: input.model ?? this.model,
       promptVersion: input.request.promptVersion,
       startedAt: input.startedAt,
@@ -358,4 +376,3 @@ export class ClaudeClient {
     }
   }
 }
-

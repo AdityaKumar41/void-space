@@ -12,7 +12,7 @@
  *      appended blindly would leave a stack of them in the same corner.
  */
 
-import {mountVoidSpacePanel, studioApiBaseUrl} from '../../scripts/voidspace/bridge_panel'
+import {measureScene, mountVoidSpacePanel, studioApiBaseUrl, summarizeScene} from '../../scripts/voidspace/bridge_panel'
 
 /** What `GET /studio/api/v1/voidspace/status` answers with a live API and a populated catalogue. */
 const STATUS = {
@@ -64,6 +64,8 @@ test('paints the link and the provenance the Studio API reports', async () => {
   expect(text).toContain('Cargo Crate')
   expect(text).toContain('Commercial')
   expect(text).toContain('424242')
+  // Sign-in goes to the console the API named, on the route that actually exists.
+  expect(panel.element.querySelector('a.vsp__btn')?.getAttribute('href')).toBe('https://void.example/login')
 
   // The Studio API is the only origin contacted — never VOID·SPACE itself.
   expect(calls).toEqual(['http://localhost:4100/studio/api/v1/voidspace/status'])
@@ -100,6 +102,15 @@ test('chooses the Studio API base URL from the page it finds itself on', () => {
 
   // An empty override is absent, not a base URL of ''.
   expect(studioApiBaseUrl({...page, override: ''})).toBe('http://localhost:4100')
+})
+
+test('an empty scene is measured as empty, not as a passing publish', () => {
+  expect(measureScene(undefined)).toMatchObject({
+    totalPolycount: 0,
+    objectCount: 0,
+    unnamedObjects: 0,
+  })
+  expect(summarizeScene(undefined)).toEqual({objects: [], selection: [], unit: 'metre'})
 })
 
 test('an unreachable Studio API is a rendered state, not a rejection', async () => {

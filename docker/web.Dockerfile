@@ -19,6 +19,8 @@ COPY packages/config/package.json ./packages/config/package.json
 COPY apps/api/package.json ./apps/api/package.json
 COPY apps/worker/package.json ./apps/worker/package.json
 COPY packages/db/package.json ./packages/db/package.json
+COPY packages/studio-ai/package.json ./packages/studio-ai/package.json
+COPY packages/studio-engine/package.json ./packages/studio-engine/package.json
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS builder

@@ -73,7 +73,6 @@ export class ObjectTools extends StandardTools {
 
   static Delete(ctx) {
     ctx.api.execTool(ctx, 'object.delete_selected()')
-    s
   }
 
   static SelectOne(ctx, unique = true) {

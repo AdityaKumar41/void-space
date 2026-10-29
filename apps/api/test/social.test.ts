@@ -13,6 +13,8 @@
  *   - **Cross-tenant moderation, end to end**, including that it is refused for a workspace that is
  *     neither the author nor the page owner.
  */
+import { randomUUID } from 'node:crypto';
+
 import { prisma } from '@void-space/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -25,6 +27,7 @@ describe('marketplace engagement (HTTP)', () => {
   let auroraAdmin: string;
   let auroraViewer: string;
   let northwindAdmin: string;
+  let createdCatalogFixture = false;
 
   const createdCommentIds: string[] = [];
 
@@ -36,8 +39,31 @@ describe('marketplace engagement (HTTP)', () => {
       where: { tenantId: DEMO_TENANT_IDS.aurora },
       select: { assetId: true },
     });
-    if (!entry) throw new Error('[test] no seeded catalog entry for aurora — run `pnpm db:seed`');
-    assetId = entry.assetId;
+    if (entry) {
+      assetId = entry.assetId;
+    } else {
+      // The HTTP suite may run before a local operator has minted a catalogue
+      // licence. The public projection is intentionally its own public read
+      // model, so create a minimal, realistic projection fixture rather than
+      // make social-route coverage depend on a chain deployment.
+      assetId = randomUUID();
+      await prisma.publicCatalogEntry.create({
+        data: {
+          assetId,
+          tenantId: DEMO_TENANT_IDS.aurora,
+          tenantName: 'Aurora Industrial Training',
+          name: 'HTTP social fixture',
+          category: 'Prop',
+          tags: [],
+          format: 'glb',
+          sizeBytes: 1n,
+          ipfsCid: `bafyhttpsocial${assetId.replaceAll('-', '').slice(0, 24)}`,
+          licenseType: 'CC-BY',
+          publishedAt: new Date(),
+        },
+      });
+      createdCatalogFixture = true;
+    }
 
     // One login per role, because the interesting cases are about which *role* may do what.
     [auroraCreator, auroraAdmin, auroraViewer, northwindAdmin] = await Promise.all([
@@ -51,6 +77,9 @@ describe('marketplace engagement (HTTP)', () => {
   afterAll(async () => {
     if (createdCommentIds.length > 0) {
       await prisma.assetComment.deleteMany({ where: { id: { in: createdCommentIds } } });
+    }
+    if (createdCatalogFixture) {
+      await prisma.publicCatalogEntry.deleteMany({ where: { assetId } });
     }
     await harness.close();
     await prisma.$disconnect();

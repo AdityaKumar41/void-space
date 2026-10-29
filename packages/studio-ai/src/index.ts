@@ -18,3 +18,5 @@ export * from './claude';
 export * from './copilot';
 export * from './audit';
 export * from './meshy';
+
+export * from './compatible-messages';

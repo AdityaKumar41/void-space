@@ -52,7 +52,19 @@ export interface TestApp {
 
 /** Boots the API against the real database, with a probe route for RBAC checks. */
 export async function createTestApp(): Promise<TestApp> {
-  const env = loadEnv({ ...process.env, NODE_ENV: 'test' });
+  // The local test harness uses the Anvil node brought up by `pnpm dev:up`.
+  // A deployment must provide its own RPC endpoint, but making the test suite
+  // depend on an optional Fuji setting contradicts the documented local stack.
+  const localChain = !process.env.CHAIN_RPC_URL;
+  const env = loadEnv({
+    ...process.env,
+    NODE_ENV: 'test',
+    AI_TEXT_BASE_URL: undefined,
+    AI_BASE_URL: undefined,
+    OPENROUTER_API_KEY: undefined,
+    CHAIN_RPC_URL: process.env.CHAIN_RPC_URL || 'http://localhost:8545',
+    ...(localChain ? { CHAIN_ID: '31337' } : {}),
+  });
   const app = await buildApp(env);
 
   // A route that throws a known AppError, so tests can assert the error envelope
@@ -97,10 +109,7 @@ export function readCookie(setCookie: string[] | string | undefined, name: strin
 }
 
 /** Returns the raw `name=value` form, suitable for the `cookie` request header. */
-export function cookieHeader(
-  setCookie: string[] | string | undefined,
-  ...names: string[]
-): string {
+export function cookieHeader(setCookie: string[] | string | undefined, ...names: string[]): string {
   const headers = Array.isArray(setCookie) ? setCookie : setCookie ? [setCookie] : [];
   const parts: string[] = [];
   for (const name of names) {

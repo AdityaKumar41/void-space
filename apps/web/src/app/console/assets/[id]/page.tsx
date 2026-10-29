@@ -12,9 +12,9 @@
  * never sees an approve button that would 403.
  */
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AssetStatus } from '@void-space/types';
 
 import { ApiRequestError, apiFetch } from '../../../../lib/api';
@@ -34,6 +34,7 @@ import { Panel } from '../../../../components/ui/card';
 import { StatusChip, Tag } from '../../../../components/ui/chip';
 import { ErrorNote, LoadingBlock } from '../../../../components/ui/feedback';
 import { BackLink } from '../../../../components/ui/layout';
+import { Button } from '../../../../components/ui/button';
 import { StatCell, StatRow, PersonCell } from '../../../../components/console-kit';
 import { VoidStudioLaunchButton } from '../../../../components/studio-launch';
 
@@ -75,6 +76,7 @@ interface AssetDetailView {
   readonly xrModuleUrl: string | null;
   readonly xrManifestRef: string | null;
   readonly canDelete: boolean;
+  readonly canEdit: boolean;
   readonly canPublish: boolean;
   readonly canRevoke: boolean;
   readonly versions: readonly {
@@ -148,6 +150,7 @@ const PERMISSIONS = {
 export default function AssetConsolePage() {
   const params = useParams<{ id: string }>();
   const assetId = params.id;
+  const router = useRouter();
   const queryClient = useQueryClient();
 
   const [comment, setComment] = useState('');
@@ -159,6 +162,11 @@ export default function AssetConsolePage() {
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [liveGeometry, setLiveGeometry] = useState<DecodedGeometry | null>(null);
   const [liveSummary, setLiveSummary] = useState<SceneSummary | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editTags, setEditTags] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const query = useQuery<AssetDetailView>({
     queryKey: ['asset', assetId],
@@ -186,6 +194,15 @@ export default function AssetConsolePage() {
   const permissions = me.data?.user.permissions ?? [];
   const may = (permission: string) => permissions.includes(permission);
   const toast = useToast();
+
+  useEffect(() => {
+    const asset = query.data;
+    if (!asset?.canEdit || window.location.hash !== '#metadata') return;
+    setEditName(asset.name);
+    setEditCategory(asset.category);
+    setEditTags(asset.tags.join(', '));
+    setEditing(true);
+  }, [query.data]);
 
   /**
    * Runs a mutation while locking the other actions.
@@ -242,19 +259,116 @@ export default function AssetConsolePage() {
             {version ? `v${version.versionNumber} · ${version.format.replace(/^\./, '').toUpperCase()}` : 'no version'}
             <div className="mt-1">asset {shortId(asset.id, 12)}</div>
           </div>
-          <VoidStudioLaunchButton
-            assetId={asset.id}
-            name={asset.name}
-            format={version?.format}
-            filename={`${asset.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}${version?.format ? (version.format.startsWith('.') ? version.format : `.${version.format}`) : '.glb'}`}
-            modelUrl={version?.gatewayUrl ?? undefined}
-            variant="secondary"
-            size="sm"
-          >
-            Edit in Void Studio
-          </VoidStudioLaunchButton>
+          <div className="flex flex-wrap justify-end gap-2">
+            {asset.canEdit ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditName(asset.name);
+                  setEditCategory(asset.category);
+                  setEditTags(asset.tags.join(', '));
+                  setEditing(true);
+                }}
+              >
+                Edit details
+              </Button>
+            ) : null}
+            {asset.canDelete ? (
+              <Button
+                size="sm"
+                variant={confirmDelete ? 'destructive' : 'ghost'}
+                disabled={petition !== null}
+                onClick={() => {
+                  if (!confirmDelete) {
+                    setConfirmDelete(true);
+                    return;
+                  }
+                  void act(async () => {
+                    await apiFetch(`/assets/${assetId}`, { method: 'DELETE' });
+                    router.push('/console/library');
+                  }, 'delete', 'Deleting…');
+                }}
+              >
+                {petition?.key === 'delete' ? petition.label : confirmDelete ? 'Confirm delete' : 'Delete'}
+              </Button>
+            ) : null}
+            <VoidStudioLaunchButton
+              assetId={asset.id}
+              name={asset.name}
+              format={version?.format}
+              filename={`${asset.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}${version?.format ? (version.format.startsWith('.') ? version.format : `.${version.format}`) : '.glb'}`}
+              modelUrl={version?.gatewayUrl ?? undefined}
+              variant="secondary"
+              size="sm"
+            >
+              Edit in Void Studio
+            </VoidStudioLaunchButton>
+          </div>
         </div>
       </div>
+
+      {editing && asset.canEdit ? (
+        <form
+          id="metadata"
+          className="grid gap-3 rounded-card border border-hairline bg-surface p-5 md:grid-cols-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void act(async () => {
+              await apiFetch(`/assets/${assetId}`, {
+                method: 'PATCH',
+                body: {
+                  name: editName.trim(),
+                  category: editCategory.trim(),
+                  tags: editTags
+                    .split(',')
+                    .map((tag) => tag.trim())
+                    .filter((tag) => tag.length > 0),
+                },
+              });
+              setEditing(false);
+            }, 'edit', 'Saving…');
+          }}
+        >
+          <label className="text-sm text-ink">
+            Name
+            <input
+              className="mt-2 h-10 w-full rounded-control border border-hairline bg-surface px-3 text-sm text-ink"
+              value={editName}
+              onChange={(event) => setEditName(event.target.value)}
+              required
+              maxLength={200}
+            />
+          </label>
+          <label className="text-sm text-ink">
+            Category
+            <input
+              className="mt-2 h-10 w-full rounded-control border border-hairline bg-surface px-3 text-sm text-ink"
+              value={editCategory}
+              onChange={(event) => setEditCategory(event.target.value)}
+              required
+              maxLength={60}
+            />
+          </label>
+          <label className="text-sm text-ink">
+            Tags
+            <input
+              className="mt-2 h-10 w-full rounded-control border border-hairline bg-surface px-3 text-sm text-ink"
+              value={editTags}
+              onChange={(event) => setEditTags(event.target.value)}
+              placeholder="Comma-separated"
+            />
+          </label>
+          <div className="flex gap-2 md:col-span-3">
+            <Button type="submit" size="sm" disabled={petition !== null || editName.trim().length === 0}>
+              {petition?.key === 'edit' ? petition.label : 'Save details'}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : null}
 
       {error ? <ErrorNote message={error.message} code={error.code} /> : null}
 

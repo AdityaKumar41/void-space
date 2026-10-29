@@ -1,3 +1,4 @@
+import { isTextAiConfigured } from '@void-space/studio-ai/text';
 /**
  * Third-party tools & importers (SRS §4.6, §6.4; FR-6.1–FR-6.4).
  *
@@ -83,7 +84,9 @@ const UPLOAD = 'asset:upload-own';
  * what makes that safe — `evil-sketchfab.com` does not end with `.sketchfab.com`. Adding a vendor
  * means adding a row here, which is the intent: a new vendor is a decision about who we fetch from.
  */
-const SOURCE_DOWNLOAD_HOSTS: Readonly<Record<ImportExternalAssetInput['source'], readonly string[]>> = {
+const SOURCE_DOWNLOAD_HOSTS: Readonly<
+  Record<ImportExternalAssetInput['source'], readonly string[]>
+> = {
   sketchfab: ['sketchfab.com'],
   'poly-pizza': ['poly.pizza'],
 };
@@ -162,7 +165,6 @@ function importFileName(name: string, url: URL, contentType: string | null): str
   );
 }
 
-
 export async function toolsRoutes(
   app: FastifyInstance,
   options: ToolsRoutesOptions,
@@ -179,6 +181,7 @@ export async function toolsRoutes(
       blenderConfigured: Boolean(env.BLENDER_RUNNER_URL),
       eonConfigured: Boolean(env.EON_API_URL && env.EON_API_KEY),
       claudeConfigured: Boolean(env.ANTHROPIC_API_KEY),
+      textAiConfigured: isTextAiConfigured(env),
       ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
     });
 

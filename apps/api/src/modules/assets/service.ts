@@ -111,27 +111,32 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
     return cid ? `/ipfs/${cid}` : null;
   }
 
-/**
- * Reads the measured extent out of `meshMetadata`, for display.
- *
- * The bounding box is stored on ingest, so the interface can report scale without downloading the
- * model first — and without inventing a plausible-looking number.
- */
-function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: number; z: number } | null {
-  const box = (meshMetadata as { boundingBox?: { min?: number[]; max?: number[] } } | null)
-    ?.boundingBox;
-  if (!box?.min || !box?.max || box.min.length < 3 || box.max.length < 3) return null;
+  /**
+   * Reads the measured extent out of `meshMetadata`, for display.
+   *
+   * The bounding box is stored on ingest, so the interface can report scale without downloading the
+   * model first — and without inventing a plausible-looking number.
+   */
+  function dimensionsFrom(
+    meshMetadata: Prisma.JsonValue | null,
+  ): { x: number; y: number; z: number } | null {
+    const box = (meshMetadata as { boundingBox?: { min?: number[]; max?: number[] } } | null)
+      ?.boundingBox;
+    if (!box?.min || !box?.max || box.min.length < 3 || box.max.length < 3) return null;
 
-  const [minX = 0, minY = 0, minZ = 0] = box.min;
-  const [maxX = 0, maxY = 0, maxZ = 0] = box.max;
-  return {
-    x: Number((maxX - minX).toFixed(3)),
-    y: Number((maxY - minY).toFixed(3)),
-    z: Number((maxZ - minZ).toFixed(3)),
-  };
-}
+    const [minX = 0, minY = 0, minZ = 0] = box.min;
+    const [maxX = 0, maxY = 0, maxZ = 0] = box.max;
+    return {
+      x: Number((maxX - minX).toFixed(3)),
+      y: Number((maxY - minY).toFixed(3)),
+      z: Number((maxZ - minZ).toFixed(3)),
+    };
+  }
 
-  function toVersionSummary(version: VersionRow, currentVersionId: string | null): AssetVersionSummary {
+  function toVersionSummary(
+    version: VersionRow,
+    currentVersionId: string | null,
+  ): AssetVersionSummary {
     return {
       id: version.id,
       versionNumber: version.versionNumber,
@@ -219,8 +224,9 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
       license: asset.licenses[0] ? toLicenseSummary(asset.licenses[0]) : null,
       xrModuleUrl: asset.manifestUrl,
       xrManifestRef: asset.xrManifestRef,
-      thumbnailUrl: null,
+      thumbnailUrl: current?.ipfsCid ? `/thumbnails/${current.ipfsCid}` : null,
       canDelete: capabilitiesOf.canDelete,
+      canEdit: capabilitiesOf.canEdit,
       canPublish: capabilitiesOf.canPublish,
       canRevoke: capabilitiesOf.canRevoke,
     };
@@ -295,7 +301,10 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
   }
 
   async function loadAsset(db: TenantDb, tenantId: string, assetId: string): Promise<AssetRow> {
-    const asset = await db.asset.findFirst({ where: { id: assetId, tenantId }, include: assetInclude });
+    const asset = await db.asset.findFirst({
+      where: { id: assetId, tenantId },
+      include: assetInclude,
+    });
     if (!asset) throw new NotFoundError('Asset');
     return asset;
   }
@@ -306,11 +315,9 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
     const mayDecide = principal.permissions.includes('review:decide');
     if (owns || mayDecide || principal.isSuperAdmin) return;
 
-    throw new ForbiddenError(
-      'You can only modify assets you created',
-      'NOT_ASSET_OWNER',
-      { assetId: asset.id },
-    );
+    throw new ForbiddenError('You can only modify assets you created', 'NOT_ASSET_OWNER', {
+      assetId: asset.id,
+    });
   }
 
   // ------------------------------------------------------------------------ create
@@ -342,17 +349,11 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
         if (match) {
           assignedCategory = match;
         } else {
-          try {
-            await db.tenantSettings.update({
-              where: { tenantId: principal.tenantId },
-              data: {
-                allowedCategories: { push: metadata.category },
-              },
-            });
-            assignedCategory = metadata.category;
-          } catch {
-            assignedCategory = defaults.allowedCategories[0] ?? metadata.category;
-          }
+          throw new ConflictError(
+            `Category "${metadata.category}" is not allowed for this workspace`,
+            'CATEGORY_NOT_ALLOWED',
+            { requestedCategory: metadata.category, allowedCategories: defaults.allowedCategories },
+          );
         }
       }
 
@@ -403,7 +404,9 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
           materials: meshMetadata?.materials ?? null,
           animations: meshMetadata?.animations ?? null,
           textures: meshMetadata?.textures ?? null,
-          meshMetadata: meshMetadata ? (meshMetadata as unknown as Prisma.InputJsonValue) : undefined,
+          meshMetadata: meshMetadata
+            ? (meshMetadata as unknown as Prisma.InputJsonValue)
+            : undefined,
         },
         select: { id: true },
       });
@@ -715,16 +718,11 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
         if (match) {
           updateCategory = match;
         } else {
-          try {
-            await db.tenantSettings.update({
-              where: { tenantId: principal.tenantId },
-              data: {
-                allowedCategories: { push: input.category },
-              },
-            });
-          } catch {
-            updateCategory = defaults.allowedCategories[0] ?? input.category;
-          }
+          throw new ConflictError(
+            `Category "${input.category}" is not allowed for this workspace`,
+            'CATEGORY_NOT_ALLOWED',
+            { requestedCategory: input.category, allowedCategories: defaults.allowedCategories },
+          );
         }
       }
 
@@ -748,9 +746,7 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
           data: {
             ...(input.sourceTool ? { sourceTool: input.sourceTool } : {}),
             ...(input.sourceLicense ? { sourceLicense: input.sourceLicense } : {}),
-            ...(input.sourceAttribution
-              ? { sourceAttribution: input.sourceAttribution }
-              : {}),
+            ...(input.sourceAttribution ? { sourceAttribution: input.sourceAttribution } : {}),
           },
         });
       }
@@ -763,7 +759,11 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
           actorId: principal.userId,
           actorLabel,
           beforeState: before,
-          afterState: { name: input.name ?? asset.name, category: input.category ?? asset.category, tags: input.tags ?? asset.tags },
+          afterState: {
+            name: input.name ?? asset.name,
+            category: input.category ?? asset.category,
+            tags: input.tags ?? asset.tags,
+          },
         },
         db,
       );
@@ -826,7 +826,9 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
           materials: meshMetadata?.materials ?? null,
           animations: meshMetadata?.animations ?? null,
           textures: meshMetadata?.textures ?? null,
-          meshMetadata: meshMetadata ? (meshMetadata as unknown as Prisma.InputJsonValue) : undefined,
+          meshMetadata: meshMetadata
+            ? (meshMetadata as unknown as Prisma.InputJsonValue)
+            : undefined,
         },
       });
 
@@ -1020,4 +1022,3 @@ function dimensionsFrom(meshMetadata: Prisma.JsonValue | null): { x: number; y: 
 
   return { create, list, detail, updateMetadata, addVersion, submit, remove };
 }
-

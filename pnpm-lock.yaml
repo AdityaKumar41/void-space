@@ -59,6 +59,9 @@ importers:
       '@void-space/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@void-space/studio-ai':
+        specifier: workspace:*
+        version: link:../../packages/studio-ai
       '@void-space/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -288,6 +291,9 @@ importers:
       '@void-space/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@void-space/studio-ai':
+        specifier: workspace:*
+        version: link:../../packages/studio-ai
       '@void-space/types':
         specifier: workspace:*
         version: link:../../packages/types

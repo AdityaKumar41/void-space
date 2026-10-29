@@ -1,3 +1,4 @@
+import { isTextAiConfigured, textProviders } from '@void-space/studio-ai/text';
 /**
  * The AI subsystem as this service uses it (VS2-SRS-1.0 §7.5, FR-18.1).
  *
@@ -26,6 +27,7 @@
  */
 import {
   ClaudeClient,
+  CompatibleMessagesTransport,
   DEFAULT_AI_POLICY,
   FetchTransport,
   InMemoryInvocationSink,
@@ -91,12 +93,14 @@ export interface StudioAiOptions {
 
 export function buildStudioAi(env: StudioApiEnv, options: StudioAiOptions = {}): StudioAi {
   const apiKey = env.ANTHROPIC_API_KEY;
-  const configured = typeof apiKey === 'string' && apiKey.length > 0;
+  const compatible = isTextAiConfigured(env);
+  const configured = compatible || (typeof apiKey === 'string' && apiKey.length > 0);
+  const model = compatible ? textProviders(env)[0]!.model : env.ANTHROPIC_MODEL;
   const transport = options.transport ?? new FetchTransport();
 
   const policy: AiPolicy = {
     ...DEFAULT_AI_POLICY,
-    timeoutMs: env.ANTHROPIC_TIMEOUT_MS,
+    timeoutMs: compatible ? env.AI_TEXT_TIMEOUT_MS : env.ANTHROPIC_TIMEOUT_MS,
     maxRequestsPerWindow: env.STUDIO_AI_RATE_LIMIT_PER_MINUTE,
     // Minutes, because the setting is expressed per minute. Held here rather than exposed as a second
     // environment variable: a window and a per-minute count can disagree, and then the configured
@@ -109,13 +113,13 @@ export function buildStudioAi(env: StudioApiEnv, options: StudioAiOptions = {}):
 
   return {
     configured,
-    model: env.ANTHROPIC_MODEL,
+    model,
 
     requireConfigured(feature: StudioAiFeature): void {
       if (configured) return;
       throw new UnavailableError(
         `The ${feature} feature needs an AI provider, and this Studio has none configured. ` +
-          'Set ANTHROPIC_API_KEY to enable it. Everything else in the editor works without one — ' +
+          'Set AI_TEXT_BASE_URL and AI_TEXT_MODEL (or ANTHROPIC_API_KEY) to enable it. Everything else in the editor works without one — ' +
           'the pre-publish check still runs on its own measurements, and publishing is unaffected.',
         'AI_NOT_CONFIGURED',
         { missing: 'ANTHROPIC_API_KEY', feature },
@@ -132,9 +136,10 @@ export function buildStudioAi(env: StudioApiEnv, options: StudioAiOptions = {}):
       }
 
       return new ClaudeClient({
-        apiKey: apiKey as string,
-        transport,
-        model: env.ANTHROPIC_MODEL,
+        apiKey: compatible ? 'compatible-server-side' : (apiKey as string),
+        transport: compatible ? new CompatibleMessagesTransport(env, transport) : transport,
+        providerName: compatible ? 'compatible' : 'anthropic',
+        model,
         policy,
         sink,
         limiter,

@@ -104,7 +104,7 @@ describe('the VOID·SPACE bridge', () => {
     // `//catalog/...` — a URL that 404s on some proxies and not others.
     expect(links.consoleUrl).toBe('https://void.example');
     expect(links.catalogUrl).toBe('https://void.example/catalog');
-    expect(links.assetUrl('asset-1')).toBe('https://void.example/catalog/asset-1');
+    expect(links.assetUrl('asset-1')).toBe('https://void.example/m/asset-1');
   });
 });
 

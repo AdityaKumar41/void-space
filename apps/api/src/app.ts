@@ -1,3 +1,4 @@
+import { isTextAiConfigured, textProviders } from '@void-space/studio-ai/text';
 /**
  * Fastify application factory (SRS §3.1 "API-first").
  *
@@ -41,6 +42,15 @@ import { googleRoutes } from './modules/auth/google-routes';
 import { siweRoutes } from './modules/auth/siwe-routes';
 import { tenantRoutes } from './modules/tenant/routes';
 import { userRoutes } from './modules/users/routes';
+import { learningRoutes } from './modules/learning/routes';
+import { campusRoutes } from './modules/campus/routes';
+import { spatialRoutes } from './modules/spatial/routes';
+import { iotRoutes } from './modules/iot/routes';
+import { simulatorRoutes } from './modules/simulator/routes';
+import { experienceRoutes } from './modules/experiences/routes';
+import { fieldGuideRoutes } from './modules/field-guides/routes';
+import { careerRoutes } from './modules/career/routes';
+import { ventureRoutes } from './modules/ventures/routes';
 
 const API_VERSION = '2.0.0';
 
@@ -149,6 +159,17 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
     await producer.close();
   });
 
+  app.get('/api/v1/ai/status', { preHandler: app.authenticate }, async () => ({
+    configured: isTextAiConfigured(env),
+    providers: textProviders(env).map(({ name, model, protocol }) => ({
+      provider: name,
+      model,
+      protocol,
+    })),
+    availability: 'not_probed',
+    localLessonGuide: true,
+  }));
+
   // --- health (used by nginx/compose and by the web app) --------------------
   const startedAt = Date.now();
   app.get('/api/v1/health', async (): Promise<HealthResponse> => {
@@ -165,7 +186,12 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
       // Optional integrations degrade gracefully (NFR-REL.1).
       claude: env.ANTHROPIC_API_KEY
         ? ({ status: 'up', detail: 'api key configured' } as const)
-        : ({ status: 'disabled', detail: 'offline enricher fallback in use' } as const),
+        : ({
+            status: 'disabled',
+            detail: isTextAiConfigured(env)
+              ? 'Anthropic is not selected; compatible text AI is configured (availability not probed)'
+              : 'offline enricher fallback in use',
+          } as const),
       contract: env.CONTRACT_ADDRESS
         ? ({ status: 'up', detail: env.CONTRACT_ADDRESS } as const)
         : ({ status: 'disabled', detail: 'run pnpm dev:up to deploy' } as const),
@@ -287,6 +313,15 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   // FR-6.5 — polling for any long-running operation, and FR-12.3 — API key management.
   await app.register(jobRoutes, { prefix: '/api/v1' });
   await app.register(developerRoutes, { prefix: '/api/v1' });
+  await app.register(learningRoutes, { prefix: '/api/v1', env });
+  await app.register(campusRoutes, { prefix: '/api/v1' });
+  await app.register(spatialRoutes, { prefix: '/api/v1' });
+  await app.register(iotRoutes, { prefix: '/api/v1' });
+  await app.register(simulatorRoutes, { prefix: '/api/v1' });
+  await app.register(experienceRoutes, { prefix: '/api/v1' });
+  await app.register(fieldGuideRoutes, { prefix: '/api/v1' });
+  await app.register(careerRoutes, { prefix: '/api/v1' });
+  await app.register(ventureRoutes, { prefix: '/api/v1' });
   // §6.1 Public Catalog — the only unauthenticated surface, and the only one reading the
   // cross-tenant projection rather than tenant-scoped tables.
   await app.register(publicRoutes, { prefix: '/api/v1' });
@@ -354,9 +389,11 @@ export async function preflight(env: ApiEnv): Promise<string[]> {
   warnings.push(`runtime role ${roleInfo.currentUser} (RLS enforced)`);
 
   if (!env.CONTRACT_ADDRESS) {
-    warnings.push('CONTRACT_ADDRESS is unset — run `pnpm dev:up` to deploy the licence contract');
+    warnings.push(
+      'CONTRACT_ADDRESS is unset — configure a deployed Fuji licence contract to enable on-chain publishing',
+    );
   }
-  if (!env.ANTHROPIC_API_KEY) {
+  if (!env.ANTHROPIC_API_KEY && !isTextAiConfigured(env)) {
     warnings.push('ANTHROPIC_API_KEY unset — AI enrichment will use the offline enricher');
   }
   return warnings;

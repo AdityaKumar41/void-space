@@ -72,6 +72,17 @@ describe('the Studio API surface', () => {
     expect(body.publish).toEqual({ enabled: true, requirement: null, pollIntervalMs: 30_000 });
     // Nothing has been published into the simulator yet.
     expect(body.catalog.publishedAssets).toBe(0);
+    expect(body.catalog.allowedCategories).toEqual([
+      'Machinery',
+      'Safety Equipment',
+      'Environment',
+      'Character',
+      'Prop',
+      'Tooling',
+      'Vehicle',
+      'Architecture',
+      'Other',
+    ]);
     expect(body.provenance).toBeNull();
   });
 
@@ -149,7 +160,7 @@ describe('the Studio API surface', () => {
     expect(catalog.total).toBe(1);
     expect(catalog.items[0].name).toBe('Cargo Crate');
     // The URL is the Studio's own addition, so a catalogue row is followable rather than a dead end.
-    expect(catalog.items[0].url).toBe(`https://void.example/catalog/${uploaded.id}`);
+    expect(catalog.items[0].url).toBe(`https://void.example/m/${uploaded.id}`);
 
     const status = (
       await app.inject({ method: 'GET', url: '/studio/api/v1/voidspace/status' })
@@ -160,7 +171,7 @@ describe('the Studio API surface', () => {
     // credential at all.
     expect(status.provenance.name).toBe('Cargo Crate');
     expect(status.provenance.tokenId).toBeTruthy();
-    expect(status.provenance.url).toBe(`https://void.example/catalog/${uploaded.id}`);
+    expect(status.provenance.url).toBe(`https://void.example/m/${uploaded.id}`);
   });
 
   it('answers /auth/session with unauthenticated state when no token is provided', async () => {
@@ -168,5 +179,24 @@ describe('the Studio API surface', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ authenticated: false });
   });
-});
 
+  it('does not hand the tenant publish credential to the browser', async () => {
+    const response = await app.inject({ method: 'GET', url: '/studio/api/v1/auth/token' });
+    expect(response.statusCode).toBe(404);
+    expect(response.json().error).toMatch(/not handed to the browser/);
+  });
+
+  it('refuses to proxy a model URL that is not VOID·SPACE', async () => {
+    const blocked = await app.inject({
+      method: 'GET',
+      url: '/studio/api/v1/voidspace/model-proxy?url=https://169.254.169.254/latest/meta-data',
+    });
+    expect(blocked.statusCode).toBe(400);
+
+    const foreign = await app.inject({
+      method: 'GET',
+      url: '/studio/api/v1/voidspace/model-proxy?url=https://evil.example/mesh.glb',
+    });
+    expect(foreign.statusCode).toBe(400);
+  });
+});

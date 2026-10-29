@@ -41,7 +41,6 @@
     "assets:thumbnails": "node scripts/render-thumbnails.mjs",
     "ui:classes": "node scripts/check-classes-resolve.mjs",
     "db:sync-catalog": "pnpm --filter @void-space/db sync-catalog",
-
     "studio:dev:up": "docker compose -f docker-compose.studio.yml up -d",
     "studio:dev:down": "docker compose -f docker-compose.studio.yml down",
     "studio:dev:logs": "docker compose -f docker-compose.studio.yml logs -f --tail=50",
@@ -63,7 +62,10 @@
     "studio:fork:setup": "pnpm --dir apps/studio-web setup-sculptcore",
     "studio:fork:build": "pnpm --dir apps/studio-web build",
     "studio:fork:dev": "pnpm --dir apps/studio-web serv",
-    "studio:fork:paths": "pnpm --dir apps/studio-web gen:paths"
+    "studio:fork:paths": "pnpm --dir apps/studio-web gen:paths",
+    "ai:check": "pnpm --filter @void-space/worker exec tsx ../../scripts/check-text-ai.mts",
+    "ai:check:learning": "pnpm --filter @void-space/api exec tsx ../../scripts/check-learning-ai.mts",
+    "experience:demo": "pnpm --filter @void-space/api exec tsx ../../scripts/create-spatial-demo.mts"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

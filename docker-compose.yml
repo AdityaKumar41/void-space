@@ -15,10 +15,10 @@ name: void-space
 x-restart: &default-restart
   restart: unless-stopped
 
-x-dns-host-gateway: &host-gateway
-  # Lets the containerized edge reach api/web running natively via `pnpm dev`.
+x-dns-host-gateway:
+  &host-gateway # Lets the containerized edge reach api/web running natively via `pnpm dev`.
   extra_hosts:
-    - "host.docker.internal:host-gateway"
+    - 'host.docker.internal:host-gateway'
 
 services:
   # ---------------------------------------------------------------- data tier
@@ -32,27 +32,29 @@ services:
   # asking for the application gets you the database it runs on. Selecting `infra` alone still starts
   # only the data tier, which is what the local-development workflow wants.
   #
-  # The default platform chain is Avalanche Fuji. Anvil remains available only through the opt-in
-  # `local-chain` profile for contract tests.
+  # Anvil is the zero-setup local chain. Configure CHAIN_RPC_URL, CHAIN_ID=43113 and the Fuji
+  # contract/signer values in .env when running against Avalanche Fuji.
   postgres:
     <<: *default-restart
     image: postgres:16-alpine
-    profiles: ["local-chain"]
+    # `scripts/dev-up.sh` starts the `infra` profile and then waits for this
+    # service before applying migrations. Keeping postgres out of that profile
+    # made every clean local bring-up wait for a container that was never made.
+    profiles: ['infra', 'local-chain']
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-voidspace}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-voidspace_pw}
       POSTGRES_DB: ${POSTGRES_DB:-voidspace}
       # Deterministic sorting/collation for reproducible indexes and tests.
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
     ports:
-      - "${POSTGRES_PORT:-5432}:5432" # dev only (§9.2)
+      - '${POSTGRES_PORT:-5432}:5432' # dev only (§9.2)
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Bootstrap roles (void_app / void_platform) run once on first init.
       - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test:
-        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-voidspace} -d ${POSTGRES_DB:-voidspace}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-voidspace} -d ${POSTGRES_DB:-voidspace}']
       interval: 5s
       timeout: 5s
       retries: 20
@@ -61,14 +63,14 @@ services:
   redis:
     <<: *default-restart
     image: redis:7-alpine
-    profiles: ["infra", "app"]
-    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    profiles: ['infra', 'app']
+    command: ['redis-server', '--appendonly', 'yes', '--save', '60', '1']
     ports:
-      - "${REDIS_PORT:-6379}:6379" # dev only (§9.2)
+      - '${REDIS_PORT:-6379}:6379' # dev only (§9.2)
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
       timeout: 3s
       retries: 20
@@ -76,19 +78,19 @@ services:
   ipfs:
     <<: *default-restart
     image: ipfs/kubo:latest
-    profiles: ["infra", "app"]
-    entrypoint: ["/bin/sh", "/scripts/ipfs-entrypoint.sh"]
+    profiles: ['infra', 'app']
+    entrypoint: ['/bin/sh', '/scripts/ipfs-entrypoint.sh']
     environment:
       IPFS_PATH: /data/ipfs
       IPFS_PROFILE: server
     ports:
-      - "${IPFS_API_PORT:-5001}:5001" # dev only: worker talks to this directly
-      - "${IPFS_GATEWAY_PORT:-8080}:8080" # dev only: nginx proxies + caches this
+      - '${IPFS_API_PORT:-5001}:5001' # dev only: worker talks to this directly
+      - '${IPFS_GATEWAY_PORT:-8080}:8080' # dev only: nginx proxies + caches this
     volumes:
       - ipfsdata:/data/ipfs
       - ./docker/scripts:/scripts:ro
     healthcheck:
-      test: ["CMD-SHELL", "ipfs id >/dev/null 2>&1 || exit 1"]
+      test: ['CMD-SHELL', 'ipfs id >/dev/null 2>&1 || exit 1']
       interval: 10s
       timeout: 5s
       retries: 20
@@ -98,19 +100,18 @@ services:
   anvil:
     <<: *default-restart
     image: ghcr.io/foundry-rs/foundry:stable
-    profiles: ["infra", "app"]
-    entrypoint: ["anvil"]
-    command:
-      ["--host", "0.0.0.0", "--port", "8545", "--chain-id", "${ANVIL_CHAIN_ID:-31337}"]
+    profiles: ['infra', 'app']
+    entrypoint: ['anvil']
+    command: ['--host', '0.0.0.0', '--port', '8545', '--chain-id', '${ANVIL_CHAIN_ID:-31337}']
     ports:
-      - "${ANVIL_PORT:-8545}:8545" # dev only: api/worker talk to it natively
+      - '${ANVIL_PORT:-8545}:8545' # dev only: api/worker talk to it natively
     # §3.9.1 — the chain is ephemeral by default (reset with the container).
     # To persist state across restarts, uncomment the volume and the extra args:
     #   volumes: [anvilstate:/data]
     #   command: [..., "--state-interval", "5", "--dump-state", "/data/state.json", "--load-state", "/data/state.json"]
     healthcheck:
       # JSON-RPC eth_blockNumber is the documented readiness probe (§9.3).
-      test: ["CMD-SHELL", "cast block-number --rpc-url http://localhost:8545 >/dev/null 2>&1"]
+      test: ['CMD-SHELL', 'cast block-number --rpc-url http://localhost:8545 >/dev/null 2>&1']
       interval: 5s
       timeout: 5s
       retries: 20
@@ -120,13 +121,13 @@ services:
   nginx:
     <<: [*default-restart, *host-gateway]
     image: nginx:alpine
-    profiles: ["edge"]
+    profiles: ['edge']
     depends_on:
       ipfs:
         condition: service_healthy
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     environment:
       EDGE_WEB_UPSTREAM: ${EDGE_WEB_UPSTREAM:-host.docker.internal:3000}
       EDGE_API_UPSTREAM: ${EDGE_API_UPSTREAM:-host.docker.internal:4000}
@@ -138,7 +139,7 @@ services:
       - ./docker/certs:/etc/nginx/certs:ro
       - ipfscache:/var/cache/nginx/ipfs
     healthcheck:
-      test: ["CMD-SHELL", "nginx -t && wget -qO- http://127.0.0.1/healthz || exit 1"]
+      test: ['CMD-SHELL', 'nginx -t && wget -qO- http://127.0.0.1/healthz || exit 1']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -151,22 +152,32 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    profiles: ["app"]
+    profiles: ['app']
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_TEXT_BASE_URL: ${AI_TEXT_BASE_URL:-}
+      AI_TEXT_MODEL: ${AI_TEXT_MODEL:-}
+      AI_TEXT_FALLBACK_MODEL: ${AI_TEXT_FALLBACK_MODEL:-}
+      AI_TEXT_PROTOCOL: ${AI_TEXT_PROTOCOL:-}
+      AI_TEXT_API_KEY: ${AI_TEXT_API_KEY:-}
+      AI_TEXT_TIMEOUT_MS: ${AI_TEXT_TIMEOUT_MS:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-}
       NODE_ENV: production
-      PORT: "4000"
+      PORT: '4000'
       DATABASE_URL: postgresql://void_app:void_app_pw@postgres:5432/voidspace?schema=public
       PLATFORM_DATABASE_URL: postgresql://void_platform:void_platform_pw@postgres:5432/voidspace?schema=public
       REDIS_URL: redis://redis:6379
       IPFS_API_URL: http://ipfs:5001
       IPFS_GATEWAY_URL: http://ipfs:8080
-      CHAIN_RPC_URL: ${CHAIN_RPC_URL}
-      CHAIN_ID: ${CHAIN_ID:-43113}
+      CHAIN_RPC_URL: ${CHAIN_RPC_URL:-http://anvil:8545}
+      CHAIN_ID: ${CHAIN_ID:-31337}
       CHAIN_EXPLORER_URL: ${CHAIN_EXPLORER_URL:-https://testnet.snowtrace.io}
       CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}
       CONTRACT_STATE_PATH: /shared/contracts.json
@@ -186,7 +197,7 @@ services:
     build:
       context: .
       dockerfile: docker/worker.Dockerfile
-    profiles: ["app"]
+    profiles: ['app']
     depends_on:
       postgres:
         condition: service_healthy
@@ -195,13 +206,23 @@ services:
       ipfs:
         condition: service_healthy
     environment:
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_TEXT_BASE_URL: ${AI_TEXT_BASE_URL:-}
+      AI_TEXT_MODEL: ${AI_TEXT_MODEL:-}
+      AI_TEXT_FALLBACK_MODEL: ${AI_TEXT_FALLBACK_MODEL:-}
+      AI_TEXT_PROTOCOL: ${AI_TEXT_PROTOCOL:-}
+      AI_TEXT_API_KEY: ${AI_TEXT_API_KEY:-}
+      AI_TEXT_TIMEOUT_MS: ${AI_TEXT_TIMEOUT_MS:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-}
       NODE_ENV: production
       DATABASE_URL: postgresql://void_app:void_app_pw@postgres:5432/voidspace?schema=public
       REDIS_URL: redis://redis:6379
       IPFS_API_URL: http://ipfs:5001
       IPFS_GATEWAY_URL: http://ipfs:8080
-      CHAIN_RPC_URL: ${CHAIN_RPC_URL}
-      CHAIN_ID: ${CHAIN_ID:-43113}
+      CHAIN_RPC_URL: ${CHAIN_RPC_URL:-http://anvil:8545}
+      CHAIN_ID: ${CHAIN_ID:-31337}
       CHAIN_EXPLORER_URL: ${CHAIN_EXPLORER_URL:-https://testnet.snowtrace.io}
       CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}
       PLATFORM_SIGNER_SEED: ${PLATFORM_SIGNER_SEED}
@@ -222,7 +243,7 @@ services:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
-    profiles: ["app"]
+    profiles: ['app']
     depends_on:
       - api
     environment:
@@ -247,10 +268,10 @@ services:
     build:
       context: .
       dockerfile: docker/blender.Dockerfile
-    profiles: ["blender"]
+    profiles: ['blender']
     environment:
       BLENDER_JOB_DIR: /var/lib/void-space/blender-jobs
-      BLENDER_PORT: "8090"
+      BLENDER_PORT: '8090'
       # A large scene can legitimately take minutes; this is the ceiling, not the expectation.
       BLENDER_TIMEOUT_SECONDS: ${BLENDER_TIMEOUT_SECONDS:-900}
     volumes:
@@ -266,7 +287,7 @@ services:
       # with a 400. The simulation path hid it, because a simulation never calls the runner.
       - blenderjobs:/var/lib/void-space/blender-jobs
     expose:
-      - "8090"
+      - '8090'
     restart: unless-stopped
 
 volumes:

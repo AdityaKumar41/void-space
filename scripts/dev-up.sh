@@ -37,7 +37,9 @@ fi
 
 # --- 2. containers ----------------------------------------------------------
 info "starting VOID·SPACE infra + edge (postgres, redis, ipfs, nginx)"
-docker compose --profile infra --profile edge up -d
+EDGE_WEB_UPSTREAM=host.docker.internal:3000 \
+EDGE_API_UPSTREAM=host.docker.internal:4000 \
+  docker compose --profile infra --profile edge up -d
 
 info "starting VOID·STUDIO infra + edge (studio-postgres, studio-redis, studio-ipfs, studio-nginx)"
 docker compose -f docker-compose.studio.yml up -d

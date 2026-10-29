@@ -4,9 +4,7 @@ import { booleanishSchema } from './common';
 /** FR-6.1: Sketchfab search filtered by license and polygon count. */
 export const sketchfabSearchSchema = z.object({
   q: z.string().max(120).default(''),
-  license: z
-    .enum(['cc0', 'by', 'by-sa', 'by-nd', 'by-nc', 'any'])
-    .default('cc0'),
+  license: z.enum(['cc0', 'by', 'by-sa', 'by-nd', 'by-nc', 'any']).default('cc0'),
   maxPolycount: z.coerce.number().int().positive().max(5_000_000).optional(),
   minPolycount: z.coerce.number().int().nonnegative().optional(),
   downloadable: booleanishSchema.default(true),
@@ -80,6 +78,7 @@ export interface IntegrationStatus {
   readonly blender: boolean;
   readonly eon: boolean;
   readonly claude: boolean;
+  readonly textAi?: boolean;
   /** true when the adapter is running in deterministic offline mode (NFR-REL.1). */
   readonly offlineFallbacks: readonly string[];
 }

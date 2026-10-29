@@ -266,6 +266,7 @@ export async function authRoutes(
       perms: [...principal.permissions],
       amr: principal.authMethod === 'apikey' ? 'apikey' : 'password',
       typ: 'access',
+      name: principal.fullName,
     });
 
     const studioUrl =

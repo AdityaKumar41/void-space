@@ -46,6 +46,14 @@ export const PERMISSIONS = [
   'catalog:view',
   /** View tenant audit log. */
   'audit:view',
+  /** Author, publish and take learning assessments built from approved assets. */
+  'learning:manage',
+  /** Create, control and moderate tenant spatial rooms. */
+  'spatial:manage',
+  /** Join live tenant spatial rooms and report presence. */
+  'spatial:join',
+  /** Register equipment, digital twins and review tenant telemetry. */
+  'iot:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -68,6 +76,10 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'api:call',
     'catalog:view',
     'audit:view',
+    'learning:manage',
+    'spatial:manage',
+    'spatial:join',
+    'iot:manage',
   ],
   TenantAdmin: [
     'tenant:manage-users',
@@ -81,12 +93,35 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'api:call',
     'catalog:view',
     'audit:view',
+    'learning:manage',
+    'spatial:manage',
+    'spatial:join',
+    'iot:manage',
   ],
-  Creator: ['asset:upload-own', 'asset:delete-own-unpublished', 'api:call', 'catalog:view'],
-  Assessor: ['review:view-queue', 'review:decide', 'asset:publish', 'api:call', 'catalog:view'],
-  Developer: ['apikey:manage', 'api:call', 'catalog:view'],
+  Creator: [
+    'asset:upload-own',
+    'asset:delete-own-unpublished',
+    'api:call',
+    'catalog:view',
+    'learning:manage',
+    'spatial:manage',
+    'spatial:join',
+    'iot:manage',
+  ],
+  Assessor: [
+    'review:view-queue',
+    'review:decide',
+    'asset:publish',
+    'api:call',
+    'catalog:view',
+    'learning:manage',
+    'spatial:manage',
+    'spatial:join',
+    'iot:manage',
+  ],
+  Developer: ['apikey:manage', 'api:call', 'catalog:view', 'spatial:join'],
   // Viewer's REST API access is read-only: it may call GET endpoints only.
-  Viewer: ['api:call', 'catalog:view'],
+  Viewer: ['api:call', 'catalog:view', 'spatial:join'],
 };
 
 /** Roles whose API access is restricted to idempotent reads (SRS §3.6). */
@@ -97,10 +132,7 @@ export function roleHasPermission(role: Role, permission: Permission): boolean {
 }
 
 /** True if any of the caller's roles in the active tenant grant the permission. */
-export function anyRoleHasPermission(
-  roles: readonly Role[],
-  permission: Permission,
-): boolean {
+export function anyRoleHasPermission(roles: readonly Role[], permission: Permission): boolean {
   return roles.some((role) => roleHasPermission(role, permission));
 }
 
@@ -141,6 +173,10 @@ export const ROLE_MATRIX_LABELS: Readonly<Record<Permission, string>> = {
   'api:call': 'Call REST API (scoped)',
   'catalog:view': 'View published catalog',
   'audit:view': 'View tenant audit log',
+  'learning:manage': 'Create and manage lessons and assessments',
+  'spatial:manage': 'Create and manage shared spatial rooms',
+  'spatial:join': 'Join shared spatial rooms',
+  'iot:manage': 'Manage IoT devices, twins and telemetry',
 };
 
 export function buildRoleMatrix(): RoleMatrixRow[] {

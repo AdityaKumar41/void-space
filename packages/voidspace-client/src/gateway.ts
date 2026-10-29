@@ -60,6 +60,14 @@ export interface VoidSpaceGateway {
   submitAsset(assetId: string): Promise<AssetDetail>;
   listAssets(query?: Partial<AssetListQuery>): Promise<Paginated<AssetSummary>>;
   browsePublicCatalog(params?: BrowseParams): Promise<PublicCatalogPage>;
+  /**
+   * The workspace's allowed upload categories (FR-14.3).
+   *
+   * The publish form has to offer these and nothing else: VOID·SPACE rejects a
+   * category the tenant did not allow, and a guessed list ("Sci-Fi", "Characters")
+   * fails only after the Creator has already exported the scene.
+   */
+  workspaceCategories(): Promise<readonly string[]>;
   waitForAssetStatus(assetId: string, options?: WaitForStatusOptions): Promise<AssetDetail>;
 }
 

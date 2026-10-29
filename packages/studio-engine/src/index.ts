@@ -10,3 +10,4 @@
 export * from './copilot';
 export * from './audit';
 export * from './publish';
+export * from './generative';

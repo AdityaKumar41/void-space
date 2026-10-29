@@ -10,7 +10,7 @@
  * The confirm state is a word, not a colour: DESIGN.md is explicit that state must never be
  * signalled by colour alone, and a button that silently turns green is exactly that.
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useToast } from './toast';
 
@@ -27,6 +27,12 @@ export function CopyButton({
   const [copied, setCopied] = useState(false);
   const toast = useToast();
 
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 2_000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
   const copy = useCallback(async () => {
     if (!value) return;
 
@@ -34,8 +40,8 @@ export function CopyButton({
       await navigator.clipboard.writeText(value);
       setCopied(true);
       toast.success(`${label} copied`, value.length > 42 ? `${value.slice(0, 42)}…` : value);
-      setTimeout(() => setCopied(false), 2_000);
     } catch {
+      setCopied(false);
       // Clipboard access needs a secure context and permission; the dashboard is served over https
       // but a browser policy can still refuse, so say so rather than pretending it worked.
       toast.failure(
@@ -48,10 +54,17 @@ export function CopyButton({
   return (
     <button
       type="button"
-      className={compact ? 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 h-8 px-3 text-[13px] text-ink-dim hover:bg-veil-6 hover:text-ink' : 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 border-hairline-strong bg-transparent text-ink-dim hover:bg-veil-6 hover:text-ink'}
+      data-copied={copied ? 'true' : 'false'}
+      className={
+        compact
+          ? 'inline-flex h-8 shrink-0 items-center justify-center rounded-control border border-hairline bg-surface px-2.5 text-[12px] font-semibold text-ink'
+          : 'inline-flex h-8 shrink-0 items-center justify-center rounded-control border border-hairline-strong bg-transparent px-3 text-[13px] font-semibold text-ink'
+      }
+      style={copied ? { borderColor: 'var(--vs-published)', color: 'var(--vs-published)' } : undefined}
       onClick={() => void copy()}
       disabled={!value}
-      aria-label={`Copy ${label.toLowerCase()}`}
+      aria-live="polite"
+      aria-label={copied ? `${label} copied` : `Copy ${label.toLowerCase()}`}
       title={value ? `Copy ${label.toLowerCase()}` : 'Nothing to copy yet'}
     >
       {copied ? 'Copied' : 'Copy'}

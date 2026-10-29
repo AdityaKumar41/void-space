@@ -15,6 +15,7 @@
  *   - A licence exists only once the asset is `published`, matching the real invariant that an
  *     asset cannot be marked published without a token (SDD §2.6).
  */
+import { DEFAULT_ASSET_CATEGORIES } from '@void-space/types';
 import type {
   AssetDetail,
   AssetListQuery,
@@ -141,10 +142,11 @@ export class MockVoidSpaceClient implements VoidSpaceGateway {
       license: input.license,
       xrModuleUrl: null,
       xrManifestRef: null,
-      thumbnailUrl: null,
+      thumbnailUrl: current?.ipfsCid ? `/thumbnails/${current.ipfsCid}` : null,
       // Mirrors the real capability flags: deletion is refused once a licence exists
       // (VS-SRS-2.0 FR-3.6), and only a non-published asset can be published.
       canDelete: !published,
+      canEdit: input.status === 'draft' || input.status === 'revision' || input.status === 'rejected',
       canPublish: !published,
       canRevoke: published,
       versions,
@@ -264,6 +266,10 @@ export class MockVoidSpaceClient implements VoidSpaceGateway {
     const limit = params.limit ?? 24;
     const offset = params.offset ?? 0;
     return { total: items.length, limit, offset, items: items.slice(offset, offset + limit) };
+  }
+
+  async workspaceCategories(): Promise<readonly string[]> {
+    return DEFAULT_ASSET_CATEGORIES;
   }
 
   async waitForAssetStatus(
@@ -448,6 +454,7 @@ function toSummary(detail: AssetDetail): AssetSummary {
     xrManifestRef: detail.xrManifestRef,
     thumbnailUrl: detail.thumbnailUrl,
     canDelete: detail.canDelete,
+    canEdit: detail.canEdit,
     canPublish: detail.canPublish,
     canRevoke: detail.canRevoke,
   };

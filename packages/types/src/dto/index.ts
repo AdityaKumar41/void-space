@@ -9,3 +9,5 @@ export * from './audit';
 export * from './notifications';
 export * from './developer';
 export * from './jobs';
+export * from './learning';
+export * from './experience';

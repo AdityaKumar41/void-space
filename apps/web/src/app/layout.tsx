@@ -20,12 +20,12 @@ import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'VOID·SPACE — 3D asset marketplace',
+  title: 'VOID·SPACE — Spatial learning workspace',
   description:
-    'Ingest, classify, review, store on IPFS and licence 3D assets on-chain. Every action accounted for in an append-only ledger.',
+    'Explore reviewed 3D content, practise interactive procedures, learn with your team and retain evidence of completed work.',
   openGraph: {
-    title: 'VOID·SPACE — 3D asset marketplace',
-    description: 'A multi-tenant 3D asset lifecycle platform with on-chain licensing.',
+    title: 'VOID·SPACE — Spatial learning workspace',
+    description: 'Reviewed 3D content, guided learning, interactive practice and shared spaces.',
     type: 'website',
   },
 };

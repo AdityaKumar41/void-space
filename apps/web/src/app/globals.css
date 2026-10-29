@@ -163,7 +163,7 @@
    * keeps only one of the two, and which one it keeps depends on what else is in the string. A token
    * read by a plain CSS rule cannot be lost that way.
    */
-  --vs-select-chevron: url("data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2212%22%20height=%2212%22%20viewBox=%220%200%2024%2024%22%20fill=%22none%22%20stroke=%22%23737373%22%20stroke-width=%222%22%3E%3Cpath%20d=%22m6%209%206%206%206-6%22/%3E%3C/svg%3E");
+  --vs-select-chevron: url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2212%22%20height=%2212%22%20viewBox=%220%200%2024%2024%22%20fill=%22none%22%20stroke=%22%23737373%22%20stroke-width=%222%22%3E%3Cpath%20d=%22m6%209%206%206%206-6%22/%3E%3C/svg%3E');
 
   /* --- type ----------------------------------------------------------------------------- */
   --vs-font-sans:
@@ -207,16 +207,9 @@ body {
   color: var(--vs-accent-ink);
 }
 
-
-
-
-
-
-
 /* --- Motion --------------------------------------------------------------------------- */
 
 /* Elements never appear statically; each view lifts in once. Transform + opacity only. */
-
 
 /* Scrollbars in the same register as the substrate. */
 ::-webkit-scrollbar {
@@ -931,8 +924,29 @@ body {
 }
 
 /* The actions sit at the end of the row and stay reachable without scrolling past every mode. */
+.studio-top {
+  align-items: flex-start;
+  min-width: 0;
+}
+
 .studio-top .studio-spacer {
   margin-left: auto;
+}
+
+/* Groups stay inside the stage. A single unwrapped row clipped Left, Right, Top,
+   Bottom and Shadow against the viewport edge, so those controls looked dead. */
+.studio-group {
+  flex-wrap: wrap;
+  max-width: 100%;
+  align-items: center;
+}
+
+.studio-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  line-height: 1.2;
 }
 
 /* ============================================================================================
@@ -991,10 +1005,11 @@ body {
   --fc-a-72: rgba(255, 255, 255, 0.72);
 
   /* --- Semantic. The heat button is the one place depth is allowed to be loud. ------------- */
-  --fc-shadow-heat: inset 0 -6px 12px 0 rgba(255, 0, 0, 0.2),
-    0 0.6px 0.8px 0 rgba(255, 139, 0, 0.22), 0 1.3px 1.7px 0 rgba(255, 139, 0, 0.19),
-    0 2.5px 3.1px 0 rgba(255, 139, 0, 0.16), 0 4.4px 5.5px 0 rgba(255, 139, 0, 0.13),
-    0 8.3px 10.3px 0 rgba(255, 139, 0, 0.1), 0 2px 4px 0 rgba(250, 93, 25, 0.3);
+  --fc-shadow-heat:
+    inset 0 -6px 12px 0 rgba(255, 0, 0, 0.2), 0 0.6px 0.8px 0 rgba(255, 139, 0, 0.22),
+    0 1.3px 1.7px 0 rgba(255, 139, 0, 0.19), 0 2.5px 3.1px 0 rgba(255, 139, 0, 0.16),
+    0 4.4px 5.5px 0 rgba(255, 139, 0, 0.13), 0 8.3px 10.3px 0 rgba(255, 139, 0, 0.1),
+    0 2px 4px 0 rgba(250, 93, 25, 0.3);
 
   /* --- Retuning the shared ramp onto the Firecrawl scale. Same variable names, new values: the
          screens above this comment keep working and inherit the language. ------------------- */
@@ -1109,15 +1124,6 @@ input[type='checkbox'] {
 }
 
 /* --- the account cards on the sign-in screen -------------------------------------------------- */
-
-
-
-
-
-
-
-
-
 
 /* ============================================================================================
  * COMPONENT LAYER — the last few things a utility genuinely cannot express.
@@ -1264,3 +1270,441 @@ input[type='checkbox'] {
   }
 }
 
+/* Learning workspace: warm paper for reading, charcoal navigation, dark 3D stages. */
+.workspace-theme {
+  --fc-bg: #f5f6f8;
+  --fc-bg-lighter: #eef0f3;
+  --fc-surface: #ffffff;
+  --fc-surface-raised: #fafbfc;
+  --fc-fg: #20252d;
+  --fc-heat: #b94719;
+  --fc-heat-warm: #963612;
+  --fc-heat-dim: #84300f;
+  --fc-heat-4: #fcf5f1;
+  --fc-heat-8: #fbede6;
+  --fc-heat-12: #f8e4da;
+  --fc-heat-16: #f5ddcf;
+  --fc-heat-20: #f0cebc;
+  --fc-heat-40: #dfaa8e;
+  --fc-a-4: rgba(27, 35, 46, 0.025);
+  --fc-a-6: rgba(27, 35, 46, 0.04);
+  --fc-a-8: rgba(27, 35, 46, 0.06);
+  --fc-a-12: rgba(27, 35, 46, 0.09);
+  --fc-a-16: rgba(27, 35, 46, 0.12);
+  --fc-a-24: rgba(27, 35, 46, 0.18);
+  --vs-bg: var(--fc-bg);
+  --vs-surface: var(--fc-surface);
+  --vs-surface-2: var(--fc-surface-raised);
+  --vs-surface-3: #e8ebef;
+  --vs-fg: var(--fc-fg);
+  --vs-fg-dim: #626b78;
+  --vs-fg-faint: #6c7581;
+  --vs-line: #e0e4e9;
+  --vs-line-strong: #ccd2da;
+  --vs-approved: #24774c;
+  --vs-published: #24774c;
+  --vs-pending: #8e610d;
+  --vs-review: #805130;
+  --vs-rejected: #bf3737;
+  --vs-draft: #6c7581;
+  --vs-shadow: 0 2px 6px rgba(33, 43, 54, 0.025), 0 8px 28px rgba(33, 43, 54, 0.035);
+  --vs-shadow-lg: 0 14px 48px rgba(33, 43, 54, 0.13);
+  --fc-shadow-heat: 0 2px 3px rgba(119, 53, 26, 0.09);
+  color-scheme: light;
+  min-height: 100dvh;
+  color: var(--fc-fg);
+  background: var(--fc-bg);
+  font-variant-numeric: tabular-nums;
+}
+.workspace-body {
+  margin-left: 232px;
+  min-width: 0;
+}
+.workspace-sidebar {
+  --fc-bg: #181e27;
+  --fc-bg-lighter: #202733;
+  --fc-surface: #222a36;
+  --fc-surface-raised: #2c3543;
+  --fc-fg: #f7f8fa;
+  --vs-fg-dim: #bbc3cf;
+  --vs-fg-faint: #8e9bab;
+  --vs-line: #303946;
+  --vs-line-strong: #445064;
+  --fc-heat: #f39b70;
+  --fc-a-6: rgba(255, 255, 255, 0.06);
+  --fc-a-12: rgba(255, 255, 255, 0.12);
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 60;
+  display: flex;
+  width: 232px;
+  flex-direction: column;
+  background: #181e27;
+  color: #f7f8fa;
+  color-scheme: dark;
+}
+.workspace-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 13px;
+  border-radius: 8px;
+  color: #aeb9c9;
+  font-size: 12.5px;
+  transition:
+    background 160ms,
+    color 160ms;
+}
+.workspace-nav-link:hover {
+  background: #232d3b;
+  color: white;
+}
+.workspace-nav-link.is-active {
+  background: #303744;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 2px 0 #ed9b73;
+}
+.workspace-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  height: 76px;
+  align-items: center;
+  gap: 24px;
+  padding: 0 clamp(20px, 3vw, 44px);
+  border-bottom: 1px solid var(--vs-line);
+  background: var(--fc-surface);
+}
+.workspace-main {
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: clamp(24px, 3vw, 44px);
+  min-height: calc(100dvh - 135px);
+}
+.workspace-main h1 {
+  letter-spacing: -0.045em;
+  font-size: clamp(26px, 2.6vw, 38px);
+  line-height: 1.18;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.workspace-main h2 {
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.workspace-main p {
+  text-wrap: pretty;
+}
+.workspace-main .eyebrow {
+  font-family: var(--vs-font-sans);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--vs-fg-faint);
+}
+.workspace-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px clamp(20px, 3vw, 44px);
+  border-top: 1px solid var(--vs-line);
+  font-size: 10px;
+  color: var(--vs-fg-faint);
+}
+.workspace-menu-button,
+.workspace-mobile-close,
+.workspace-nav-overlay {
+  display: none;
+}
+.workspace-theme button,
+.workspace-theme a {
+  -webkit-tap-highlight-color: transparent;
+}
+.workspace-theme input:not([type='checkbox']):not([type='radio']):not([type='range']),
+.workspace-theme textarea,
+.workspace-theme select {
+  min-height: 42px;
+}
+.workspace-theme input[type='checkbox'],
+.workspace-theme input[type='radio'] {
+  accent-color: var(--fc-heat);
+}
+.workspace-theme .studio {
+  --fc-bg: #101317;
+  --fc-bg-lighter: #1b2027;
+  --fc-surface: #20252c;
+  --fc-surface-raised: #2b323b;
+  --fc-fg: #f5f6f8;
+  --vs-fg: #f5f6f8;
+  --vs-fg-dim: #bcc3cc;
+  --vs-fg-faint: #98a3b2;
+  --vs-line: #333b47;
+  --vs-line-strong: #495363;
+  --fc-heat: #f39b70;
+  color-scheme: dark;
+}
+.learning-welcome {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 30px;
+}
+.learning-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  min-height: 310px;
+  overflow: hidden;
+  border: 1px solid var(--vs-line);
+  border-radius: 18px;
+  background: white;
+}
+.learning-hero-copy {
+  padding: clamp(24px, 3vw, 42px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+.learning-hero-copy h2 {
+  margin: 14px 0;
+  font-size: clamp(24px, 2.25vw, 34px);
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+.learning-hero-copy p {
+  max-width: 47ch;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--vs-fg-dim);
+}
+.learning-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.learning-section-head h2 {
+  font-weight: 700;
+  font-size: 18px;
+}
+.learning-section-head a {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fc-heat);
+}
+.learning-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 22px 0 34px;
+}
+.learning-stat {
+  padding: 19px 23px;
+  border: 1px solid var(--vs-line);
+  border-radius: 12px;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.learning-stat strong {
+  display: block;
+  font-size: 25px;
+  letter-spacing: -0.04em;
+  line-height: 1.25;
+}
+.learning-stat span {
+  color: var(--vs-fg-dim);
+  font-size: 11px;
+}
+.learning-stat-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--fc-bg-lighter);
+  color: #667685;
+}
+.learning-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.75fr) minmax(230px, 1fr);
+  gap: 26px;
+}
+.learning-list {
+  border: 1px solid var(--vs-line);
+  border-radius: 14px;
+  background: white;
+  overflow: hidden;
+}
+.learning-list-row {
+  display: flex;
+  gap: 16px;
+  padding: 20px 22px;
+  align-items: center;
+}
+.learning-list-row + .learning-list-row {
+  border-top: 1px solid var(--vs-line);
+}
+.learning-list-row:hover {
+  background: var(--fc-surface-raised);
+}
+.learning-list-row h3 {
+  font-weight: 600;
+  font-size: 13px;
+}
+.learning-list-row p {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--vs-fg-dim);
+}
+.learning-section-empty {
+  padding: 28px;
+  color: var(--vs-fg-dim);
+  font-size: 13px;
+  line-height: 1.8;
+  border: 1px dashed var(--vs-line-strong);
+  border-radius: 14px;
+}
+.workspace-theme .experience-intro {
+  background: var(--fc-surface);
+  border: 1px solid var(--vs-line);
+  border-radius: 16px;
+  padding: 28px;
+}
+.workspace-theme .experience-catalog {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.workspace-theme .experience-catalog article {
+  background: var(--fc-surface);
+  border: 1px solid var(--vs-line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.workspace-theme .experience-cover {
+  height: 200px;
+  background: #20252c;
+}
+@media (max-width: 1150px) {
+  .workspace-topbar {
+    gap: 12px;
+  }
+  .learning-columns {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 900px) {
+  .workspace-body {
+    margin-left: 0;
+  }
+  .workspace-sidebar {
+    transform: translateX(-100%);
+    transition: transform 200ms;
+  }
+  .workspace-sidebar.is-open {
+    transform: translateX(0);
+  }
+  .workspace-nav-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(17, 24, 35, 0.5);
+    backdrop-filter: blur(2px);
+  }
+  .workspace-menu-button,
+  .workspace-mobile-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+  .workspace-topbar {
+    height: 66px;
+  }
+  .learning-hero {
+    grid-template-columns: 1fr 1fr;
+  }
+  .learning-hero-copy {
+    padding: 24px;
+  }
+}
+@media (max-width: 600px) {
+  .workspace-main {
+    padding: 24px 16px;
+  }
+  .workspace-topbar {
+    padding: 0 14px;
+    gap: 10px;
+  }
+  .workspace-topbar .ml-auto {
+    margin-left: auto;
+  }
+  .learning-welcome {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .learning-hero {
+    grid-template-columns: 1fr;
+  }
+  .learning-hero-copy {
+    padding: 26px;
+  }
+  .learning-stats {
+    gap: 8px;
+  }
+  .learning-stat {
+    padding: 15px 12px;
+  }
+  .learning-stat-icon {
+    display: none;
+  }
+  .learning-stat strong {
+    font-size: 23px;
+  }
+  .learning-stat span {
+    font-size: 10px;
+  }
+  .learning-list-row {
+    padding: 17px 16px;
+  }
+  .workspace-footer span:last-child {
+    display: none;
+  }
+  .workspace-theme .experience-catalog {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-theme * {
+    scroll-behavior: auto;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+.learning-hero > div:last-child {
+  border: 0;
+  border-radius: 0;
+  background: #13161c;
+}
+.learning-hero > div:last-child > div {
+  height: 100% !important;
+  min-height: 310px !important;
+}
+@media (max-width: 600px) {
+  .learning-hero > div:last-child > div {
+    height: 260px !important;
+    min-height: 260px !important;
+  }
+}

@@ -17,7 +17,8 @@
  * initial query, and refining it here updates the same parameter — one search, not two that disagree.
  */
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { Suspense, useMemo, useState } from 'react';
 import type { AssetStatus, Paginated } from '@void-space/types';
 
@@ -34,6 +35,7 @@ import {
   type RailGroup,
 } from '../../../components/console-kit';
 import { Panel } from '../../../components/ui/card';
+import { Button } from '../../../components/ui/button';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
 import { VoidStudioLaunchButton } from '../../../components/studio-launch';
 import { Reveal } from '../../../components/reveal';
@@ -54,6 +56,8 @@ interface AssetSummaryView {
     readonly pinStatus: string;
     readonly ipfsCid: string | null;
   } | null;
+  readonly canEdit: boolean;
+  readonly canDelete: boolean;
 }
 
 interface TenantView {
@@ -112,6 +116,9 @@ function LibraryView({
 }) {
   const { can } = useSession();
   const router = useRouter();
+  const cache = useQueryClient();
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [search, setSearch] = useState(initialQuery);
   const [status, setStatus] = useState<AssetStatus | ''>(initialStatus);
@@ -165,6 +172,17 @@ function LibraryView({
   );
 
   const filtering = Boolean(search.trim() || status || category);
+
+  async function removeAsset(asset: AssetSummaryView) {
+    setDeleteError(null);
+    try {
+      await apiFetch(`/assets/${asset.id}`, { method: 'DELETE' });
+      setPendingDelete(null);
+      await cache.invalidateQueries({ queryKey: ['assets'] });
+    } catch (caught) {
+      setDeleteError((caught as Error).message);
+    }
+  }
 
   const groups: readonly RailGroup[] = [
     {
@@ -227,6 +245,7 @@ function LibraryView({
 
       {assets.isLoading ? <LoadingBlock label="Loading the library" /> : null}
       {assets.error ? <ErrorNote message={(assets.error as Error).message} /> : null}
+      {deleteError ? <ErrorNote message={deleteError} /> : null}
 
       {assets.data ? (
         <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -310,6 +329,33 @@ function LibraryView({
                         figureSub={`${formatBytes(version?.sizeBytes ?? 0)} · ${
                           pinned ? 'pinned' : (version?.pinStatus ?? 'unpinned')
                         } · ${formatRelative(asset.updatedAt)}`}
+                        action={
+                          asset.canEdit || asset.canDelete ? (
+                            <span className="flex shrink-0 items-center gap-1">
+                              {asset.canEdit ? (
+                                <Link
+                                  href={`/console/assets/${asset.id}#metadata`}
+                                  className="inline-flex h-8 items-center rounded-control px-2 text-[13px] font-semibold text-ink hover:bg-veil-8"
+                                >
+                                  Edit
+                                </Link>
+                              ) : null}
+                              {asset.canDelete ? (
+                                <Button
+                                  size="sm"
+                                  variant={pendingDelete === asset.id ? 'destructive' : 'ghost'}
+                                  onClick={() =>
+                                    pendingDelete === asset.id
+                                      ? void removeAsset(asset)
+                                      : setPendingDelete(asset.id)
+                                  }
+                                >
+                                  {pendingDelete === asset.id ? 'Confirm delete' : 'Delete'}
+                                </Button>
+                              ) : null}
+                            </span>
+                          ) : undefined
+                        }
                       />
                     </Reveal>
                   );

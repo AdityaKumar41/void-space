@@ -43,11 +43,29 @@ async function parse<T>(response: Response, path: string): Promise<T> {
   if (response.status === 204) return undefined as T;
 
   const text = await response.text();
-  const payload = text.length > 0 ? (JSON.parse(text) as unknown) : undefined;
+  let payload: unknown;
+  if (text.length > 0) {
+    try {
+      payload = JSON.parse(text) as unknown;
+    } catch {
+      if (!response.ok) {
+        throw new ApiRequestError(
+          response.status,
+          {},
+          `The API returned a non-JSON error response (${response.status}) for ${path}`,
+        );
+      }
+      throw new ApiRequestError(response.status, {}, `The API returned invalid JSON for ${path}`);
+    }
+  }
 
   if (!response.ok) {
     const body = (payload ?? {}) as Partial<ApiError>;
-    throw new ApiRequestError(response.status, body, `${response.status} ${response.statusText} for ${path}`);
+    throw new ApiRequestError(
+      response.status,
+      body,
+      `${response.status} ${response.statusText} for ${path}`,
+    );
   }
 
   return payload as T;

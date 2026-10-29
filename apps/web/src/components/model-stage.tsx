@@ -15,9 +15,11 @@
  * The height is fixed rather than fluid, because a model that resizes the page as you orbit it is the
  * single most disorienting thing a 3D page can do.
  */
-import { ModelViewer } from './model-viewer';
+import { ModelViewer, type SceneInteraction, type ModelViewerProps } from './model-viewer';
 
 export interface ModelStageProps {
+  readonly interaction?: SceneInteraction;
+  readonly onGeometryDecoded?: ModelViewerProps['onGeometryDecoded'];
   readonly cid: string;
   readonly format: string;
   readonly name: string;
@@ -42,9 +44,12 @@ export interface ModelStageProps {
   readonly presentation?: boolean;
   /** Applied to the outer frame, so a caller can set the height without reaching inside. */
   readonly className?: string;
+  readonly onReady?: () => void;
 }
 
 export function ModelStage({
+  interaction,
+  onGeometryDecoded,
   cid,
   format,
   name,
@@ -56,6 +61,7 @@ export function ModelStage({
   frameFit = 'box',
   presentation = false,
   className,
+  onReady,
 }: ModelStageProps) {
   return (
     <div
@@ -73,6 +79,9 @@ export function ModelStage({
         }
       >
         <ModelViewer
+          interaction={interaction}
+          onGeometryDecoded={onGeometryDecoded}
+          onReady={onReady}
           cid={cid}
           format={format}
           label={name}

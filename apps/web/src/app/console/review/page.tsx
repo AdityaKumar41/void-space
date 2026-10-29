@@ -31,6 +31,7 @@ import {
 import { Panel } from '../../../components/ui/card';
 import { StatusChip, Tag } from '../../../components/ui/chip';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
+import { CopyButton } from '../../../components/copy-button';
 
 interface QueueItem {
   readonly id: string;
@@ -219,13 +220,11 @@ function ReviewQueue() {
                     <td>
                       <div className="flex items-center gap-3">
                         <span className="inline-flex h-11 w-11 shrink-0 overflow-hidden rounded-[6px] border border-hairline bg-deeper">
-                          {/*
-                            No render is requested here, and that is not an omission. Renders are produced
-                            only for published assets (`scripts/render-thumbnails.mjs`), and nothing in a
-                            review queue is published — so asking for one is a guaranteed 404 on every row,
-                            which is what this table used to emit. See `hasRender` for the pipeline rule.
-                          */}
-                          <ConsoleThumb cid={null} alt="" seed={item.id} />
+                          <ConsoleThumb
+                            cid={item.version?.ipfsCid ?? null}
+                            alt=""
+                            seed={item.id}
+                          />
                         </span>
                         <span className="min-w-0">
                           <Link
@@ -234,9 +233,14 @@ function ReviewQueue() {
                           >
                             {item.name}
                           </Link>
-                          <span className="block truncate font-mono text-[11px] text-ink-faint">
-                            {item.category} · {item.creator?.fullName ?? 'unknown'} · v
-                            {item.version?.versionNumber ?? '—'}
+                          <span className="mt-1 flex min-w-0 items-center gap-2">
+                            <span className="block min-w-0 truncate font-mono text-[11px] text-ink-faint">
+                              {item.category} · {item.creator?.fullName ?? 'unknown'} · v
+                              {item.version?.versionNumber ?? '—'}
+                            </span>
+                            {item.version?.ipfsCid ? (
+                              <CopyButton compact label="CID" value={item.version.ipfsCid} />
+                            ) : null}
                           </span>
                         </span>
                       </div>

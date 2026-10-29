@@ -95,8 +95,7 @@ export function isFeatureEnabled(policy: AiPolicy, feature: StudioAiFeature): bo
 }
 
 export type RateLimitDecision =
-  | { readonly allowed: true }
-  | { readonly allowed: false; readonly retryAfterMs: number };
+  { readonly allowed: true } | { readonly allowed: false; readonly retryAfterMs: number };
 
 /**
  * A per-tenant sliding-window limiter.
@@ -192,7 +191,13 @@ export async function withTimeout<T>(
 }
 
 /** The classes of value that must never leave for a provider (§7.5). */
-export const SENSITIVE_KINDS = ['bearerToken', 'apiKey', 'jwt', 'email', 'connectionString'] as const;
+export const SENSITIVE_KINDS = [
+  'bearerToken',
+  'apiKey',
+  'jwt',
+  'email',
+  'connectionString',
+] as const;
 export type SensitiveKind = (typeof SENSITIVE_KINDS)[number];
 
 /**
@@ -230,7 +235,10 @@ export interface RedactionResult {
  * It does **not** replace the caller's own legitimate content. A `TENANT_SUSPECTED` naming rule
  * would remove words the Creator typed; these patterns only match values that could not be prose.
  */
-export function redactForProvider(value: unknown, found = new Set<SensitiveKind>()): RedactionResult {
+export function redactForProvider(
+  value: unknown,
+  found = new Set<SensitiveKind>(),
+): RedactionResult {
   if (typeof value === 'string') {
     let out = value;
     for (const { kind, pattern } of REDACTION_PATTERNS) {
@@ -272,7 +280,7 @@ export interface AiInvocationLog {
   readonly tenantId: string;
   readonly userId?: string;
   readonly feature: StudioAiFeature;
-  readonly provider: 'anthropic' | 'meshy';
+  readonly provider: string;
   readonly model: string;
   readonly promptVersion: string;
   readonly startedAt: string;
@@ -310,4 +318,3 @@ export class InMemoryInvocationSink implements AiInvocationSink {
     this.entries.push(entry);
   }
 }
-

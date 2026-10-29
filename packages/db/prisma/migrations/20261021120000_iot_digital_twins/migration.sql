@@ -1,0 +1,15 @@
+CREATE TYPE "IoTDeviceStatus" AS ENUM ('active', 'disabled');
+CREATE TABLE "iot_devices" ("id" UUID NOT NULL DEFAULT gen_random_uuid(), "tenant_id" UUID NOT NULL, "label" VARCHAR(160) NOT NULL, "secret_hash" VARCHAR(64) NOT NULL, "status" "IoTDeviceStatus" NOT NULL DEFAULT 'active', "metadata" JSONB, "last_seen_at" TIMESTAMP(3), "created_by_id" UUID NOT NULL, "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL, CONSTRAINT "iot_devices_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "device_telemetry" ("id" UUID NOT NULL DEFAULT gen_random_uuid(), "tenant_id" UUID NOT NULL, "device_id" UUID NOT NULL, "payload" JSONB NOT NULL, "event_at" TIMESTAMP(3), "received_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "device_telemetry_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "digital_twins" ("id" UUID NOT NULL DEFAULT gen_random_uuid(), "tenant_id" UUID NOT NULL, "device_id" UUID NOT NULL, "asset_id" UUID, "label" VARCHAR(160) NOT NULL, "state" JSONB NOT NULL, "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL, CONSTRAINT "digital_twins_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "iot_devices_tenant_id_status_updated_at_idx" ON "iot_devices"("tenant_id", "status", "updated_at");
+CREATE INDEX "device_telemetry_tenant_id_device_id_received_at_idx" ON "device_telemetry"("tenant_id", "device_id", "received_at");
+CREATE UNIQUE INDEX "digital_twins_tenant_id_device_id_label_key" ON "digital_twins"("tenant_id", "device_id", "label");
+CREATE INDEX "digital_twins_tenant_id_updated_at_idx" ON "digital_twins"("tenant_id", "updated_at");
+ALTER TABLE "iot_devices" ADD CONSTRAINT "iot_devices_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "iot_devices" ADD CONSTRAINT "iot_devices_created_by_id_fkey" FOREIGN KEY ("created_by_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "device_telemetry" ADD CONSTRAINT "device_telemetry_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "device_telemetry" ADD CONSTRAINT "device_telemetry_device_id_fkey" FOREIGN KEY ("device_id") REFERENCES "iot_devices"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "digital_twins" ADD CONSTRAINT "digital_twins_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "digital_twins" ADD CONSTRAINT "digital_twins_device_id_fkey" FOREIGN KEY ("device_id") REFERENCES "iot_devices"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "digital_twins" ADD CONSTRAINT "digital_twins_asset_id_fkey" FOREIGN KEY ("asset_id") REFERENCES "assets"("id") ON DELETE SET NULL ON UPDATE CASCADE;

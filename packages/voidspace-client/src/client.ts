@@ -385,6 +385,14 @@ export class VoidSpaceClient implements VoidSpaceGateway {
     );
   }
 
+  /** The tenant's allowed upload categories, read with the publish credential. */
+  async workspaceCategories(): Promise<readonly string[]> {
+    const payload = await this.request<{
+      tenant: { settings: { allowedCategories: readonly string[] } };
+    }>('/api/v1/tenant', { method: 'GET' });
+    return payload.tenant?.settings?.allowedCategories ?? [];
+  }
+
   /**
    * Polls an asset until its status stops changing, or the budget runs out (FR-14.3).
    *

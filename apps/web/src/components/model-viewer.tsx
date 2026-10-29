@@ -31,13 +31,14 @@
 import {
   ContactShadows,
   Grid,
+  Html,
   OrbitControls,
   OrthographicCamera,
   useAnimations,
   useGLTF,
   useProgress,
 } from '@react-three/drei';
-import { Canvas, useLoader, useThree } from '@react-three/fiber';
+import { Canvas, useLoader, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -139,8 +140,10 @@ const VIEW_DIRECTIONS: Record<CameraView, readonly [number, number, number]> = {
   back: [0, 0, -1],
   right: [1, 0, 0],
   left: [-1, 0, 0],
-  top: [0, 1, 0.0001],
-  bottom: [0, -1, 0.0001],
+  // A hair off the pole. An exact top or bottom view is parallel to the orbit
+  // control's up axis, so the control discards it and the button appears dead.
+  top: [0, 0.97, 0.24],
+  bottom: [0, -0.97, 0.24],
 };
 
 /**
@@ -409,7 +412,25 @@ export interface ClipHandle {
  * The model
  * ========================================================================================== */
 
+export interface SceneInteraction {
+  hotspots: readonly {
+    id: string;
+    label: string;
+    position: readonly [number, number, number];
+    meshKey?: string;
+  }[];
+  selectedId?: string | null;
+  exploded?: boolean;
+  isolatedId?: string | null;
+  showLabels?: boolean;
+  disabled?: boolean;
+  onSelect?: (id: string) => void;
+  onSurfacePick?: (position: [number, number, number], meshKey: string) => void;
+}
+
 interface ModelSceneProps {
+  readonly legacyDemoFaces?: boolean;
+  readonly interaction?: SceneInteraction;
   readonly scene: THREE.Object3D;
   readonly animations?: readonly THREE.AnimationClip[];
   readonly mode: ShadeMode;
@@ -418,7 +439,16 @@ interface ModelSceneProps {
   readonly onClips: (clips: ClipHandle | null) => void;
 }
 
-function ModelScene({ scene, animations = [], mode, onDecoded, onSummary, onClips }: ModelSceneProps) {
+function ModelScene({
+  legacyDemoFaces = false,
+  scene,
+  animations = [],
+  mode,
+  onDecoded,
+  onSummary,
+  onClips,
+  interaction,
+}: ModelSceneProps) {
   const prepared = useMemo(() => {
     const root = SkeletonUtils.clone(scene) as THREE.Object3D;
     const originals: MaterialMap = new Map();
@@ -431,12 +461,43 @@ function ModelScene({ scene, animations = [], mode, onDecoded, onSummary, onClip
         ? mesh.material.map((material) => material.clone())
         : mesh.material.clone();
 
+      // Legacy procedural demo files mix inward and outward face winding. Show both
+      // sides for those identified samples; uploaded source materials keep their own sidedness.
+      if (legacyDemoFaces)
+        for (const material of Array.isArray(cloned) ? cloned : [cloned])
+          material.side = THREE.DoubleSide;
       mesh.material = cloned;
       originals.set(mesh, cloned);
     });
 
-    return { root, originals };
-  }, [scene]);
+    const bounds = new THREE.Box3().setFromObject(root);
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3());
+    const span = Math.max(size.x, size.y, size.z, 0.00001);
+    const parts = new Map<
+      THREE.Mesh,
+      { key: string; position: THREE.Vector3; offset: THREE.Vector3 }
+    >();
+    let partIndex = 0;
+    root.updateMatrixWorld(true);
+    root.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const box = new THREE.Box3().setFromObject(mesh);
+      const at = box.getCenter(new THREE.Vector3());
+      const direction = at.clone().sub(center);
+      if (direction.lengthSq() < 0.000001)
+        direction.set(Math.cos(partIndex * 2.4), 0.3, Math.sin(partIndex * 2.4));
+      direction.normalize().multiplyScalar(span * 0.35);
+      const offset = mesh.parent
+        ? mesh.parent
+            .worldToLocal(at.clone().add(direction))
+            .sub(mesh.parent.worldToLocal(at.clone()))
+        : direction;
+      parts.set(mesh, { key: `mesh-${partIndex++}`, position: mesh.position.clone(), offset });
+    });
+    return { root, originals, center, span, parts };
+  }, [scene, legacyDemoFaces]);
 
   const live = useRef<THREE.Material[]>([]);
 
@@ -485,10 +546,76 @@ function ModelScene({ scene, animations = [], mode, onDecoded, onSummary, onClip
     onClips({ names: animations.map((clip) => clip.name), durations, actions: byName, mixer });
   }, [animations, actions, mixer, onClips]);
 
-  return <primitive object={prepared.root} />;
+  const surfaceGroup = useRef<THREE.Group>(null);
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    const isolated = interaction?.hotspots.find((h) => h.id === interaction.isolatedId)?.meshKey;
+    for (const [mesh, part] of prepared.parts) {
+      mesh.position.copy(part.position);
+      if (interaction?.exploded) mesh.position.add(part.offset);
+      mesh.visible = !isolated || part.key === isolated;
+    }
+    prepared.root.updateMatrixWorld(true);
+    invalidate();
+  }, [prepared, interaction?.exploded, interaction?.isolatedId, interaction?.hotspots, invalidate]);
+  function pick(event: ThreeEvent<MouseEvent>) {
+    if (
+      !interaction?.onSurfacePick ||
+      interaction.disabled ||
+      event.delta > 5 ||
+      !surfaceGroup.current
+    )
+      return;
+    event.stopPropagation();
+    const point = surfaceGroup.current
+      .worldToLocal(event.point.clone())
+      .sub(prepared.center)
+      .divideScalar(prepared.span);
+    interaction.onSurfacePick(
+      [point.x, point.y, point.z],
+      prepared.parts.get(event.object as THREE.Mesh)?.key ?? 'mesh-0',
+    );
+  }
+  return (
+    <group ref={surfaceGroup}>
+      <primitive object={prepared.root} onClick={pick} />
+      {interaction?.hotspots.map((hotspot, index) => {
+        if (interaction.isolatedId && hotspot.id !== interaction.isolatedId) return null;
+        const position = prepared.center
+          .clone()
+          .add(new THREE.Vector3(...hotspot.position).multiplyScalar(prepared.span));
+        const part = Array.from(prepared.parts.values()).find(
+          (part) => part.key === hotspot.meshKey,
+        );
+        if (interaction.exploded && part) position.add(part.offset);
+        const selected = interaction.selectedId === hotspot.id;
+        return (
+          <Html key={hotspot.id} position={position} center zIndexRange={[20, 0]}>
+            <button
+              type="button"
+              aria-label={`Scene target ${interaction.showLabels ? hotspot.label : index + 1}`}
+              aria-pressed={selected}
+              disabled={interaction.disabled}
+              className={`flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-full border px-3 text-xs font-semibold shadow-lg transition-colors ${selected ? 'border-brand bg-brand text-white' : 'border-white/40 bg-black/85 text-white hover:border-brand'} disabled:opacity-50`}
+              onClick={(event) => {
+                event.stopPropagation();
+                interaction.onSelect?.(hotspot.id);
+              }}
+            >
+              <span>{index + 1}</span>
+              {interaction.showLabels ? (
+                <span className="whitespace-nowrap">{hotspot.label}</span>
+              ) : null}
+            </button>
+          </Html>
+        );
+      })}
+    </group>
+  );
 }
 
 interface FormatModelProps {
+  readonly interaction?: SceneInteraction;
   readonly url: string;
   readonly mode: ShadeMode;
   readonly onDecoded: (geometry: DecodedGeometry) => void;
@@ -497,8 +624,15 @@ interface FormatModelProps {
 }
 
 function GlbModel({ url, ...rest }: FormatModelProps) {
-  const { scene, animations } = useGLTF(url);
-  return <ModelScene scene={scene} animations={animations} {...rest} />;
+  const { scene, animations, parser } = useGLTF(url);
+  return (
+    <ModelScene
+      scene={scene}
+      animations={animations}
+      legacyDemoFaces={parser.json.asset?.generator === 'void-space/glb-shapes'}
+      {...rest}
+    />
+  );
 }
 
 function ObjModel({ url, ...rest }: FormatModelProps) {
@@ -650,6 +784,7 @@ function CameraRig({
   mode,
   request,
   readyKey,
+  visibleOnly = false,
   onFramed,
 }: {
   target: React.RefObject<THREE.Group>;
@@ -667,10 +802,12 @@ function CameraRig({
    * that produces the triangle count, because that signal means "the geometry exists now".
    */
   readyKey: number;
+  visibleOnly?: boolean;
   onFramed: (floor: number, box: THREE.Box3) => void;
 }) {
   const camera = useThree((state) => state.camera);
   const size = useThree((state) => state.size);
+  const invalidate = useThree((state) => state.invalidate);
   const controls = useThree((state) => state.controls) as unknown as OrbitLike | null;
 
   useEffect(() => {
@@ -686,7 +823,15 @@ function CameraRig({
 
       object.position.set(0, 0, 0);
       object.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(object);
+      const box = new THREE.Box3();
+      if (visibleOnly) {
+        object.traverseVisible((child) => {
+          if (!(child instanceof THREE.Mesh)) return;
+          child.geometry.computeBoundingBox();
+          if (child.geometry.boundingBox)
+            box.union(child.geometry.boundingBox.clone().applyMatrix4(child.matrixWorld));
+        });
+      } else box.setFromObject(object);
       if (box.isEmpty()) return;
 
       const centre = box.getCenter(new THREE.Vector3());
@@ -711,16 +856,17 @@ function CameraRig({
         direction.copy(FALLBACK_VIEW_DIRECTION);
       }
 
-      const right = new THREE.Vector3()
-        .crossVectors(new THREE.Vector3(0, 1, 0), direction)
-        .normalize();
+      // Keep the orbit control's up axis. An exact pole view is parallel to it, so
+      // top and bottom are stored a little off-axis and this basis never collapses.
+      camera.up.set(0, 1, 0);
+      const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), direction);
+      if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
+      else right.normalize();
       const up = new THREE.Vector3().crossVectors(direction, right).normalize();
 
       // Support function: the box's half-extent measured along an arbitrary axis.
       const extentAlong = (axis: THREE.Vector3) =>
         Math.abs(axis.x) * half.x + Math.abs(axis.y) * half.y + Math.abs(axis.z) * half.z;
-
-
 
       if (camera instanceof THREE.OrthographicCamera) {
         const span = Math.max(half.x, half.y, half.z);
@@ -780,6 +926,10 @@ function CameraRig({
         controls.update();
       }
 
+      // Demand rendering does not redraw on a camera write. Without this, the
+      // pressed view button updates and the model stays on the previous angle.
+      invalidate();
+
       // The studio positions its ground shadow from this, so it sits under whatever loaded.
       onFramed(-half.y, box);
     });
@@ -788,7 +938,7 @@ function CameraRig({
       cancelled = true;
       cancelAnimationFrame(handle);
     };
-  }, [target, camera, size, fill, mode, request, readyKey, controls, onFramed]);
+  }, [target, camera, size, fill, mode, request, readyKey, visibleOnly, controls, onFramed, invalidate]);
 
   return null;
 }
@@ -888,15 +1038,18 @@ class ViewerBoundary extends Component<
     return (
       <div className="studio-fault">
         <div className="studio-fault-inner">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-faint" style={{ color: 'var(--vs-rejected)' }}>
+          <div
+            className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-faint"
+            style={{ color: 'var(--vs-rejected)' }}
+          >
             Preview unavailable
           </div>
           <div className="font-medium leading-[1.1] tracking-[-0.021em] text-ink mt-2 text-2xl">
             This {this.props.label} could not be drawn here
           </div>
           <p className="mt-3 text-[13px] leading-relaxed" style={{ color: 'var(--vs-fg-dim)' }}>
-            The asset itself is unaffected — it is pinned, and the licence on record is untouched. The
-            geometry is either in a form this viewer cannot decode, or the preview failed to
+            The asset itself is unaffected — it is pinned, and the licence on record is untouched.
+            The geometry is either in a form this viewer cannot decode, or the preview failed to
             initialise.
           </p>
           <code>{this.state.message}</code>
@@ -982,6 +1135,15 @@ export function niceStep(value: number): number {
   return step * magnitude;
 }
 
+/** Asks the demand-mode canvas to draw after a control outside the scene changes. */
+function SceneRedraw({ signature }: { signature: string }) {
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    invalidate();
+  }, [signature, invalidate]);
+  return null;
+}
+
 /** The measurement rig, drawn under and around whatever loaded. */
 function SceneHelpers({
   floor,
@@ -1028,9 +1190,7 @@ function SceneHelpers({
       {/* Origin axes, coloured by axis so orientation is readable at a glance. */}
       {showAxes ? <axesHelper args={[span * 0.9]} /> : null}
 
-      {showBounds && box ? (
-        <box3Helper args={[box, new THREE.Color('#6ea8fe')]} />
-      ) : null}
+      {showBounds && box ? <box3Helper args={[box, new THREE.Color('#6ea8fe')]} /> : null}
 
       {/*
         The ground shadow is what stops a model reading as a sticker. It is pinned to the model's
@@ -1039,13 +1199,14 @@ function SceneHelpers({
       */}
       {showShadow ? (
         <ContactShadows
-          position={[0, floor, 0]}
-          opacity={night ? 0.62 : 0.38}
-          scale={span * 2.2}
-          blur={2.6}
-          far={span * 1.4}
+          key={`${floor.toFixed(4)}:${span.toFixed(4)}`}
+          position={[0, floor - Math.max(span * 0.012, 0.002), 0]}
+          opacity={night ? 0.72 : 0.45}
+          scale={Math.max(span * 3, 1)}
+          blur={2.4}
+          far={Math.max(span * 2, 0.5)}
           resolution={512}
-          frames={animated ? Infinity : 1}
+          frames={animated ? Infinity : 2}
         />
       ) : null}
     </>
@@ -1120,9 +1281,7 @@ function StatsPanel({
         <div className="studio-section">
           <StatRow label="Materials" value={formatCount(summary.materials.length)} />
           <StatRow label="Textures" value={formatCount(summary.textures)} />
-          {summary.bones > 0 ? (
-            <StatRow label="Bones" value={formatCount(summary.bones)} />
-          ) : null}
+          {summary.bones > 0 ? <StatRow label="Bones" value={formatCount(summary.bones)} /> : null}
           {summary.emptyNodes > 0 ? (
             <StatRow label="Empty nodes" value={formatCount(summary.emptyNodes)} />
           ) : null}
@@ -1258,6 +1417,7 @@ function Transport({
  * ========================================================================================== */
 
 export interface ModelViewerProps {
+  readonly interaction?: SceneInteraction;
   readonly cid: string | null;
   readonly format: string;
   /** Shown in the footer and in fault messages. */
@@ -1314,6 +1474,7 @@ export interface ModelViewerProps {
 }
 
 export function ModelViewer({
+  interaction,
   cid,
   format,
   label,
@@ -1334,6 +1495,9 @@ export function ModelViewer({
   const [mode, setMode] = useState<ShadeMode>('shaded');
   const [request, setRequest] = useState<FitRequest>({ n: 0, view: 'iso' });
   const [view, setView] = useState<CameraView>('iso');
+  useEffect(() => {
+    if (interaction) setRequest((current) => ({ n: current.n + 1, view: null }));
+  }, [interaction?.exploded, interaction?.isolatedId]);
   const [ortho, setOrtho] = useState(false);
   const [backdrop, setBackdrop] = useState<Backdrop>('stage');
 
@@ -1458,10 +1622,11 @@ export function ModelViewer({
     const data = captureRef.current?.();
     if (!data) return;
 
-    const slug = (label ?? 'model')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'model';
+    const slug =
+      (label ?? 'model')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'model';
 
     const link = document.createElement('a');
     link.href = data;
@@ -1642,7 +1807,9 @@ export function ModelViewer({
         <div className="absolute inset-0 flex flex-col items-center justify-center p-7 text-center">
           <div>
             <div className="font-medium leading-[1.1] tracking-[-0.021em] text-ink text-xl">
-              {previewable ? 'No pinned content to preview' : `${format.replace(/^\./, '').toUpperCase()} has no browser preview`}
+              {previewable
+                ? 'No pinned content to preview'
+                : `${format.replace(/^\./, '').toUpperCase()} has no browser preview`}
             </div>
             <p className="mt-2 text-[13px]" style={{ color: 'var(--vs-fg-dim)' }}>
               {url
@@ -1650,7 +1817,11 @@ export function ModelViewer({
                 : 'This asset has no content-addressed copy yet.'}
             </p>
             {url ? (
-              <a className="h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-4 inline-flex" href={url} download>
+              <a
+                className="h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-4 inline-flex"
+                href={url}
+                download
+              >
                 Download the file
               </a>
             ) : null}
@@ -1663,16 +1834,14 @@ export function ModelViewer({
   return (
     <div
       ref={wrapper}
+      data-exploded={interaction?.exploded ? 'true' : 'false'}
+      data-isolated-target={interaction?.isolatedId ?? ''}
       className="studio"
       style={{ background: BACKDROPS[backdrop] }}
       onDoubleClick={refitInPlace}
     >
       <div className="studio-viewport">
-        <ViewerBoundary
-          label={label ?? 'model'}
-          sourceUrl={url}
-          onFault={() => setFaulted(true)}
-        >
+        <ViewerBoundary label={label ?? 'model'} sourceUrl={url} onFault={() => setFaulted(true)}>
           <Canvas
             dpr={[1, 2]}
             /*
@@ -1718,6 +1887,7 @@ export function ModelViewer({
             <Suspense fallback={null}>
               <group ref={modelRef}>
                 <Model
+                  interaction={interaction}
                   url={url}
                   format={format}
                   mode={mode}
@@ -1742,7 +1912,11 @@ export function ModelViewer({
               />
             ) : null}
 
+            <SceneRedraw
+              signature={`${showShadow}:${showGrid}:${showAxes}:${showBounds}:${backdrop}:${mode}`}
+            />
             <OrbitControls
+              key={request.n}
               makeDefault
               enableDamping
               dampingFactor={0.08}
@@ -1757,6 +1931,7 @@ export function ModelViewer({
               mode={frameFit}
               request={request}
               readyKey={readyKey}
+              visibleOnly={Boolean(interaction?.isolatedId)}
               onFramed={handleFramed}
             />
             <CaptureBridge register={registerCapture} />
@@ -1770,165 +1945,165 @@ export function ModelViewer({
         <>
           {!presentation ? (
             <div className="studio-top">
-            <div className="studio-group">
-              <span className="studio-group-label">Surface</span>
-              {SHADE_MODES.map((spec) => (
+              <div className="studio-group">
+                <span className="studio-group-label">Surface</span>
+                {SHADE_MODES.map((spec) => (
+                  <button
+                    key={spec.id}
+                    type="button"
+                    className="studio-btn"
+                    aria-pressed={mode === spec.id}
+                    aria-keyshortcuts={spec.key}
+                    title={
+                      spec.id === 'edges' && edgeDisabled
+                        ? `Too dense for an edge overlay: ${formatCount(decoded?.triangles ?? 0)} triangles is over the ${formatCount(EDGE_TRIANGLE_BUDGET)} budget. Wireframe costs nothing.`
+                        : `${spec.hint}  ·  ${spec.key}`
+                    }
+                    disabled={spec.id === 'edges' && edgeDisabled}
+                    onClick={() => setMode(spec.id)}
+                  >
+                    {spec.label}
+                    <kbd>{spec.key}</kbd>
+                  </button>
+                ))}
+              </div>
+
+              <div className="studio-group">
+                <span className="studio-group-label">Camera</span>
+                {VIEW_BUTTONS.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    className="studio-btn"
+                    aria-pressed={view === entry.id}
+                    aria-keyshortcuts={entry.key}
+                    title={`Look at the model from the ${entry.label.toLowerCase()} and re-frame it  ·  ${entry.key}`}
+                    onClick={() => goToView(entry.id)}
+                  >
+                    {entry.label}
+                    <kbd>{entry.key}</kbd>
+                  </button>
+                ))}
+                <span className="studio-divider" aria-hidden />
                 <button
-                  key={spec.id}
                   type="button"
                   className="studio-btn"
-                  aria-pressed={mode === spec.id}
-                  aria-keyshortcuts={spec.key}
-                  title={
-                    spec.id === 'edges' && edgeDisabled
-                      ? `Too dense for an edge overlay: ${formatCount(decoded?.triangles ?? 0)} triangles is over the ${formatCount(EDGE_TRIANGLE_BUDGET)} budget. Wireframe costs nothing.`
-                      : `${spec.hint}  ·  ${spec.key}`
+                  aria-pressed={ortho}
+                  title="Projection: orthographic shows true proportions with no perspective foreshortening — use it when measuring an export against its spec sheet  ·  V"
+                  onClick={toggleOrtho}
+                >
+                  {ortho ? 'Orthographic' : 'Perspective'}
+                  <kbd>V</kbd>
+                </button>
+              </div>
+
+              <div className="studio-group">
+                <span className="studio-group-label">Overlays</span>
+                <button
+                  type="button"
+                  className="studio-btn"
+                  aria-pressed={showGrid}
+                  aria-keyshortcuts="G"
+                  title="Measurement grid, stepped to this model's scale  ·  G"
+                  onClick={() => setShowGrid((value) => !value)}
+                >
+                  Grid
+                  <kbd>G</kbd>
+                </button>
+                <button
+                  type="button"
+                  className="studio-btn"
+                  aria-pressed={showAxes}
+                  aria-keyshortcuts="A"
+                  title="Origin axes — X red, Y green, Z blue  ·  A"
+                  onClick={() => setShowAxes((value) => !value)}
+                >
+                  Axes
+                  <kbd>A</kbd>
+                </button>
+                <button
+                  type="button"
+                  className="studio-btn"
+                  aria-pressed={showBounds}
+                  aria-keyshortcuts="O"
+                  title="Bounding box of the geometry as decoded, so you can check the export fits the volume it was authored for  ·  O"
+                  onClick={() => setShowBounds((value) => !value)}
+                >
+                  Bounds
+                  <kbd>O</kbd>
+                </button>
+                <button
+                  type="button"
+                  className="studio-btn"
+                  aria-pressed={showShadow}
+                  aria-keyshortcuts="H"
+                  title="Ground shadow, so the model does not read as a sticker  ·  H"
+                  onClick={() => setShowShadow((value) => !value)}
+                >
+                  Shadow
+                  <kbd>H</kbd>
+                </button>
+                <button
+                  type="button"
+                  className="studio-btn"
+                  aria-pressed={spinning}
+                  aria-keyshortcuts="P"
+                  title="Turntable — stops as soon as you take control  ·  P"
+                  onClick={() => setSpinning((value) => !value)}
+                >
+                  Turntable
+                  <kbd>P</kbd>
+                </button>
+              </div>
+
+              <div className="studio-group studio-spacer">
+                <button
+                  type="button"
+                  className="studio-btn"
+                  title={`Background: stage, dark or light. A dark asset needs the light one. Currently ${BACKDROP_LABEL[backdrop]}.`}
+                  onClick={() =>
+                    setBackdrop((value) =>
+                      value === 'stage' ? 'night' : value === 'night' ? 'paper' : 'stage',
+                    )
                   }
-                  disabled={spec.id === 'edges' && edgeDisabled}
-                  onClick={() => setMode(spec.id)}
                 >
-                  {spec.label}
-                  <kbd>{spec.key}</kbd>
+                  <span className="studio-swatch" data-backdrop={backdrop} aria-hidden />
+                  {BACKDROP_LABEL[backdrop]}
                 </button>
-              ))}
-            </div>
-
-            <div className="studio-group">
-              <span className="studio-group-label">Camera</span>
-              {VIEW_BUTTONS.map((entry) => (
                 <button
-                  key={entry.id}
                   type="button"
                   className="studio-btn"
-                  aria-pressed={view === entry.id}
-                  aria-keyshortcuts={entry.key}
-                  title={`Look at the model from the ${entry.label.toLowerCase()} and re-frame it  ·  ${entry.key}`}
-                  onClick={() => goToView(entry.id)}
+                  aria-pressed={panelOpen}
+                  aria-keyshortcuts="I"
+                  title="File inventory — geometry, materials, textures, rig  ·  I"
+                  onClick={() => setPanelOpen((value) => !value)}
                 >
-                  {entry.label}
-                  <kbd>{entry.key}</kbd>
+                  Inventory
+                  <kbd>I</kbd>
                 </button>
-              ))}
-              <span className="studio-divider" aria-hidden />
-              <button
-                type="button"
-                className="studio-btn"
-                aria-pressed={ortho}
-                title="Projection: orthographic shows true proportions with no perspective foreshortening — use it when measuring an export against its spec sheet  ·  V"
-                onClick={toggleOrtho}
-              >
-                {ortho ? 'Orthographic' : 'Perspective'}
-                <kbd>V</kbd>
-              </button>
+                <button
+                  type="button"
+                  className="studio-btn"
+                  aria-keyshortcuts="S"
+                  title="Save the current view as a PNG at the canvas resolution  ·  S"
+                  onClick={saveShot}
+                >
+                  Save PNG
+                  <kbd>S</kbd>
+                </button>
+                <button
+                  type="button"
+                  className="studio-btn"
+                  aria-pressed={expanded}
+                  aria-keyshortcuts="M"
+                  title="Full screen  ·  M"
+                  onClick={() => void toggleExpanded()}
+                >
+                  {expanded ? 'Exit' : 'Full screen'}
+                  <kbd>M</kbd>
+                </button>
+              </div>
             </div>
-
-            <div className="studio-group">
-              <span className="studio-group-label">Overlays</span>
-              <button
-                type="button"
-                className="studio-btn"
-                aria-pressed={showGrid}
-                aria-keyshortcuts="G"
-                title="Measurement grid, stepped to this model's scale  ·  G"
-                onClick={() => setShowGrid((value) => !value)}
-              >
-                Grid
-                <kbd>G</kbd>
-              </button>
-              <button
-                type="button"
-                className="studio-btn"
-                aria-pressed={showAxes}
-                aria-keyshortcuts="A"
-                title="Origin axes — X red, Y green, Z blue  ·  A"
-                onClick={() => setShowAxes((value) => !value)}
-              >
-                Axes
-                <kbd>A</kbd>
-              </button>
-              <button
-                type="button"
-                className="studio-btn"
-                aria-pressed={showBounds}
-                aria-keyshortcuts="O"
-                title="Bounding box of the geometry as decoded, so you can check the export fits the volume it was authored for  ·  O"
-                onClick={() => setShowBounds((value) => !value)}
-              >
-                Bounds
-                <kbd>O</kbd>
-              </button>
-              <button
-                type="button"
-                className="studio-btn"
-                aria-pressed={showShadow}
-                aria-keyshortcuts="H"
-                title="Ground shadow, so the model does not read as a sticker  ·  H"
-                onClick={() => setShowShadow((value) => !value)}
-              >
-                Shadow
-                <kbd>H</kbd>
-              </button>
-              <button
-                type="button"
-                className="studio-btn"
-                aria-pressed={spinning}
-                aria-keyshortcuts="P"
-                title="Turntable — stops as soon as you take control  ·  P"
-                onClick={() => setSpinning((value) => !value)}
-              >
-                Turntable
-                <kbd>P</kbd>
-              </button>
-            </div>
-
-            <div className="studio-group studio-spacer">
-              <button
-                type="button"
-                className="studio-btn"
-                title={`Background: stage, dark or light. A dark asset needs the light one. Currently ${BACKDROP_LABEL[backdrop]}.`}
-                onClick={() =>
-                  setBackdrop((value) =>
-                    value === 'stage' ? 'night' : value === 'night' ? 'paper' : 'stage',
-                  )
-                }
-              >
-                <span className="studio-swatch" data-backdrop={backdrop} aria-hidden />
-                {BACKDROP_LABEL[backdrop]}
-              </button>
-              <button
-                type="button"
-                className="studio-btn"
-                aria-pressed={panelOpen}
-                aria-keyshortcuts="I"
-                title="File inventory — geometry, materials, textures, rig  ·  I"
-                onClick={() => setPanelOpen((value) => !value)}
-              >
-                Inventory
-                <kbd>I</kbd>
-              </button>
-              <button
-                type="button"
-                className="studio-btn"
-                aria-keyshortcuts="S"
-                title="Save the current view as a PNG at the canvas resolution  ·  S"
-                onClick={saveShot}
-              >
-                Save PNG
-                <kbd>S</kbd>
-              </button>
-              <button
-                type="button"
-                className="studio-btn"
-                aria-pressed={expanded}
-                aria-keyshortcuts="M"
-                title="Full screen  ·  M"
-                onClick={() => void toggleExpanded()}
-              >
-                {expanded ? 'Exit' : 'Full screen'}
-                <kbd>M</kbd>
-              </button>
-            </div>
-          </div>
           ) : null}
 
           {!presentation && panelOpen ? (
@@ -1974,28 +2149,28 @@ export function ModelViewer({
 
           {!presentation ? (
             <div className="studio-bottom">
-            <span className="studio-meta">
-              {label ? <span>{label}</span> : null}
-              <a
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                title={`${cid} — open the raw file from the gateway`}
-              >
-                CID {shortCid(cid)}
-              </a>
-              {decoded ? (
-                <DecodeReadout decoded={decoded} recorded={recordedPolycount} />
-              ) : (
-                <span>decoding…</span>
-              )}
-              {dimensions ? (
-                <span title="Extent recorded for this version, in model units">
-                  {dimensions.x} × {dimensions.y} × {dimensions.z} units on record
-                </span>
-              ) : null}
-            </span>
-          </div>
+              <span className="studio-meta">
+                {label ? <span>{label}</span> : null}
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`${cid} — open the raw file from the gateway`}
+                >
+                  CID {shortCid(cid)}
+                </a>
+                {decoded ? (
+                  <DecodeReadout decoded={decoded} recorded={recordedPolycount} />
+                ) : (
+                  <span>decoding…</span>
+                )}
+                {dimensions ? (
+                  <span title="Extent recorded for this version, in model units">
+                    {dimensions.x} × {dimensions.y} × {dimensions.z} units on record
+                  </span>
+                ) : null}
+              </span>
+            </div>
           ) : null}
         </>
       ) : null}

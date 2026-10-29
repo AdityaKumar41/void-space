@@ -40,6 +40,11 @@ export interface AccessTokenPayload {
   /** API key id, present when amr === 'apikey'. */
   readonly kid?: string;
   readonly typ: 'access';
+  /**
+   * The person's display name. Present on the Studio handoff so VOID·STUDIO can
+   * mirror the Creator instead of inventing "Creator <id>".
+   */
+  readonly name?: string;
 }
 
 /**
@@ -183,8 +188,13 @@ export function assertPermission(
   permission: Permission,
   method: string,
 ): void {
-  // §3.6 — the Viewer role's REST access is read-only, whatever the route allows.
-  if (principal.readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) {
+  // Learners may update their own ephemeral room presence through spatial:join.
+  // Authoring, asset and administration writes retain the Viewer read-only guard.
+  if (
+    principal.readOnly &&
+    permission !== 'spatial:join' &&
+    !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())
+  ) {
     throw new ForbiddenError('This token is read-only', 'READ_ONLY_TOKEN');
   }
 

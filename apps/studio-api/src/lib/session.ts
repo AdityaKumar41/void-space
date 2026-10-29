@@ -38,6 +38,8 @@ export interface VoidSpaceTokenClaims {
   readonly roles: readonly string[];
   readonly perms?: readonly string[];
   readonly typ?: string;
+  /** Display name, set by the Studio handoff token. Absent on older tokens. */
+  readonly name?: string;
 }
 
 /** The resolved caller: identity plus *derived* authority. */
@@ -135,6 +137,8 @@ export async function resolveSession(
  */
 async function mirrorIdentity(claims: VoidSpaceTokenClaims): Promise<string> {
   const primaryRole = claims.roles.find(isRole) ?? 'Creator';
+  const named = claims.name?.trim();
+  const displayName = named && named.length > 0 ? named.slice(0, 120) : `Creator ${claims.sub.slice(0, 8)}`;
 
   return withStudioPlatform(async (db) => {
     // The tenant mirror must exist before the user row can reference it.
@@ -156,10 +160,17 @@ async function mirrorIdentity(claims: VoidSpaceTokenClaims): Promise<string> {
       create: {
         id: claims.sub,
         tenantId: claims.tid,
-        displayName: `Creator ${claims.sub.slice(0, 8)}`,
+        displayName,
         lastSeenRole: primaryRole,
       },
-      update: { lastSeenRole: primaryRole, tenantId: claims.tid },
+      // A later handoff carries the name VOID·SPACE has now, so a rename there
+      // shows up here on the next Studio open. Tokens minted before `name` existed
+      // leave the stored name alone.
+      update: {
+        lastSeenRole: primaryRole,
+        tenantId: claims.tid,
+        ...(named ? { displayName } : {}),
+      },
       select: { displayName: true },
     });
 

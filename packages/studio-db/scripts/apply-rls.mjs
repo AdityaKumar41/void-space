@@ -108,12 +108,25 @@ async function ensureRole(name, password, { bypassRls }) {
     console.log(`[studio-rls] role ${name} already exists (password re-synced)`);
     return;
   }
-  await prisma.$executeRawUnsafe(
-    `CREATE ROLE ${name} LOGIN PASSWORD ${quoteLiteral(password)} NOSUPERUSER ${
-      bypassRls ? 'BYPASSRLS' : 'NOBYPASSRLS'
-    }`,
-  );
-  console.log(`[studio-rls] created role ${name}`);
+  try {
+    await prisma.$executeRawUnsafe(
+      `CREATE ROLE ${name} LOGIN PASSWORD ${quoteLiteral(password)} NOSUPERUSER ${
+        bypassRls ? 'BYPASSRLS' : 'NOBYPASSRLS'
+      }`,
+    );
+    console.log(`[studio-rls] created role ${name}`);
+  } catch (error) {
+    // A second bootstrap can pass the existence check between the SELECT and
+    // CREATE. PostgreSQL correctly rejects the duplicate; converge on the
+    // intended role configuration instead of making `dev:up` flaky.
+    if (error?.meta?.code !== '23505') throw error;
+    await prisma.$executeRawUnsafe(
+      `ALTER ROLE ${name} WITH LOGIN PASSWORD ${quoteLiteral(password)} NOSUPERUSER ${
+        bypassRls ? 'BYPASSRLS' : 'NOBYPASSRLS'
+      }`,
+    );
+    console.log(`[studio-rls] role ${name} was created concurrently (password re-synced)`);
+  }
 }
 
 async function main() {

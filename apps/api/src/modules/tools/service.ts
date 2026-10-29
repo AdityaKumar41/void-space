@@ -43,6 +43,7 @@ export interface ToolsDeps {
   readonly eonConfigured: boolean;
   /** An Anthropic key exists, so enrichment is not falling back to the offline heuristic. */
   readonly claudeConfigured: boolean;
+  readonly textAiConfigured?: boolean;
   readonly fetchImpl?: typeof fetch;
   readonly timeoutMs?: number;
 }
@@ -150,8 +151,14 @@ export function createToolsService(deps: ToolsDeps) {
       .filter((result) => result.externalId !== '')
       // The local re-check. The vendor honours these, but a filter that is only applied remotely is
       // a filter this platform cannot vouch for.
-      .filter((result) => query.maxPolycount === undefined || (result.polycount ?? 0) <= query.maxPolycount)
-      .filter((result) => query.minPolycount === undefined || (result.polycount ?? 0) >= query.minPolycount)
+      .filter(
+        (result) =>
+          query.maxPolycount === undefined || (result.polycount ?? 0) <= query.maxPolycount,
+      )
+      .filter(
+        (result) =>
+          query.minPolycount === undefined || (result.polycount ?? 0) >= query.minPolycount,
+      )
       .slice(0, query.pageSize);
 
     return { results, offline: false };
@@ -215,7 +222,9 @@ export function createToolsService(deps: ToolsDeps) {
           downloadUrl: model.Download ?? null,
           sourceUrl: model.Id ? `https://poly.pizza/m/${model.Id}` : null,
           downloadable: Boolean(model.Download),
-          attribution: author ? `${model.Title ?? 'Untitled'} by ${author} (Poly Pizza, CC0)` : 'Poly Pizza (CC0)',
+          attribution: author
+            ? `${model.Title ?? 'Untitled'} by ${author} (Poly Pizza, CC0)`
+            : 'Poly Pizza (CC0)',
         };
       })
       .filter((result) => result.externalId !== '')
@@ -277,7 +286,7 @@ export function createToolsService(deps: ToolsDeps) {
    */
   function integrationStatus(): IntegrationStatus {
     const offlineFallbacks: string[] = [];
-    if (!deps.claudeConfigured) offlineFallbacks.push('claude');
+    if (!deps.claudeConfigured && !deps.textAiConfigured) offlineFallbacks.push('claude');
     if (!deps.eonConfigured) offlineFallbacks.push('eon');
     if (!deps.blenderConfigured) offlineFallbacks.push('blender');
     if (!deps.sketchfabToken) offlineFallbacks.push('sketchfab');
@@ -291,6 +300,7 @@ export function createToolsService(deps: ToolsDeps) {
       blender: deps.blenderConfigured,
       eon: deps.eonConfigured,
       claude: deps.claudeConfigured,
+      textAi: Boolean(deps.textAiConfigured),
       offlineFallbacks,
     };
   }

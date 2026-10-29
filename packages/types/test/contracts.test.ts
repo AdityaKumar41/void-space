@@ -22,7 +22,13 @@ import {
   type Permission,
   type Role,
 } from '../src/roles';
-import { BULLMQ_STATE_TO_JOB_STATUS, JOB_STATUSES, QUEUE_NAMES, QUEUE_POLICIES } from '../src/queues';
+import {
+  BULLMQ_STATE_TO_JOB_STATUS,
+  JOB_STATUSES,
+  QUEUE_NAMES,
+  QUEUE_POLICIES,
+} from '../src/queues';
+import { createScenarioSchema, submitScenarioAttemptSchema } from '../src/dto/learning';
 
 /**
  * Transcribed from the SRS §3.6 table row by row: `true` = the cell contains ✔.
@@ -126,6 +132,38 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Developer: false,
     Viewer: false,
   },
+  'learning:manage': {
+    SuperAdmin: true,
+    TenantAdmin: true,
+    Creator: true,
+    Assessor: true,
+    Developer: false,
+    Viewer: false,
+  },
+  'spatial:manage': {
+    SuperAdmin: true,
+    TenantAdmin: true,
+    Creator: true,
+    Assessor: true,
+    Developer: false,
+    Viewer: false,
+  },
+  'spatial:join': {
+    SuperAdmin: true,
+    TenantAdmin: true,
+    Creator: true,
+    Assessor: true,
+    Developer: true,
+    Viewer: true,
+  },
+  'iot:manage': {
+    SuperAdmin: true,
+    TenantAdmin: true,
+    Creator: true,
+    Assessor: true,
+    Developer: false,
+    Viewer: false,
+  },
 };
 
 describe('§3.6 RBAC matrix', () => {
@@ -136,11 +174,14 @@ describe('§3.6 RBAC matrix', () => {
     }
   });
 
-  it.each(Object.entries(MATRIX))('%s matches the SRS table for every role', (permission, cells) => {
-    for (const role of ROLES) {
-      expect(roleHasPermission(role, permission as Permission)).toBe(cells[role]);
-    }
-  });
+  it.each(Object.entries(MATRIX))(
+    '%s matches the SRS table for every role',
+    (permission, cells) => {
+      for (const role of ROLES) {
+        expect(roleHasPermission(role, permission as Permission)).toBe(cells[role]);
+      }
+    },
+  );
 
   it('grants SuperAdmin every permission (§3.5 platform operator)', () => {
     expect([...ROLE_PERMISSIONS.SuperAdmin].sort()).toEqual([...PERMISSIONS].sort());
@@ -162,6 +203,9 @@ describe('§3.6 RBAC matrix', () => {
       'asset:publish',
       'asset:revoke-license',
       'apikey:manage',
+      'learning:manage',
+      'spatial:manage',
+      'iot:manage',
     ];
     for (const permission of writes) {
       expect(roleHasPermission('Viewer', permission)).toBe(false);
@@ -303,5 +347,36 @@ describe('§3.10 queue policies', () => {
     expect(mapped).toContain('active');
     expect(mapped).toContain('completed');
     expect(mapped).toContain('failed');
+  });
+});
+
+describe('simulator assessment contract', () => {
+  const lessonId = 'f8e7d6c5-b4a3-4210-9f8e-7d6c5b4a3210';
+
+  it('requires an attached lesson or digital twin and a unique rubric', () => {
+    const base = {
+      title: 'Lockout verification',
+      description:
+        'Learner isolates the equipment and verifies that all stored energy is released.',
+      rubric: [{ id: 'isolate', label: 'Isolate every energy source', weight: 60 }],
+    };
+    expect(createScenarioSchema.safeParse({ ...base, lessonId }).success).toBe(true);
+    expect(createScenarioSchema.safeParse(base).success).toBe(false);
+    expect(
+      createScenarioSchema.safeParse({
+        ...base,
+        lessonId,
+        rubric: [...base.rubric, { id: 'isolate', label: 'Duplicate criterion', weight: 40 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts evidence only as boolean observations', () => {
+    expect(submitScenarioAttemptSchema.safeParse({ evidence: { isolate: true } }).success).toBe(
+      true,
+    );
+    expect(submitScenarioAttemptSchema.safeParse({ evidence: { isolate: 'true' } }).success).toBe(
+      false,
+    );
   });
 });

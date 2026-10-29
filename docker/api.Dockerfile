@@ -17,6 +17,8 @@ COPY packages/db/package.json ./packages/db/package.json
 COPY packages/types/package.json ./packages/types/package.json
 COPY packages/config/package.json ./packages/config/package.json
 COPY packages/ui/package.json ./packages/ui/package.json
+COPY packages/studio-ai/package.json ./packages/studio-ai/package.json
+COPY packages/studio-engine/package.json ./packages/studio-engine/package.json
 RUN pnpm install --frozen-lockfile
 
 # ---- runtime --------------------------------------------------------------
