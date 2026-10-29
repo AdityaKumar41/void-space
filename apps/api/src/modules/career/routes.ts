@@ -23,6 +23,7 @@ export async function careerRoutes(app: FastifyInstance): Promise<void> {
           orderBy: { completedAt: 'desc' },
         }),
       ]);
+      const seen = new Set<string>();
       const skills = [
         ...credentials.map((credential) => ({
           kind: 'lesson',
@@ -39,7 +40,14 @@ export async function careerRoutes(app: FastifyInstance): Promise<void> {
           title: run.guide.title,
           verifiedAt: run.completedAt.toISOString(),
         })),
-      ];
+      ].filter((skill) => {
+        // A skill profile lists each verified outcome once. Repeat passes stay in the
+        // assessment record; the newest one is already first.
+        const key = `${skill.kind}\0${skill.title}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       const recommendations = [
         ...(skills.some((skill) => skill.kind === 'field')
           ? [{ role: 'Field operations specialist', reason: 'Verified field execution evidence' }]

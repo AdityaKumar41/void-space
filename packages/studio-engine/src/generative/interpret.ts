@@ -44,6 +44,25 @@ function colorFrom(text: string): string | null {
   return null;
 }
 
+/**
+ * The configured text model often answers a scene prompt with a fenced JSON
+ * dump. That dump is not the reply the editor applies.
+ */
+export function readableCopilotText(value: string): string {
+  const withoutFences = value.replace(/```[\s\S]*?```/g, '\n').replace(/`([^`\n]+)`/g, '$1');
+  const lines = withoutFences
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^[\[{]/.test(line) && !/^[\]}],;]+$/.test(line))
+    .filter((line) => !/^\d+\.\s*[A-Za-z_]+\s*:?\s*$/.test(line))
+    .filter((line) => !/^(addPrimitive|setMaterialProperty|generateTexture|deleteObject)\b\s*:?\s*$/i.test(line))
+    .filter((line) => !/\b(addPrimitive|setMaterialProperty|generateTexture|deleteObject)\s*\(/i.test(line))
+    .filter((line) => !/here are the (two |following )?(tool )?calls:?\s*$/i.test(line));
+  const text = lines.join('\n').replace(/[ \t]{2,}/g, ' ').trim();
+  if (/```/.test(value) && text.length < 180 && /\b(code|function|json|tool)\b/i.test(text)) return '';
+  return text;
+}
+
 export function interpretInstruction(
   text: string,
   scene: { readonly selection: readonly string[] },
@@ -71,17 +90,22 @@ export function interpretInstruction(
   const target = calls.length > 0 ? '$last' : (selection[0] ?? '$active');
   const metallic = /\b(chrome|metallic|metal|steel|brushed)\b/.test(lower);
   const color = colorFrom(lower);
+  const canPaint = calls.length > 0 || selection.length > 0;
 
-  if (metallic) {
-    calls.push({ name: 'setMaterialProperty', input: { objectId: target, property: 'baseColor', value: '#c5c9d1' } });
+  if (canPaint && (metallic || color)) {
+    // A named colour stays the colour. "Red metal" must not be repainted as grey chrome.
+    calls.push({
+      name: 'setMaterialProperty',
+      input: { objectId: target, property: 'baseColor', value: color ?? '#c5c9d1' },
+    });
+  }
+  if (canPaint && metallic) {
     calls.push({ name: 'setMaterialProperty', input: { objectId: target, property: 'metallic', value: 0.92 } });
     calls.push({ name: 'setMaterialProperty', input: { objectId: target, property: 'roughness', value: 0.2 } });
     calls.push({
       name: 'generateTexture',
       input: { objectId: target, prompt: text.trim().slice(0, 400) },
     });
-  } else if (color && (calls.length > 0 || selection.length > 0)) {
-    calls.push({ name: 'setMaterialProperty', input: { objectId: target, property: 'baseColor', value: color } });
   }
 
   if (/\b(delete|remove)\b/.test(lower) && selection[0] && !wantsAdd) {

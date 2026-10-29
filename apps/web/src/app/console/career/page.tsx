@@ -23,8 +23,9 @@ export default function CareerPage() {
           Evidence-backed skill profile
         </h1>
         <p className="mt-2 text-ink-dim">
-          {profile.data?.evidenceCount ?? 0} verified evidence records across learning, simulations
-          and field work.
+          {profile.data?.evidenceCount ?? 0} verified{' '}
+          {(profile.data?.evidenceCount ?? 0) === 1 ? 'record' : 'records'} across learning,
+          simulations and field work.
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
@@ -34,6 +35,9 @@ export default function CareerPage() {
             <p key={`${skill.kind}-${skill.title}`} className="text-sm text-ink-dim">
               <span className="font-mono text-brand">{skill.kind.toUpperCase()}</span> ·{' '}
               {skill.title}
+              <span className="mt-0.5 block text-xs text-ink-faint">
+                Verified {new Date(skill.verifiedAt).toLocaleDateString()}
+              </span>
             </p>
           ))}
         </Card>

@@ -201,7 +201,8 @@ function parseResult(raw: unknown, provider: Provider): TextResult {
   }
   text = text.trim();
   if (!text && !toolCalls.length) throw new Error('Empty generation');
-  if (finishReason === 'length') throw new Error('Truncated generation');
+  // A token cap with a usable sentence or a complete tool call is still an answer.
+  // An empty cut-off is already rejected above.
   return {
     text,
     toolCalls,

@@ -9,7 +9,16 @@ const questionsSchema = z
     message: 'Question identifiers must be unique',
   });
 function parseJson(text: string): unknown {
-  return JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = (fenced?.[1] ?? text).trim();
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start >= 0 && end > start) return JSON.parse(candidate.slice(start, end + 1));
+    throw new Error('The model did not return JSON');
+  }
 }
 
 /** Separate bounded outputs accommodate gateways with small per-response token ceilings. */

@@ -24,6 +24,7 @@ import {
   buildPrimitive,
   heightfieldFromLuminance,
   interpretInstruction,
+  readableCopilotText,
   pbrFromPrompt,
   primitiveForPrompt,
   type PbrAssignment,
@@ -461,7 +462,9 @@ function injectStyles(): void {
     }
     .vsp__msg {
       padding: 6px 8px; border-radius: 6px; font-size: 11.5px; line-height: 1.45;
+      white-space: pre-wrap; overflow-wrap: anywhere;
     }
+    .vsp__msg--pending { color: ${p.fgDim}; font-style: italic; }
     .vsp__msg--user {
       background: rgba(139, 108, 246, 0.15); border: 1px solid rgba(139, 108, 246, 0.3);
       justify-self: end; max-width: 85%;
@@ -2424,6 +2427,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
 
   // Copilot View
   let copilotSessionId: string | null = null
+  let copilotPending = false
   const copilotMessages: {role: 'user' | 'assistant'; text: string}[] = [
     {
       role: 'assistant',
@@ -2629,14 +2633,16 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
         </div>
         <div class="vsp__chat_stream" data-role="chat-stream">
           ${copilotMessages
-            .map(
-              (m) => `
+            .map((m) => {
+              const bodyText = m.role === 'assistant' ? readableCopilotText(m.text) || m.text.trim() : m.text
+              return `
             <div class="vsp__msg vsp__msg--${m.role === 'user' ? 'user' : 'ai'}">
-              ${esc(m.text)}
+              ${esc(bodyText)}
             </div>
-          `,
-            )
+          `
+            })
             .join('')}
+          ${copilotPending ? `<div class="vsp__msg vsp__msg--ai vsp__msg--pending">Working on that…</div>` : ''}
         </div>
         <form class="vsp__chat_row" data-role="copilot-form">
           <input type="text" class="vsp__input" name="prompt" placeholder="Ask Copilot..." autocomplete="off" required />
@@ -2675,6 +2681,9 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       const prompt = (pbrForm.querySelector('input[name="pbr"]') as HTMLInputElement | null)?.value.trim() ?? ''
       if (prompt) void sendPbrPrompt(prompt)
     })
+
+    const stream = body.querySelector('[data-role="chat-stream"]')
+    if (stream) stream.scrollTop = stream.scrollHeight
   }
 
   const pushAssistant = (text: string): void => {
@@ -2716,6 +2725,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
 
   const sendCopilotMessage = async (promptText: string): Promise<void> => {
     copilotMessages.push({role: 'user', text: promptText})
+    copilotPending = true
     renderCopilotView()
 
     try {
@@ -2735,7 +2745,6 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
           role: 'assistant',
           text: `${applied.lines.join('\n')}\n\nSigned out, so this was a local command rather than the model. Undo reverses the whole step.`,
         })
-        renderCopilotView()
         return
       }
 
@@ -2774,7 +2783,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
         throw new Error(await errorMessage(msgRes, 'The Copilot could not answer'))
       }
       const res = await msgRes.json()
-      const prose = String(res.messages?.assistant?.content ?? '').trim()
+      const prose = readableCopilotText(String(res.messages?.assistant?.content ?? ''))
       const modelCalls = Array.isArray(res.applied)
         ? res.applied
             .filter((call: {name?: string}) => typeof call?.name === 'string')
@@ -2784,7 +2793,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
             }))
         : []
       const rejected = Array.isArray(res.rejected) ? res.rejected.length : 0
-      const parts = [prose || 'The Copilot returned no explanation.']
+      const parts = prose ? [prose] : []
       const calls = modelCalls.length > 0 ? modelCalls : localCalls()
       if (calls.length > 0) {
         const applied = await runSceneCalls(calls)
@@ -2810,6 +2819,13 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
           .slice(0, 3)
         parts.push(`${rejected} proposal${rejected === 1 ? '' : 's'} refused.${why.length ? ` ${why.join(' ')}` : ''}`)
       }
+      if (parts.length === 0) {
+        parts.push(
+          calls.length > 0
+            ? 'The scene change is applied below.'
+            : 'The Copilot did not return an explanation. Try a shorter instruction, such as “Create a red metal crate”.',
+        )
+      }
       copilotMessages.push({role: 'assistant', text: parts.join('\n\n')})
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The Copilot could not answer.'
@@ -2831,6 +2847,8 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
           copilotMessages.push({role: 'assistant', text: `${message}\n\n${why}`})
         }
       }
+    } finally {
+      copilotPending = false
     }
     renderCopilotView()
   }

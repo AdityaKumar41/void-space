@@ -7,6 +7,7 @@ import { cookieHeader, createTestApp, DEMO, DEMO_TENANT_IDS, login, type TestApp
 let context: TestApp;
 let cookie: string;
 let lessonId: string;
+const guideIds: string[] = [];
 
 beforeAll(async () => {
   context = await createTestApp();
@@ -34,10 +35,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (lessonId)
-    await withTenant(DEMO_TENANT_IDS.aurora, (db) =>
-      db.lesson.deleteMany({ where: { id: lessonId } }),
-    );
+  await withTenant(DEMO_TENANT_IDS.aurora, async (db) => {
+    if (guideIds.length > 0) {
+      await db.fieldGuide.deleteMany({
+        where: { id: { in: guideIds }, tenantId: DEMO_TENANT_IDS.aurora },
+      });
+    }
+    if (lessonId) await db.lesson.deleteMany({ where: { id: lessonId } });
+  });
   await context?.close();
 });
 
@@ -55,7 +60,8 @@ describe('Field IQ packet and completion evidence', () => {
         steps: [{ id: 'inspect', instruction: 'Inspect the pump housing.' }],
       },
     });
-    const guideId = create.json().guide.id;
+    const guideId = create.json().guide.id as string;
+    guideIds.push(guideId);
     const patch = await context.app.inject({
       method: 'PATCH',
       url: `/api/v1/field-guides/${guideId}`,
@@ -126,6 +132,7 @@ describe('Field IQ packet and completion evidence', () => {
     });
     expect(created.statusCode).toBe(201);
     const guideId = (created.json() as { guide: { id: string } }).guide.id;
+    guideIds.push(guideId);
     expect(
       (
         await context.app.inject({

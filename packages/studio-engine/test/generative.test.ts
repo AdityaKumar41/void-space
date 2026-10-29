@@ -5,6 +5,7 @@ import {
   buildPrimitive,
   heightfieldFromLuminance,
   interpretInstruction,
+  readableCopilotText,
   pbrFromPrompt,
   primitiveForPrompt,
   type CommandEditor,
@@ -102,6 +103,29 @@ describe('local instruction reading', () => {
     ]);
     expect(calls[0]?.input.kind).toBe('cube');
     expect(calls[1]?.input.objectId).toBe('$last');
+    expect(calls[1]?.input.value).toBe('#c5c9d1');
+  });
+
+  it('hides a fenced tool dump and keeps a normal sentence', () => {
+    const dump = 'To create a red metal crate, I will use the `addPrimitive` function. Here\'s the code:\n```json\n[{"name":"addPrimitive"}]\n```';
+    expect(readableCopilotText(dump)).toBe('');
+    expect(
+      readableCopilotText(
+        'To create a red metal crate, I will first add a cube.\nHere are the tool calls:\n1. addPrimitive(kind="cube", name="Crate")\n2. setMaterialProperty(objectId="Crate", property="baseColor", value="#8b5a2b")\nThe result is a red metal crate added to the scene.',
+      ),
+    ).toBe(
+      'To create a red metal crate, I will first add a cube.\nThe result is a red metal crate added to the scene.',
+    );
+    expect(readableCopilotText('The crate is a cube with a metal surface.\nIt sits at the origin.')).toBe(
+      'The crate is a cube with a metal surface.\nIt sits at the origin.',
+    );
+  });
+
+  it('keeps a named colour on a metal object', () => {
+    const calls = interpretInstruction('Create a red metal crate', { selection: [] });
+    const color = calls.find((call) => call.input.property === 'baseColor');
+    expect(color?.input.value).toBe('#c44536');
+    expect(calls.some((call) => call.input.property === 'metallic')).toBe(true);
   });
 
   it('does not invent an edit for an audit request', () => {

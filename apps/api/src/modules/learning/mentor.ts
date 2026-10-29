@@ -51,6 +51,15 @@ export function transcriptReference(context: Context, question: string) {
   };
 }
 
+/** Drop a fenced dump so a learner sees sentences, then fall back to the transcript if nothing remains. */
+function readableMentorAnswer(value: string): string {
+  return value
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export async function answerLessonQuestion(
   context: Context,
   question: string,
@@ -79,8 +88,10 @@ export async function answerLessonQuestion(
         },
         fetchImpl,
       );
+      const answer = readableMentorAnswer(result.text);
+      if (answer.length < 2) throw new Error('Invalid mentor answer');
       return {
-        answer: result.text,
+        answer,
         mode: 'ai' as const,
         provider: result.provider,
         model: result.model,

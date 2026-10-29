@@ -30,11 +30,18 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (lessonId) {
-    await withTenant(DEMO_TENANT_IDS.aurora, (db) =>
-      db.lesson.deleteMany({ where: { id: lessonId, tenantId: DEMO_TENANT_IDS.aurora } }),
-    );
-  }
+  await withTenant(DEMO_TENANT_IDS.aurora, async (db) => {
+    if (scenarioId) {
+      await db.simulationScenario.deleteMany({
+        where: { id: scenarioId, tenantId: DEMO_TENANT_IDS.aurora },
+      });
+    }
+    if (lessonId) {
+      await db.lesson.deleteMany({
+        where: { id: lessonId, tenantId: DEMO_TENANT_IDS.aurora },
+      });
+    }
+  });
   await context?.close();
 });
 
