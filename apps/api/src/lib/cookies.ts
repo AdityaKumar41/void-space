@@ -18,6 +18,8 @@ export const REFRESH_COOKIE = 'vs_refresh';
 export const ONBOARDING_COOKIE = 'vs_onboarding';
 /** Anti-CSRF state for the Google OAuth redirect. */
 export const OAUTH_STATE_COOKIE = 'vs_oauth_state';
+/** Where to land after Google returns. A relative path, never an off-site URL. */
+export const OAUTH_NEXT_COOKIE = 'vs_oauth_next';
 
 export const REFRESH_COOKIE_PATH = '/api/v1/auth';
 

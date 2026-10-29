@@ -16,6 +16,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 
 import type { ApiEnv } from '../../env';
 import {
+  OAUTH_NEXT_COOKIE,
   OAUTH_STATE_COOKIE,
   ONBOARDING_COOKIE,
   clearOnboardingCookie,
@@ -25,12 +26,28 @@ import {
   setRefreshCookie,
 } from '../../lib/cookies';
 import { parseDurationSeconds } from '../../lib/duration';
-import { UnauthenticatedError } from '../../lib/errors';
+import { isAppError, UnauthenticatedError } from '../../lib/errors';
 import { parseBody, requestContext } from '../../lib/http';
 import { createGoogleSsoService, type OnboardingIdentity } from './google';
 import { buildAuthService, type AuthService, type AuthenticatedResult } from './service';
 
 const ONBOARDING_TTL_SECONDS = 30 * 60;
+
+/**
+ * The page Google returns to is a browser navigation, so the destination has to
+ * be a path on our own site. `//evil.example` is protocol-relative and would
+ * leave the product.
+ */
+export function safeOAuthNext(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 200) return '/console';
+  if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/console';
+  if (value.startsWith('/login')) return '/console';
+  return value;
+}
+
+function webOrigin(redirectUri: string): string {
+  return new URL(redirectUri).origin;
+}
 
 export interface GoogleRoutesOptions {
   readonly env: ApiEnv;
@@ -66,37 +83,56 @@ export async function googleRoutes(
     return { user: result.session as SessionUser, accessTokenExpiresIn: accessMaxAgeSeconds };
   }
 
-  app.get('/google/start', async (_request, reply) => {
+  app.get('/google/start', async (request, reply) => {
     const { url, state } = google.startUrl();
-    reply.setCookie(OAUTH_STATE_COOKIE, state, {
-      httpOnly: true,
-      secure,
-      sameSite: 'lax',
-      path: '/api/v1/auth',
-      maxAge: 600,
-    });
+    const next = safeOAuthNext((request.query as { next?: unknown }).next);
+    const cookieBase = { httpOnly: true, secure, sameSite: 'lax' as const, path: '/api/v1/auth' };
+    reply.setCookie(OAUTH_STATE_COOKIE, state, { ...cookieBase, maxAge: 600 });
+    reply.setCookie(OAUTH_NEXT_COOKIE, next, { ...cookieBase, maxAge: 600 });
     // Redirect the browser straight to Google.
     return reply.redirect(url, 302);
   });
+
+  function loginError(reply: FastifyReply, message: string, code: string) {
+    // Unconfigured deployments keep the JSON the suite asserts on. A configured
+    // one is a browser coming back from Google, and a JSON body there is a dead end.
+    if (!google.isConfigured() || !env.GOOGLE_REDIRECT_URI) {
+      throw new UnauthenticatedError(message, code);
+    }
+    const origin = webOrigin(env.GOOGLE_REDIRECT_URI);
+    return reply.redirect(`${origin}/login?error=${encodeURIComponent(code)}`, 302);
+  }
 
   app.get('/google/callback', async (request, reply) => {
     const query = request.query as { code?: string; state?: string; error?: string };
 
     if (query.error) {
-      throw new UnauthenticatedError(`Google sign-in was cancelled (${query.error})`, 'GOOGLE_CANCELLED');
+      return loginError(reply, `Google sign-in was cancelled (${query.error})`, 'GOOGLE_CANCELLED');
     }
     if (!query.code || !query.state) {
-      throw new UnauthenticatedError('Missing code or state from Google', 'GOOGLE_BAD_CALLBACK');
+      return loginError(reply, 'Missing code or state from Google', 'GOOGLE_BAD_CALLBACK');
     }
 
     const expectedState = request.cookies[OAUTH_STATE_COOKIE];
     if (!expectedState || expectedState !== query.state) {
       // Login-CSRF attempt, or a stale/replayed callback.
-      throw new UnauthenticatedError('OAuth state mismatch', 'GOOGLE_STATE_MISMATCH');
+      return loginError(reply, 'OAuth state mismatch', 'GOOGLE_STATE_MISMATCH');
     }
-    reply.clearCookie(OAUTH_STATE_COOKIE, { path: '/api/v1/auth', secure, httpOnly: true });
+    reply.clearCookie(OAUTH_STATE_COOKIE, { path: '/api/v1/auth', secure, httpOnly: true, sameSite: 'lax' });
 
-    const result = await google.exchangeCode(query.code, requestContext(request));
+    let result: AuthenticatedResult | OnboardingIdentity;
+    try {
+      result = await google.exchangeCode(query.code, requestContext(request));
+    } catch (error) {
+      if (isAppError(error) && error.statusCode < 500) {
+        return loginError(reply, error.message, error.code);
+      }
+      throw error;
+    }
+
+    const origin = webOrigin(env.GOOGLE_REDIRECT_URI!);
+    const next = safeOAuthNext(request.cookies[OAUTH_NEXT_COOKIE]);
+    reply.clearCookie(OAUTH_NEXT_COOKIE, { path: '/api/v1/auth', secure, httpOnly: true, sameSite: 'lax' });
 
     // No membership yet → FR-2.2's "prompt for tenant selection/creation".
     if ('googleId' in result) {
@@ -106,15 +142,13 @@ export async function googleRoutes(
         sameSite: 'lax',
         maxAgeSeconds: ONBOARDING_TTL_SECONDS,
       });
-      return reply.status(200).send({
-        requiresOnboarding: true,
-        email: result.email,
-        fullName: result.fullName,
-        options: ['create_workspace', 'accept_invitation'],
-      });
+      const onboard = new URL('/login/google', origin);
+      onboard.searchParams.set('next', next);
+      return reply.redirect(onboard.toString(), 302);
     }
 
-    return reply.status(200).send(completeAuth(reply, result));
+    completeAuth(reply, result);
+    return reply.redirect(`${origin}${next}`, 302);
   });
 
   app.post('/google/complete', async (request, reply) => {

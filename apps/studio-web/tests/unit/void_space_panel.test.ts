@@ -64,8 +64,10 @@ test('paints the link and the provenance the Studio API reports', async () => {
   expect(text).toContain('Cargo Crate')
   expect(text).toContain('Commercial')
   expect(text).toContain('424242')
-  // Sign-in goes to the console the API named, on the route that actually exists.
-  expect(panel.element.querySelector('a.vsp__btn')?.getAttribute('href')).toBe('https://void.example/login')
+  // Sign-in returns through /studio/connect, which hands the session back to this editor.
+  expect(panel.element.querySelector('a.vsp__btn')?.getAttribute('href')).toBe(
+    'https://void.example/login?next=%2Fstudio%2Fconnect',
+  )
 
   // The Studio API is the only origin contacted — never VOID·SPACE itself.
   expect(calls).toEqual(['http://localhost:4100/studio/api/v1/voidspace/status'])

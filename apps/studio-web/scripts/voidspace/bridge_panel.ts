@@ -1276,13 +1276,29 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     activeSession = null
   }
 
-  const onStorageChange = (e: StorageEvent): void => {
-    if (e.key === 'void_studio_token' && e.newValue && e.newValue !== authToken) {
-      authToken = e.newValue
-      void checkSession().then(() => render())
+  const adoptStoredToken = (): void => {
+    let stored: string | null = null
+    try {
+      stored = localStorage.getItem('void_studio_token')
+    } catch {
+      return
     }
+    if (!stored || stored === authToken) return
+    authToken = stored
+    void checkSession().then(() => render())
+  }
+
+  const onStorageChange = (e: StorageEvent): void => {
+    if (e.key === 'void_studio_token') adoptStoredToken()
   }
   window.addEventListener('storage', onStorageChange)
+
+  // The handoff tab writes the token and closes. Coming back to this window
+  // covers the browsers that do not deliver the storage event.
+  const onVisible = (): void => {
+    if (document.visibilityState === 'visible') adoptStoredToken()
+  }
+  document.addEventListener('visibilitychange', onVisible)
 
   const render = async (): Promise<void> => {
     let status: BridgeStatus | null = null
@@ -1366,9 +1382,9 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       html += `
         <div class="vsp__card" style="border-color: ${rgbaCss(p.accent, 0.55)}; background: ${rgbaCss(p.accent, 0.06)};">
           <div style="font-weight:600; font-size:11px; color:${p.accent}; margin-bottom:3px;">Connect VOID·SPACE Account</div>
-          <div class="vsp__note">Sign in on VOID·SPACE, then open Studio from the console so this editor receives your session.</div>
+          <div class="vsp__note">Opens VOID·SPACE. If you are already signed in there, this editor links itself and that tab closes.</div>
           <div style="display:flex; gap:6px; margin-top:8px;">
-            <a href="${esc(stripTrailingSlashes(status.links.consoleUrl))}/login" target="_blank" rel="noopener" class="vsp__btn" style="text-align:center; text-decoration:none; flex:1.2;">
+            <a href="${esc(`${stripTrailingSlashes(status.links.consoleUrl)}/login?next=${encodeURIComponent('/studio/connect')}`)}" target="_blank" rel="noopener" class="vsp__btn" style="text-align:center; text-decoration:none; flex:1.2;">
               Sign in on VOID·SPACE ↗
             </a>
             <button type="button" class="vsp__btn vsp__btn--subtle" data-action="toggle-token-input" style="flex:1;">
@@ -2881,6 +2897,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       window.removeEventListener('dragover', onDragOver)
       window.removeEventListener('drop', onDrop)
       window.removeEventListener('storage', onStorageChange)
+      document.removeEventListener('visibilitychange', onVisible)
       triggerBtn.remove()
       root.remove()
       if (panel === handle) {

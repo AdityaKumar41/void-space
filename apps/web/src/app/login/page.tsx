@@ -13,6 +13,7 @@
  */
 import { redirect } from 'next/navigation';
 
+import { API_INTERNAL_URL, apiFetch } from '../../lib/api';
 import { getServerSession, safeNextPath } from '../../lib/server-session';
 import { LoginForm } from './login-form';
 
@@ -26,9 +27,20 @@ export default async function LoginPage({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const next = safeNextPath(searchParams.next);
+  const error = typeof searchParams.error === 'string' ? searchParams.error : undefined;
   const { session } = await getServerSession();
 
   if (session) redirect(next);
 
-  return <LoginForm next={next} />;
+  let google = false;
+  try {
+    const providers = await apiFetch<{ google: boolean }>('/auth/providers', {
+      baseUrl: `${API_INTERNAL_URL}/api/v1`,
+    });
+    google = providers.google;
+  } catch {
+    google = false;
+  }
+
+  return <LoginForm next={next} google={google} error={error} />;
 }

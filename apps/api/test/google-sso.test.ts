@@ -9,11 +9,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { safeOAuthNext } from '../src/modules/auth/google-routes';
 import {
   DEMO,
   cookieHeader,
   createTestApp,
   login,
+  readCookie,
   removeTestTenants,
   type TestApp,
 } from './helpers';
@@ -33,45 +35,74 @@ afterAll(async () => {
 });
 
 describe('FR-2.2 Google SSO', () => {
+  it('keeps the post-login path on this site', () => {
+    expect(safeOAuthNext('/console/library')).toBe('/console/library');
+    expect(safeOAuthNext('//evil.example')).toBe('/console');
+    expect(safeOAuthNext('https://evil.example')).toBe('/console');
+    expect(safeOAuthNext('/login')).toBe('/console');
+  });
+
   it('advertises which login methods the deployment offers', async () => {
     const response = await context.app.inject({ method: 'GET', url: '/api/v1/auth/providers' });
 
     expect(response.statusCode).toBe(200);
     const body = response.json() as { password: boolean; google: boolean; wallet: boolean };
     expect(body.password).toBe(true);
-    // Locally GOOGLE_CLIENT_ID is unset, so the button is hidden rather than broken.
-    expect(body.google).toBe(false);
+    // The button tracks whether this process actually has a Google client.
+    expect(body.google).toBe(Boolean(context.env.GOOGLE_CLIENT_ID));
     expect(typeof body.wallet).toBe('boolean');
   });
 
-  it('degrades gracefully to 503 when Google is not configured (NFR-REL.1)', async () => {
-    const response = await context.app.inject({ method: 'GET', url: '/api/v1/auth/google/start' });
+  it('sends the browser to Google, or refuses when Google is not configured', async () => {
+    const response = await context.app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/google/start?next=/studio/connect',
+    });
 
-    expect(response.statusCode).toBe(503);
-    expect((response.json() as { code: string }).code).toBe('GOOGLE_NOT_CONFIGURED');
+    if (!context.env.GOOGLE_CLIENT_ID) {
+      expect(response.statusCode).toBe(503);
+      expect((response.json() as { code: string }).code).toBe('GOOGLE_NOT_CONFIGURED');
+      return;
+    }
+
+    expect(response.statusCode).toBe(302);
+    expect(String(response.headers.location)).toMatch(/^https:\/\/accounts\.google\.com\//);
+    expect(readCookie(response.headers['set-cookie'], 'vs_oauth_state')).toBeTruthy();
+    expect(readCookie(response.headers['set-cookie'], 'vs_oauth_next')).toBe('/studio/connect');
   });
 
   it('rejects a callback with a mismatched or missing state (login CSRF)', async () => {
+    const configured = Boolean(context.env.GOOGLE_CLIENT_ID && context.env.GOOGLE_REDIRECT_URI);
+    const origin = configured ? new URL(context.env.GOOGLE_REDIRECT_URI!).origin : '';
+
     const missing = await context.app.inject({
       method: 'GET',
       url: '/api/v1/auth/google/callback?code=abc&state=xyz',
     });
-    expect(missing.statusCode).toBe(401);
-    expect((missing.json() as { code: string }).code).toBe('GOOGLE_STATE_MISMATCH');
-
     const incomplete = await context.app.inject({
       method: 'GET',
       url: '/api/v1/auth/google/callback?code=abc',
     });
-    expect(incomplete.statusCode).toBe(401);
-    expect((incomplete.json() as { code: string }).code).toBe('GOOGLE_BAD_CALLBACK');
-
     const cancelled = await context.app.inject({
       method: 'GET',
       url: '/api/v1/auth/google/callback?error=access_denied',
     });
-    expect(cancelled.statusCode).toBe(401);
-    expect((cancelled.json() as { code: string }).code).toBe('GOOGLE_CANCELLED');
+
+    if (!configured) {
+      expect(missing.statusCode).toBe(401);
+      expect((missing.json() as { code: string }).code).toBe('GOOGLE_STATE_MISMATCH');
+      expect(incomplete.statusCode).toBe(401);
+      expect((incomplete.json() as { code: string }).code).toBe('GOOGLE_BAD_CALLBACK');
+      expect(cancelled.statusCode).toBe(401);
+      expect((cancelled.json() as { code: string }).code).toBe('GOOGLE_CANCELLED');
+      return;
+    }
+
+    // A person coming back from Google must land on the sign-in page, not a JSON body.
+    expect(missing.statusCode).toBe(302);
+    expect(missing.headers.location).toBe(`${origin}/login?error=GOOGLE_STATE_MISMATCH`);
+    expect(incomplete.headers.location).toBe(`${origin}/login?error=GOOGLE_BAD_CALLBACK`);
+    expect(cancelled.headers.location).toBe(`${origin}/login?error=GOOGLE_CANCELLED`);
   });
 
   it('provisions a workspace for a first-time SSO identity', async () => {

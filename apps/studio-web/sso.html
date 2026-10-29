@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Linking Studio</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #08080a; color: #f4f4f5; font: 15px/1.45 system-ui, sans-serif; }
+    main { min-height: 100%; display: grid; place-items: center; padding: 24px; }
+    p { max-width: 28rem; margin: 0; }
+    a { color: #fa5d19; }
+  </style>
+</head>
+<body>
+<main>
+  <p id="msg">Linking this browser to VOID·STUDIO…</p>
+</main>
+<script>
+  // Stores the VOID·SPACE handoff where the editor already looks, then gets out of the way.
+  // The token is removed from the address before anything else can copy it.
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var token = params.get('token') || params.get('accessToken');
+    params.delete('token');
+    params.delete('accessToken');
+    var rest = params.toString();
+    history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+    var msg = document.getElementById('msg');
+    if (!token) {
+      msg.textContent = 'No session was returned. Sign in from Studio again.';
+      return;
+    }
+    try {
+      localStorage.setItem('void_studio_token', token);
+    } catch (error) {
+      msg.textContent = 'This browser blocked the Studio session. Allow site data for this page, then sign in again.';
+      return;
+    }
+    msg.textContent = 'Studio is signed in. This tab will close.';
+    window.close();
+    setTimeout(function () {
+      var link = document.createElement('a');
+      link.href = '/';
+      link.textContent = 'Return to Studio';
+      msg.appendChild(document.createElement('br'));
+      msg.appendChild(link);
+    }, 400);
+  })();
+</script>
+</body>
+</html>

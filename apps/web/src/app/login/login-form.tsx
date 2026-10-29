@@ -61,7 +61,25 @@ const DEMO_ACCOUNTS = [
 
 const DEMO_PASSWORD = 'VoidSpace!2026';
 
-export function LoginForm({ next }: { next: string }) {
+const GOOGLE_ERRORS: Readonly<Record<string, string>> = {
+  GOOGLE_CANCELLED: 'Google sign-in was cancelled.',
+  GOOGLE_BAD_CALLBACK: 'Google did not finish the sign-in. Start it again from this page.',
+  GOOGLE_STATE_MISMATCH: 'That Google sign-in did not start on this site, or it expired. Try again.',
+  GOOGLE_CODE_REJECTED: 'Google rejected the sign-in. The redirect URI in Google Cloud must match this site exactly.',
+  GOOGLE_PROFILE_FAILED: 'Google did not return a profile.',
+  GOOGLE_EMAIL_UNVERIFIED: 'That Google account has no verified email address.',
+  GOOGLE_NOT_CONFIGURED: 'Google sign-in is not configured on this server.',
+};
+
+export function LoginForm({
+  next,
+  google,
+  error: errorCode,
+}: {
+  next: string;
+  google: boolean;
+  error?: string;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState('creator@aurora.dev');
   const [password, setPassword] = useState(DEMO_PASSWORD);
@@ -222,6 +240,23 @@ export function LoginForm({ next }: { next: string }) {
                   <p className="text-[12px] tracking-[0.01em] text-ink-faint mt-1.5">Continue to your workspace</p>
                 </div>
 
+                {errorCode ? (
+                  <ErrorNote message={GOOGLE_ERRORS[errorCode] ?? 'Google sign-in did not complete.'} code={errorCode} />
+                ) : null}
+
+                {google ? (
+                  <div className="space-y-4">
+                    <a
+                      href={`/api/v1/auth/google/start?next=${encodeURIComponent(next)}`}
+                      className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-control border border-hairline-strong bg-surface px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:border-brand hover:bg-surface-raised"
+                    >
+                      <GoogleMark />
+                      Continue with Google
+                    </a>
+                    <p className="text-center text-[12px] tracking-[0.01em] text-ink-faint">or use a password</p>
+                  </div>
+                ) : null}
+
                 <label className="block">
                   <span className="text-[12px] tracking-[0.01em] text-ink-faint">Email</span>
                   <input
@@ -297,5 +332,16 @@ export function LoginForm({ next }: { next: string }) {
         </div>
       </section>
     </main>
+  );
+}
+
+function GoogleMark() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden>
+      <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" />
+      <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" />
+      <path fill="#FBBC05" d="M3.964 10.706A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" />
+      <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.962L3.964 7.294C4.672 5.163 6.656 3.58 9 3.58z" />
+    </svg>
   );
 }
