@@ -163,6 +163,12 @@ export function MarketHeader({
               `Link`, because `/api/v1/docs` is served by the API through the edge rather than by Next
               — a `Link` prefetches `?_rsc=…` and 404s on every page load.
             */}
+            <Link
+              href="/docs"
+              className="rounded-control px-2.5 py-2 text-[14px] text-ink-dim transition-colors duration-150 ease-standard hover:bg-veil-6 hover:text-ink md:px-3"
+            >
+              Guide
+            </Link>
             {API_REFERENCE_AVAILABLE ? (
               <a
                 href="/api/v1/docs"
@@ -226,6 +232,7 @@ export function MarketFooter() {
                 { href: '/catalog', label: 'Licensed catalogue' },
                 { href: '/login', label: 'Sign in' },
                 { href: '/console', label: 'Operations console' },
+                { href: '/docs', label: 'Studio guide' },
               ].map((entry) => (
                 <li key={entry.href}>
                   <Link

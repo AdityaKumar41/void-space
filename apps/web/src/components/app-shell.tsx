@@ -331,6 +331,7 @@ function AccountMenu() {
             <div className="py-1.5">
               {[
                 { href: '/console/notifications', label: 'Notifications' },
+                { href: '/docs', label: 'Studio guide' },
                 { href: '/catalog', label: 'Public catalogue' },
               ].map((entry) => (
                 <Link
