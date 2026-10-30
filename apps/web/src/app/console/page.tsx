@@ -256,7 +256,7 @@ export default function HomePage() {
           </div>
           <Link
             href="/console/field-guides"
-            className="mt-5 flex items-center gap-4 rounded-xl border border-hairline bg-surface p-5"
+            className="learning-list mt-5 flex items-center gap-4 p-5"
           >
             <span className="learning-stat-icon">
               <Compass size={21} />

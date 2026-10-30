@@ -6,7 +6,7 @@ import { parseBody } from '../../lib/http';
 const params = z.object({ id: z.string().uuid() });
 const inputSchema = z
   .object({
-    assetVersionId: z.string().uuid(),
+    assetVersionId: z.string().uuid().nullable(),
     revision: z.number().int().min(0),
     step: z.number().int().min(0).max(100),
     assessment: z.boolean(),
@@ -39,7 +39,7 @@ export async function lessonProgressRoutes(app: FastifyInstance) {
       await db.$queryRaw`SELECT id FROM users WHERE id=${p.userId}::uuid FOR UPDATE`;
       const lesson = await db.lesson.findFirst({ where: { id, isPublished: true } });
       if (!lesson) throw new NotFoundError('Lesson');
-      if (input.assetVersionId !== lesson.assetVersionId)
+      if ((input.assetVersionId ?? null) !== (lesson.assetVersionId ?? null))
         throw new ConflictError(
           'This lesson uses a different reviewed version. Reopen the lesson.',
         );

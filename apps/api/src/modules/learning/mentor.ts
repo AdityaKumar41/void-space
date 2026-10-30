@@ -43,10 +43,11 @@ export function transcriptReference(context: Context, question: string) {
     .filter((p) => p.score > 0)
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .slice(0, 3);
+  const best = passages[0]?.text.trim();
   return {
-    answer: passages.length
-      ? `From the released lesson:\n${[...new Set(passages.map((p) => p.text))].join('\n\n')}`
-      : 'The released lesson does not contain a matching explanation. Ask the lesson author to clarify before continuing.',
+    answer: best
+      ? best
+      : 'This lesson does not contain an answer to that. Ask about a study step or a sentence in the reading.',
     mode: 'reference' as const,
   };
 }

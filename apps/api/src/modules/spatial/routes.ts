@@ -28,7 +28,12 @@ function roomView(room: {
   assetId: string | null;
   worldState: unknown;
   lesson?: {
-    assetVersion: { id: string; ipfsCid: string | null; format: string; polycount: number | null };
+    assetVersion: {
+      id: string;
+      ipfsCid: string | null;
+      format: string;
+      polycount: number | null;
+    } | null;
   } | null;
   asset?: {
     currentVersion: {

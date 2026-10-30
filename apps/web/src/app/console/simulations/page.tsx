@@ -51,7 +51,7 @@ export default function SimulationsPage() {
         close={() => setActive(null)}
       />
     );
-  if (scenarios.isLoading) return <LoadingBlock label="LOADING SPATIAL EXPERIENCES" />;
+  if (scenarios.isLoading) return <LoadingBlock label="Loading practice experiences" />;
   if (scenarios.error) return <ErrorNote message={(scenarios.error as Error).message} />;
   const interactive = scenarios.data?.scenarios.filter((s) => s.interactive) ?? [];
   const legacy = scenarios.data?.scenarios.filter((s) => !s.interactive) ?? [];
@@ -59,7 +59,7 @@ export default function SimulationsPage() {
     <div className="space-y-8 experience-hub">
       <header className="flex flex-wrap items-end justify-between gap-6 border-b border-hairline pb-6">
         <div>
-          <p className="eyebrow">LEARN THROUGH ACTION</p>
+          <p className="eyebrow">Practice</p>
           <h1 className="mt-2 text-4xl font-semibold tracking-tight text-ink">
             Spatial learning experiences
           </h1>
@@ -105,9 +105,10 @@ export default function SimulationsPage() {
                 />
               </div>
               <div className="px-6 pt-6">
-                <p className="text-[11px] font-mono uppercase text-brand">
-                  {scenario.status === 'published' ? 'AVAILABLE TO LEARNERS' : 'PRIVATE DRAFT'} ·{' '}
-                  {scenario.taskCount} TASKS · {scenario.media?.name}
+                <p className="text-xs font-semibold text-brand">
+                  {scenario.status === 'published' ? 'Available to learners' : 'Private draft'} ·{' '}
+                  {scenario.taskCount} tasks
+                  {scenario.media?.name ? ` · ${scenario.media.name}` : ''}
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-ink">{scenario.title}</h2>
                 <p className="mt-2 max-w-3xl text-sm leading-relaxed text-ink-dim">

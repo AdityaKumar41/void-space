@@ -6,8 +6,10 @@ import { useSearchParams } from 'next/navigation';
 import type { LessonContent } from '@void-space/types';
 import { apiFetch } from '../../../lib/api';
 import { useSession } from '../../../lib/session';
+import { ConsoleThumb } from '../../../components/console-kit';
 import { Button } from '../../../components/ui/button';
-import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
+import { Chip } from '../../../components/ui/chip';
+import { ErrorNote, EmptyState, LoadingBlock } from '../../../components/ui/feedback';
 import { Card } from '../../../components/ui/card';
 import { LessonPlayer, type DeliveryLesson } from '../../../components/lesson-player';
 
@@ -36,6 +38,7 @@ export default function LessonsPage() {
   const [generateWithAi, setGenerateWithAi] = useState(false);
   const [generationNote, setGenerationNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [revising, setRevising] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const id = params.get('lesson');
@@ -52,7 +55,7 @@ export default function LessonsPage() {
       }>('/lessons', {
         method: 'POST',
         body: {
-          assetId,
+          assetId: assetId || undefined,
           title: title.trim() || undefined,
           generateWithAi,
           sourceText: sourceText.trim() || undefined,
@@ -73,11 +76,27 @@ export default function LessonsPage() {
       setBusy(false);
     }
   }
+  async function revise(id: string) {
+    setRevising(id);
+    setError(null);
+    try {
+      const result = await apiFetch<{ lesson: { id: string } }>(`/lessons/${id}/revise`, {
+        method: 'POST',
+      });
+      setEditing(result.lesson.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setRevising(null);
+    }
+  }
   if (editing)
     return (
       <LessonEditor
+        key={editing}
         id={editing}
         generationNote={generationNote}
+        onCopy={revise}
         close={() => {
           setEditing(null);
           void cache.invalidateQueries({ queryKey: ['lessons'] });
@@ -85,30 +104,58 @@ export default function LessonsPage() {
       />
     );
   if (active) return <LessonPlayer key={active.id} lesson={active} close={() => setActive(null)} />;
-  if (lessons.isLoading) return <LoadingBlock label="LOADING LESSONS" />;
+  if (lessons.isLoading) return <LoadingBlock label="Loading lessons" />;
   if (lessons.error) return <ErrorNote message={(lessons.error as Error).message} />;
+  const publishedCount = lessons.data?.lessons.filter((lesson) => lesson.isPublished).length ?? 0;
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="eyebrow">YOUR LEARNING LIBRARY</p>
-        <h1 className="mt-2 text-3xl font-semibold text-ink">Lessons</h1>
-        <p className="mt-2 max-w-2xl text-ink-dim">
-          Turn reviewed 3D assets into guided lessons. Review the transcript and assessment before
-          releasing them to learners.
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-6 border-b border-hairline pb-6">
+        <div>
+          <p className="eyebrow">Learning library</p>
+          <h1 className="mt-2 text-ink">Lessons</h1>
+          <p className="mt-3 max-w-2xl text-ink-dim">
+            A lesson is a subject someone can study: a reading, a quiz, and an optional 3D model.
+            Learners see it after you publish it.
+          </p>
+        </div>
+        <p className="text-sm text-ink-faint">
+          {publishedCount} published · {lessons.data?.lessons.length ?? 0} in this workspace
         </p>
-      </div>
+      </header>
       {manage ? (
-        <details className="rounded-card border border-hairline bg-surface p-5">
+        <details
+          className="rounded-card border border-hairline bg-surface p-5"
+          open={!lessons.data?.lessons.length}
+        >
           <summary className="cursor-pointer font-semibold text-ink">Create a lesson</summary>
           <div className="mt-5 space-y-4">
             <label className="block text-sm text-ink">
-              Approved asset
+              Subject
+              <input
+                className={`${field} mt-2`}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Anatomy of the heart"
+              />
+            </label>
+            <label className="block space-y-2 text-sm text-ink">
+              <span>Lesson notes</span>
+              <textarea
+                maxLength={20000}
+                className={`${field} min-h-36`}
+                value={sourceText}
+                onChange={(e) => setSourceText(e.target.value)}
+                placeholder="Write what a learner should know. For a heart lesson, name the chambers, the great vessels, and what each one does."
+              />
+            </label>
+            <label className="block text-sm text-ink">
+              3D model
               <select
                 className={`${field} mt-2`}
                 value={assetId}
                 onChange={(e) => setAssetId(e.target.value)}
               >
-                <option value="">Select an approved asset</option>
+                <option value="">No model — reading and quiz only</option>
                 {assets.data?.assets.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} · {a.category}
@@ -117,76 +164,72 @@ export default function LessonsPage() {
               </select>
             </label>
             {assets.error ? <ErrorNote message={(assets.error as Error).message} /> : null}
-            <label className="block text-sm text-ink">
-              Lesson title (optional)
-              <input
-                className={`${field} mt-2`}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </label>
-            <label className="block space-y-2 text-sm text-ink">
-              <span>Source procedure or lesson notes (optional)</span>
-              <textarea
-                maxLength={20000}
-                className={`${field} min-h-28`}
-                value={sourceText}
-                onChange={(e) => setSourceText(e.target.value)}
-                placeholder="Paste the source material the lesson should teach"
-              />
-            </label>
             <label className="flex gap-3 text-sm text-ink">
               <input
                 type="checkbox"
                 checked={generateWithAi}
                 onChange={(e) => setGenerateWithAi(e.target.checked)}
               />
-              Generate a draft with the configured AI provider
+              Write the reading and quiz with AI from these notes
             </label>
-            <p className="text-xs text-ink-dim">
-              AI drafts use the asset description and your supplied notes. If the provider is
-              unavailable, the editor clearly identifies the fallback template.
+            <p className="text-xs leading-relaxed text-ink-dim">
+              The draft stays private until you publish it. Check every correct answer. If the
+              model is unavailable, the notes are kept so you can write the quiz yourself.
             </p>
             <Button
               disabled={
-                busy || !assetId || (sourceText.trim().length > 0 && sourceText.trim().length < 20)
+                busy ||
+                title.trim().length < 3 ||
+                (!assetId && sourceText.trim().length < 20) ||
+                (sourceText.trim().length > 0 && sourceText.trim().length < 20)
               }
               onClick={create}
             >
-              {busy ? 'Creating…' : 'Create draft and edit'}
+              {busy ? 'Creating…' : 'Create lesson'}
             </Button>
             {error ? <ErrorNote message={error} /> : null}
           </div>
         </details>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-2">
-        {lessons.data?.lessons.map((l) => (
-          <Card key={l.id} className="space-y-4 p-5">
-            <p className="eyebrow">
-              {l.isPublished ? 'PUBLISHED' : 'DRAFT · AUTHOR REVIEW REQUIRED'}
-            </p>
-            <h2 className="text-xl text-ink">{l.title}</h2>
-            <p className="line-clamp-3 text-sm text-ink-dim">{l.summary}</p>
-            <div className="flex gap-2">
-              {l.isPublished ? (
-                <Button onClick={() => setActive(l)}>Start lesson</Button>
-              ) : (
-                <Button onClick={() => setEditing(l.id)}>Edit draft</Button>
-              )}
-              {manage && l.isPublished ? (
-                <Button variant="ghost" onClick={() => setEditing(l.id)}>
-                  View authoring
-                </Button>
-              ) : null}
-            </div>
-          </Card>
-        ))}
-      </div>
-      {!lessons.data?.lessons.length ? (
-        <Card className="p-5 text-ink-dim">
-          No lessons yet. Create a draft from an approved asset to begin.
-        </Card>
-      ) : null}
+      {lessons.data?.lessons.length ? (
+        <div className="experience-catalog">
+          {lessons.data.lessons.map((l) => (
+            <article key={l.id} className="flex flex-col">
+              <div className="experience-cover">
+                <ConsoleThumb cid={l.media?.cid ?? null} alt={l.title} seed={l.id} />
+              </div>
+              <div className="px-6 pt-6">
+                <Chip tone={l.isPublished ? 'live' : 'warn'} dot>
+                  {l.isPublished ? 'Published' : 'Draft · review before release'}
+                </Chip>
+                <h2 className="mt-3 text-2xl font-semibold text-ink">{l.title}</h2>
+                <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-ink-dim">{l.summary}</p>
+                <p className="mt-3 text-xs text-ink-faint">
+                  {l.outline.length} guided steps · {l.questions.length} questions · pass at{' '}
+                  {l.passingScore}%
+                </p>
+              </div>
+              <div className="mt-auto flex flex-wrap gap-2 p-6">
+                {l.isPublished ? (
+                  <Button onClick={() => setActive(l)}>Start lesson</Button>
+                ) : (
+                  <Button onClick={() => setEditing(l.id)}>Edit draft</Button>
+                )}
+                {manage && l.isPublished ? (
+                  <Button variant="ghost" disabled={revising === l.id} onClick={() => revise(l.id)}>
+                    {revising === l.id ? 'Copying…' : 'Edit a copy'}
+                  </Button>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          title="No lessons yet"
+          hint="Start from a subject and your notes. Add a 3D model when the subject needs one."
+        />
+      )}
     </div>
   );
 }
@@ -194,10 +237,12 @@ function LessonEditor({
   id,
   close,
   generationNote,
+  onCopy,
 }: {
   id: string;
   close: () => void;
   generationNote?: string | null;
+  onCopy: (id: string) => Promise<void>;
 }) {
   const data = useQuery({
     queryKey: ['lesson-author', id],
@@ -207,14 +252,16 @@ function LessonEditor({
   const [draft, setDraft] = useState<LessonContent | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [questionNote, setQuestionNote] = useState<string | null>(null);
   useEffect(() => {
     if (data.data) setDraft(data.data.lesson);
   }, [data.data]);
   if (data.error) return <ErrorNote message={(data.error as Error).message} />;
-  if (!draft) return <LoadingBlock label="LOADING AUTHORING" />;
+  if (!draft) return <LoadingBlock label="Loading the lesson draft" />;
   const published = data.data?.lesson.isPublished;
   const update = (value: Partial<LessonContent>) => setDraft({ ...draft, ...value });
   async function save(publish: boolean) {
+    if (!draft) return;
     setBusy(true);
     setError(null);
     try {
@@ -235,20 +282,59 @@ function LessonEditor({
       setBusy(false);
     }
   }
+  async function writeQuestions() {
+    if (!draft) return;
+    setBusy(true);
+    setError(null);
+    setQuestionNote(null);
+    try {
+      const notes = [draft.summary, draft.narration, ...draft.outline].filter(Boolean).join('\n\n');
+      const result = await apiFetch<{
+        questions: LessonContent['questions'];
+        generation: { mode?: string; model?: string; reason?: string };
+      }>('/lessons/questions', {
+        method: 'POST',
+        body: { title: draft.title, notes },
+      });
+      const kept = draft.questions.filter((question) => question.prompt.trim().length > 0);
+      const fresh = result.questions.map((question) => ({ ...question, id: crypto.randomUUID() }));
+      setDraft({ ...draft, questions: [...kept, ...fresh].slice(0, 30) });
+      setQuestionNote(
+        result.generation.mode === 'ai'
+          ? `Added ${fresh.length} questions from ${result.generation.model ?? 'the model'}. Check every correct answer before you publish.`
+          : (result.generation.reason ??
+            `Added ${fresh.length} questions from the lesson notes. Check every correct answer before you publish.`),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div className="max-w-4xl space-y-5">
       <Button variant="ghost" onClick={close}>
         ← All lessons
       </Button>
       <h1 className="text-3xl font-semibold text-ink">
-        {published ? 'Released lesson' : 'Review your lesson'}
+        {published ? 'Released lesson' : 'Edit lesson'}
       </h1>
-      <p className="text-ink-dim">
+      <p className="max-w-[65ch] text-ink-dim">
         {published
-          ? 'Released content is frozen to preserve assessment evidence. Create a new draft for revisions.'
-          : 'Write the real procedure, learning steps and assessment. Saving keeps the draft private; publishing releases it to learners.'}
+          ? 'This release stays as it was when learners took it. Edit a copy to change the reading or the quiz, then publish that copy.'
+          : 'Change the reading, the study steps, and every quiz question. Saving keeps this draft private.'}
       </p>
+      {published ? (
+        <Button disabled={busy} onClick={() => void onCopy(id)}>
+          Edit a copy
+        </Button>
+      ) : null}
       {error ? <ErrorNote message={error} /> : null}
+      {questionNote ? (
+        <p role="status" className="rounded-control border border-hairline p-4 text-sm text-ink-dim">
+          {questionNote}
+        </p>
+      ) : null}
       {generationNote ? (
         <p
           role="status"
@@ -259,9 +345,15 @@ function LessonEditor({
       ) : null}
       <fieldset disabled={published || busy} className="space-y-5">
         <Card className="space-y-4 p-5">
-          {(['title', 'summary', 'narration'] as const).map((key) => (
-            <label key={key} className="block space-y-2 text-sm capitalize text-ink">
-              <span>{key}</span>
+          {(
+            [
+              ['title', 'Title'],
+              ['summary', 'Short summary'],
+              ['narration', 'Reading'],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="block space-y-2 text-sm text-ink">
+              <span>{label}</span>
               <textarea
                 className={`${field} ${key === 'narration' ? 'min-h-48' : ''}`}
                 value={draft[key]}
@@ -270,7 +362,7 @@ function LessonEditor({
             </label>
           ))}
           <label className="block space-y-2 text-sm text-ink">
-            <span>Guided steps (one per line)</span>
+            <span>Study steps, one per line</span>
             <textarea
               className={`${field} min-h-32`}
               value={draft.outline.join('\n')}
@@ -289,23 +381,31 @@ function LessonEditor({
             />
           </label>
         </Card>
+        <div>
+          <h2 className="text-xl font-semibold text-ink">Quiz</h2>
+          <p className="mt-2 max-w-[65ch] text-sm text-ink-dim">
+            Write each question, add the choices, and mark the right one. You can also ask for
+            questions from the reading and then edit them.
+          </p>
+        </div>
         {draft.questions.map((q, i) => (
           <Card key={q.id} className="space-y-3 p-5">
-            <div className="flex justify-between">
-              <h2 className="font-semibold text-ink">Question {i + 1}</h2>
+            <div className="flex justify-between gap-3">
+              <h3 className="font-semibold text-ink">Question {i + 1}</h3>
               <Button
                 variant="ghost"
                 disabled={draft.questions.length === 1}
                 onClick={() => update({ questions: draft.questions.filter((_, j) => j !== i) })}
               >
-                Remove
+                Remove question
               </Button>
             </div>
             <label className="block text-sm text-ink">
-              Prompt
+              Question
               <input
                 className={`${field} mt-2`}
                 value={q.prompt}
+                placeholder="What does the right atrium do?"
                 onChange={(e) =>
                   update({
                     questions: draft.questions.map((v, j) =>
@@ -315,11 +415,11 @@ function LessonEditor({
                 }
               />
             </label>
-            <p className="text-xs text-ink-dim">Select the correct answer beside its option.</p>
+            <p className="text-xs text-ink-dim">Mark the correct choice.</p>
             {q.options.map((option, k) => (
-              <label key={k} className="flex items-center gap-3">
+              <div key={k} className="flex items-center gap-3">
                 <input
-                  aria-label={`Option ${k + 1} is correct`}
+                  aria-label={`Choice ${k + 1} is correct`}
                   type="radio"
                   name={`correct-${q.id}`}
                   checked={q.correctOption === k}
@@ -332,9 +432,10 @@ function LessonEditor({
                   }
                 />
                 <input
-                  aria-label={`Option ${k + 1}`}
+                  aria-label={`Choice ${k + 1}`}
                   className={field}
                   value={option}
+                  placeholder={`Choice ${k + 1}`}
                   onChange={(e) =>
                     update({
                       questions: draft.questions.map((v, j) =>
@@ -348,10 +449,47 @@ function LessonEditor({
                     })
                   }
                 />
-              </label>
+                <Button
+                  variant="ghost"
+                  disabled={q.options.length <= 2}
+                  onClick={() =>
+                    update({
+                      questions: draft.questions.map((v, j) =>
+                        j === i
+                          ? {
+                              ...v,
+                              options: v.options.filter((_, n) => n !== k),
+                              correctOption:
+                                v.correctOption === k
+                                  ? 0
+                                  : v.correctOption > k
+                                    ? v.correctOption - 1
+                                    : v.correctOption,
+                            }
+                          : v,
+                      ),
+                    })
+                  }
+                >
+                  Remove
+                </Button>
+              </div>
             ))}
+            <Button
+              variant="ghost"
+              disabled={q.options.length >= 6}
+              onClick={() =>
+                update({
+                  questions: draft.questions.map((v, j) =>
+                    j === i ? { ...v, options: [...v.options, ''] } : v,
+                  ),
+                })
+              }
+            >
+              Add a choice
+            </Button>
             <label className="block text-sm text-ink">
-              Answer explanation
+              Why this answer is right
               <textarea
                 className={`${field} mt-2`}
                 value={q.explanation}
@@ -366,26 +504,35 @@ function LessonEditor({
             </label>
           </Card>
         ))}
-        <Button
-          variant="ghost"
-          disabled={draft.questions.length >= 30}
-          onClick={() =>
-            update({
-              questions: [
-                ...draft.questions,
-                {
-                  id: crypto.randomUUID(),
-                  prompt: '',
-                  options: ['', ''],
-                  correctOption: 0,
-                  explanation: '',
-                },
-              ],
-            })
-          }
-        >
-          Add question
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="ghost"
+            disabled={published || busy || draft.questions.length >= 30}
+            onClick={() =>
+              update({
+                questions: [
+                  ...draft.questions,
+                  {
+                    id: crypto.randomUUID(),
+                    prompt: '',
+                    options: ['', ''],
+                    correctOption: 0,
+                    explanation: '',
+                  },
+                ],
+              })
+            }
+          >
+            Add your own question
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={published || busy || draft.narration.trim().length < 20}
+            onClick={() => void writeQuestions()}
+          >
+            {busy ? 'Writing…' : 'Write questions from the reading'}
+          </Button>
+        </div>
       </fieldset>
       {!published ? (
         <div className="flex gap-3">
@@ -393,7 +540,7 @@ function LessonEditor({
             Save draft
           </Button>
           <Button disabled={busy} onClick={() => save(true)}>
-            {busy ? 'Saving…' : 'Save and publish'}
+            Save and publish
           </Button>
         </div>
       ) : null}

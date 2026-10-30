@@ -158,7 +158,7 @@ export function ExperiencePlayer({
           <button onClick={close} className="mb-3 text-xs text-ink-dim hover:text-ink">
             ← Learning experiences
           </button>
-          <p className="eyebrow">SPATIAL PRACTICE</p>
+          <p className="eyebrow">Spatial practice</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink">{title}</h1>
         </div>
         <div className="flex gap-2">
@@ -215,8 +215,8 @@ export function ExperiencePlayer({
             </div>
           </div>
           <div className="space-y-3 border-l border-hairline pl-6">
-            <p className="eyebrow">YOUR RECENT RUNS</p>
-            {history.isLoading ? <LoadingBlock label="LOADING PROGRESS" /> : null}
+            <p className="eyebrow">Your recent runs</p>
+            {history.isLoading ? <LoadingBlock label="Loading your progress" /> : null}
             {history.data?.runs.map((item) => (
               <div
                 key={item.id}
@@ -254,10 +254,10 @@ export function ExperiencePlayer({
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-dim">
             <span className="font-mono uppercase text-brand">
               {replaying
-                ? 'ACTION REPLAY'
+                ? 'Action replay'
                 : run.mode === 'practice'
-                  ? 'GUIDED PRACTICE'
-                  : 'ASSESSMENT'}
+                  ? 'Guided practice'
+                  : 'Assessment'}
             </span>
             <span>
               {run.state.stepIndex} / {run.totalSteps} tasks complete · {run.state.mistakes}{' '}
@@ -336,11 +336,11 @@ export function ExperiencePlayer({
                   <>
                     <p className="eyebrow">
                       {frame === 0
-                        ? 'INITIAL SCENE'
-                        : `ACTION ${frame} / ${replay.data?.events.length ?? 0}`}
+                        ? 'Initial scene'
+                        : `Action ${frame} of ${replay.data?.events.length ?? 0}`}
                     </p>
                     <h2 className="text-2xl text-ink">Review your decisions</h2>
-                    {replay.isLoading ? <LoadingBlock label="LOADING ACTION HISTORY" /> : null}
+                    {replay.isLoading ? <LoadingBlock label="Loading the action history" /> : null}
                     <p className="text-sm text-ink-dim">
                       {recorded?.outcome.feedback ??
                         'Drag the timeline to replay recorded scene interactions and their consequences.'}
@@ -393,22 +393,22 @@ export function ExperiencePlayer({
                 ) : task ? (
                   <>
                     <p className="eyebrow">
-                      TASK {run.state.stepIndex + 1} OF {run.totalSteps} ·{' '}
+                      Task {run.state.stepIndex + 1} of {run.totalSteps} ·{' '}
                       {task.kind === 'identify'
-                        ? 'LOCATE'
+                        ? 'Locate'
                         : task.kind === 'operate'
-                          ? 'OPERATE'
-                          : 'DECIDE'}
+                          ? 'Operate'
+                          : 'Decide'}
                     </p>
                     <h2 className="text-2xl font-medium leading-tight text-ink">{task.title}</h2>
                     <p className="text-sm leading-relaxed text-ink-dim">{task.instruction}</p>
                     {task.kind === 'identify' ? (
-                      <p className="border-l-2 border-brand pl-3 text-xs leading-relaxed text-ink-dim">
+                      <p className="learn-note">
                         Select a numbered target attached to the 3D object. Drag to orbit and scroll
                         to inspect it from another angle.
                       </p>
                     ) : task.kind === 'operate' ? (
-                      <p className="border-l-2 border-brand pl-3 text-xs text-ink-dim">
+                      <p className="learn-note">
                         Use the scene controls beneath the model.
                         {task.operation === 'isolate' ? ' Select a component first.' : ''}
                       </p>
@@ -419,7 +419,7 @@ export function ExperiencePlayer({
                             key={choice.id}
                             disabled={busy || !ready || Boolean(pending.current)}
                             onClick={() => send({ kind: 'choose', choiceId: choice.id })}
-                            className="block w-full rounded-control border border-hairline-strong px-4 py-4 text-left text-sm text-ink transition-colors hover:border-brand hover:bg-veil-6 disabled:opacity-40"
+                            className="learn-choice disabled:opacity-40"
                           >
                             {choice.label}
                           </button>
@@ -428,7 +428,7 @@ export function ExperiencePlayer({
                     )}
                     {run.state.feedback ? (
                       <div className="border-t border-hairline pt-4" role="status">
-                        <p className="mb-2 text-xs font-semibold text-brand">CONSEQUENCE</p>
+                        <p className="mb-2 text-xs font-semibold text-brand">Consequence</p>
                         <p className="text-sm leading-relaxed text-ink-dim">{run.state.feedback}</p>
                       </div>
                     ) : null}
@@ -438,10 +438,10 @@ export function ExperiencePlayer({
                   <>
                     <p className="eyebrow">
                       {run.mode === 'practice'
-                        ? 'PRACTICE COMPLETE'
+                        ? 'Practice complete'
                         : run.passed
-                          ? 'ASSESSMENT PASSED'
-                          : 'ATTEMPT FINISHED'}
+                          ? 'Assessment passed'
+                          : 'Attempt finished'}
                     </p>
                     <h2 className="text-4xl font-semibold text-ink">{run.score}%</h2>
                     <p className="text-sm text-ink-dim">{run.state.feedback}</p>

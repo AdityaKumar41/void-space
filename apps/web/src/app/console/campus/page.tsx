@@ -7,7 +7,7 @@ import { apiFetch } from '../../../lib/api';
 import { useSession } from '../../../lib/session';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
-import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
+import { ErrorNote, EmptyState, LoadingBlock } from '../../../components/ui/feedback';
 
 interface LessonOption {
   id: string;
@@ -44,7 +44,7 @@ export default function CampusPage() {
   const [lessonIds, setLessonIds] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  if (courses.isLoading) return <LoadingBlock label="LOADING VIRTUAL CAMPUS" />;
+  if (courses.isLoading) return <LoadingBlock label="Loading programs" />;
   if (courses.error) return <ErrorNote message={(courses.error as Error).message} />;
   async function createCourse() {
     setBusy('create');
@@ -85,17 +85,15 @@ export default function CampusPage() {
     }
   }
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="eyebrow">VIRTUAL CAMPUS</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink">
-          Your learning programs
-        </h1>
-        <p className="mt-2 max-w-2xl text-ink-dim">
-          Compose approved lessons into publishable curricula. Learners complete programs only when
-          each assessment has passing evidence.
+    <div className="space-y-8">
+      <header className="border-b border-hairline pb-6">
+        <p className="eyebrow">Programs</p>
+        <h1 className="mt-2 text-ink">Your learning programs</h1>
+        <p className="mt-3 max-w-[65ch] text-ink-dim">
+          A program is a sequence of published lessons. A learner finishes it only after every
+          assessment in that sequence has passing evidence.
         </p>
-      </div>
+      </header>
       {can('learning:manage') ? (
         <details className="rounded-card border border-hairline bg-surface p-5">
           <summary className="cursor-pointer font-semibold text-ink">Build a program</summary>
@@ -160,51 +158,63 @@ export default function CampusPage() {
         </details>
       ) : null}
       {error ? <ErrorNote message={error} /> : null}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {courses.data?.courses.map((course) => (
-          <Card key={course.id} className="space-y-4 p-5">
-            <div>
-              <p className="font-mono text-[11px] text-brand">
-                {course.isPublished ? 'PUBLISHED PROGRAM' : 'DRAFT PROGRAM'}
-              </p>
-              <h2 className="mt-1 text-xl font-semibold text-ink">{course.title}</h2>
-              <p className="mt-2 text-sm text-ink-dim">{course.description}</p>
-            </div>
-            <ol className="space-y-1 text-sm text-ink-dim">
-              {course.lessons.map((lesson) => (
-                <li key={lesson.id}>
-                  {lesson.completed ? '✓' : lesson.position + '.'}{' '}
-                  <a className="text-brand underline" href={`/console/lessons?lesson=${lesson.id}`}>
-                    {lesson.title}
-                  </a>
-                </li>
-              ))}
-            </ol>
-            {course.progress ? (
-              <p className="text-sm text-ink-dim">
-                {course.progress.completed} / {course.progress.total} lessons passed
-                {course.enrollment ? ` · ${course.enrollment.status}` : ''}
-              </p>
-            ) : null}
-            <div className="flex gap-2">
-              {course.isPublished && !course.enrollment ? (
-                <Button disabled={busy === course.id} onClick={() => enroll(course.id)}>
-                  {busy === course.id ? 'Joining…' : 'Enroll'}
-                </Button>
-              ) : !course.isPublished && can('learning:manage') ? (
-                <Button disabled={busy === course.id} onClick={() => publish(course.id)}>
-                  {busy === course.id ? 'Publishing…' : 'Publish program'}
-                </Button>
-              ) : null}
-            </div>
-          </Card>
-        ))}
-        {courses.data?.courses.length === 0 ? (
-          <Card className="p-5 text-ink-dim">
-            No programs yet. Authors can assemble published lessons into the first curriculum.
-          </Card>
-        ) : null}
-      </div>
+      {courses.data?.courses.length ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {courses.data.courses.map((course) => {
+            const done = course.progress?.completed ?? 0;
+            const total = course.progress?.total ?? course.lessons.length;
+            const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+            return (
+              <Card key={course.id} className="flex flex-col space-y-4 p-5">
+                <div>
+                  <p className="text-xs font-semibold text-brand">
+                    {course.isPublished ? 'Published' : 'Draft'}
+                    {course.enrollment ? ` · ${course.enrollment.status}` : ''}
+                  </p>
+                  <h2 className="mt-1 text-xl font-semibold text-ink">{course.title}</h2>
+                  <p className="mt-2 text-sm leading-relaxed text-ink-dim">{course.description}</p>
+                </div>
+                <ol className="space-y-2 text-sm text-ink-dim">
+                  {course.lessons.map((lesson, index) => (
+                    <li key={lesson.id} className="flex items-baseline justify-between gap-3">
+                      <a className="text-ink hover:text-brand" href={`/console/lessons?lesson=${lesson.id}`}>
+                        {index + 1}. {lesson.title}
+                      </a>
+                      <span className="shrink-0 text-xs text-ink-faint">
+                        {lesson.completed ? 'Passed' : 'Not passed'}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                <div>
+                  <div className="learn-progress" aria-hidden>
+                    <span style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="mt-2 text-xs text-ink-faint">
+                    {done} of {total} lessons passed
+                  </p>
+                </div>
+                <div className="mt-auto flex gap-2">
+                  {course.isPublished && !course.enrollment ? (
+                    <Button disabled={busy === course.id} onClick={() => enroll(course.id)}>
+                      {busy === course.id ? 'Joining…' : 'Enroll'}
+                    </Button>
+                  ) : !course.isPublished && can('learning:manage') ? (
+                    <Button disabled={busy === course.id} onClick={() => publish(course.id)}>
+                      {busy === course.id ? 'Publishing…' : 'Publish program'}
+                    </Button>
+                  ) : null}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState
+          title="No programs yet"
+          hint="Authors assemble published lessons into a curriculum. Learners enroll after the program is published."
+        />
+      )}
     </div>
   );
 }

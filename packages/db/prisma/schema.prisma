@@ -389,8 +389,8 @@ model Asset {
 model Lesson {
   id            String   @id @default(uuid()) @db.Uuid
   tenantId      String   @map("tenant_id") @db.Uuid
-  assetId       String   @map("asset_id") @db.Uuid
-  assetVersionId String  @map("asset_version_id") @db.Uuid
+  assetId       String?  @map("asset_id") @db.Uuid
+  assetVersionId String? @map("asset_version_id") @db.Uuid
   title         String   @db.VarChar(200)
   summary       String   @db.VarChar(2000)
   narration     String   @db.VarChar(8000)
@@ -403,8 +403,8 @@ model Lesson {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  asset Asset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  assetVersion AssetVersion @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  asset Asset?        @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetVersion AssetVersion? @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
   createdBy User      @relation("LessonAuthor", fields: [createdById], references: [id], onDelete: Restrict)
   progress LessonProgress[]
   attempts LessonAttempt[]
@@ -1268,7 +1268,7 @@ model LessonProgress {
  tenantId String @map("tenant_id") @db.Uuid
  lessonId String @map("lesson_id") @db.Uuid
  learnerId String @map("learner_id") @db.Uuid
- assetVersionId String @map("asset_version_id") @db.Uuid
+ assetVersionId String? @map("asset_version_id") @db.Uuid
  step Int @default(0)
  assessment Boolean @default(false)
  answers Json

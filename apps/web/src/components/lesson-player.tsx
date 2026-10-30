@@ -10,7 +10,7 @@ import { apiFetch } from '../lib/api';
 
 export interface DeliveryLesson {
   id: string;
-  assetId: string;
+  assetId: string | null;
   title: string;
   summary: string;
   narration: string;
@@ -20,10 +20,19 @@ export interface DeliveryLesson {
   isPublished: boolean;
   media: { versionId: string; cid: string | null; format: string; polycount: number | null } | null;
 }
+interface ReviewItem {
+  id: string;
+  prompt: string;
+  correct: boolean;
+  yourAnswer: string;
+  rightAnswer: string;
+  explanation: string;
+}
 interface Result {
   score: number;
   passed: boolean;
   stage: string;
+  review?: ReviewItem[];
   credential: { id: string; verificationCode: string } | null;
 }
 
@@ -39,7 +48,7 @@ export function LessonPlayer({
   onSharedStep?: (step: number) => void;
 }) {
   const [modelReady, setModelReady] = useState(false);
-  const progress = useLessonProgress(lesson.id, lesson.media?.versionId);
+  const progress = useLessonProgress(lesson.id, lesson.media?.versionId ?? null);
   const { step, assessment, answers } = progress.state;
   const setStep = (step: number) => progress.update({ step });
   const setAssessment = (assessment: boolean) => progress.update({ assessment });
@@ -48,6 +57,7 @@ export function LessonPlayer({
   const [answer, setAnswer] = useState('');
   const [mentorMode, setMentorMode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [speaking, setSpeaking] = useState(false);
@@ -87,20 +97,23 @@ export function LessonPlayer({
     setSpeaking(true);
     window.speechSynthesis.speak(utterance);
   }
-  async function ask() {
-    setBusy(true);
+  async function ask(text = question) {
+    const prompt = text.trim();
+    if (prompt.length < 2) return;
+    setQuestion(prompt);
+    setAsking(true);
     setError(null);
     try {
       const response = await apiFetch<{ answer: string; mode: string }>(
         `/lessons/${lesson.id}/mentor`,
-        { method: 'POST', body: { question } },
+        { method: 'POST', body: { question: prompt } },
       );
       setAnswer(response.answer);
       setMentorMode(response.mode);
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setAsking(false);
     }
   }
   async function submit() {
@@ -122,27 +135,55 @@ export function LessonPlayer({
   return (
     <div className="space-y-5 lesson-workspace">
       {close ? (
-        <Button variant="ghost" onClick={close}>
+        <button type="button" onClick={close} className="text-sm text-ink-dim hover:text-ink">
           ← All lessons
-        </Button>
+        </button>
       ) : null}
       <div>
-        <p className="eyebrow">{assessment ? 'ASSESS UNDERSTANDING' : 'EXPLORE THE ASSET'}</p>
-        <h1 className="mt-2 text-3xl font-semibold text-ink">{lesson.title}</h1>
-        <p className="mt-2 max-w-3xl text-ink-dim">{lesson.summary}</p>
-        <p role="status" className="mt-3 text-xs text-ink-faint">
-          {progress.status}
-        </p>
+        <p className="eyebrow">{assessment ? 'Quiz' : 'Lesson'}</p>
+        <h1 className="mt-2 text-ink">{lesson.title}</h1>
+        <p className="mt-3 max-w-[65ch] text-ink-dim">{lesson.summary}</p>
+        <div className="mt-4 max-w-md">
+          <div className="learn-progress" aria-hidden>
+            <span
+              style={{
+                width: `${assessment ? 100 : Math.round(((step + 1) / lesson.outline.length) * 100)}%`,
+              }}
+            />
+          </div>
+          <p role="status" className="mt-2 text-xs text-ink-faint">
+            {progress.status}
+            {assessment ? ' · Assessment' : ` · Step ${step + 1} of ${lesson.outline.length}`}
+          </p>
+        </div>
       </div>
       {error ? <ErrorNote message={error} /> : null}
       {result ? (
-        <Card className="space-y-4 p-5">
-          <h2 className="text-2xl text-ink">
-            {result.passed ? 'Assessment passed' : 'Review and try again'}
-          </h2>
+        <Card className="space-y-4 p-6">
+          <p className="eyebrow">{result.passed ? 'Passed' : 'Not yet'}</p>
+          <h2 className="text-5xl font-semibold tracking-tight text-ink">{result.score}%</h2>
           <p className="text-ink-dim">
-            {result.score}% · {result.stage} · Required {lesson.passingScore}%
+            {result.passed ? 'Quiz passed' : 'Review the marked answers and try again'} · required{' '}
+            {lesson.passingScore}%
           </p>
+          {result.review?.length ? (
+            <ul className="space-y-3">
+              {result.review.map((item, index) => (
+                <li key={item.id} className="rounded-control border border-hairline p-4">
+                  <p className="text-sm font-medium text-ink">
+                    {index + 1}. {item.prompt}
+                  </p>
+                  <p className="mt-2 text-sm text-ink-dim">
+                    Your answer: {item.yourAnswer || 'Blank'} · {item.correct ? 'Correct' : 'Not correct'}
+                  </p>
+                  {item.correct ? null : (
+                    <p className="mt-1 text-sm text-ink">Right answer: {item.rightAnswer}</p>
+                  )}
+                  <p className="learn-note mt-3">{item.explanation}</p>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {result.credential ? (
             <div>
               <p className="text-sm text-ink">Completion verification record</p>
@@ -173,48 +214,28 @@ export function LessonPlayer({
         <>
           <fieldset
             disabled={!progress.loaded}
-            className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.8fr)_minmax(16rem,1fr)]"
+            className={
+              lesson.media?.cid
+                ? 'grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,0.85fr)]'
+                : 'min-w-0'
+            }
           >
-            <div>
-              {lesson.media?.cid ? (
-                <ModelStage
-                  key={lesson.media.versionId}
-                  onReady={() => setModelReady(true)}
-                  cid={lesson.media.cid}
-                  format={lesson.media.format}
-                  name={lesson.title}
-                  polycount={lesson.media.polycount}
-                  presentation
-                />
-              ) : (
-                <Card className="p-6 text-ink-dim">
-                  This reviewed version has no pinned 3D preview yet. The lesson transcript remains
-                  available.
-                </Card>
-              )}
-              <p className="mt-2 text-xs text-ink-dim">
-                {lesson.media?.cid ? (
-                  <span role="status">
-                    {modelReady ? '3D asset ready. ' : 'Loading reviewed 3D asset… '}
-                  </span>
-                ) : null}
-                Orbit by dragging; scroll to zoom. This is the asset version saved with this lesson.
-              </p>
-            </div>
             <Card className="space-y-4 p-5">
               <p className="eyebrow">
-                GUIDED WALKTHROUGH · {step + 1}/{lesson.outline.length}
+                Study · {step + 1} of {lesson.outline.length}
               </p>
               <h2 className="text-xl text-ink">{lesson.outline[step]}</h2>
               <nav aria-label="Lesson steps" className="space-y-2">
                 {lesson.outline.map((item, i) => (
                   <button
                     key={i}
+                    type="button"
                     onClick={() => move(i)}
                     aria-current={i === step ? 'step' : undefined}
-                    className={`block w-full rounded-control border p-3 text-left text-sm ${i === step ? 'border-brand text-ink' : 'border-hairline text-ink-dim'}`}
+                    className={`learn-step ${i === step ? 'is-current' : ''}`}
                   >
-                    {i + 1}. {item}
+                    <span className="mr-2 font-mono text-[11px] text-ink-faint">{i + 1}</span>
+                    {item}
                   </button>
                 ))}
               </nav>
@@ -230,15 +251,34 @@ export function LessonPlayer({
                 </Button>
               </div>
             </Card>
+            {lesson.media?.cid ? (
+              <div>
+                <ModelStage
+                  key={lesson.media.versionId}
+                  onReady={() => setModelReady(true)}
+                  cid={lesson.media.cid}
+                  format={lesson.media.format}
+                  name={lesson.title}
+                  polycount={lesson.media.polycount}
+                  presentation
+                />
+                <p className="mt-2 text-xs text-ink-dim" role="status">
+                  {modelReady ? 'Model ready. ' : 'Loading the model… '}
+                  Drag to turn it. Scroll to zoom.
+                </p>
+              </div>
+            ) : null}
           </fieldset>
           <Card className="space-y-3 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="font-semibold text-ink">Lesson transcript</h2>
+              <h2 className="font-semibold text-ink">Reading</h2>
               <Button variant="ghost" onClick={narrate}>
                 {speaking ? 'Stop narration' : 'Read aloud'}
               </Button>
             </div>
-            <p className="whitespace-pre-wrap text-ink-dim">{lesson.narration}</p>
+            <p className="max-w-[65ch] whitespace-pre-wrap leading-relaxed text-ink-dim">
+              {lesson.narration}
+            </p>
           </Card>
           {!assessment ? (
             <Button
@@ -246,11 +286,11 @@ export function LessonPlayer({
               variant="primary"
               onClick={() => setAssessment(true)}
             >
-              Begin assessment · {lesson.questions.length} questions
+              Start quiz · {lesson.questions.length} questions
             </Button>
           ) : (
             <Card className="space-y-6 p-5">
-              <h2 className="text-xl text-ink">Check your understanding</h2>
+              <h2 className="text-xl text-ink">Quiz</h2>
               {lesson.questions.map((q, i) => (
                 <fieldset key={q.id} className="space-y-2">
                   <legend className="mb-3 text-ink">
@@ -259,7 +299,7 @@ export function LessonPlayer({
                   {q.options.map((option, index) => (
                     <label
                       key={index}
-                      className="flex cursor-pointer gap-3 rounded-control border border-hairline p-3 text-sm text-ink-dim"
+                      className={`learn-choice ${answers[q.id] === index ? 'is-selected' : ''}`}
                     >
                       <input
                         type="radio"
@@ -280,32 +320,50 @@ export function LessonPlayer({
                 }
                 onClick={submit}
               >
-                {busy ? 'Scoring…' : 'Submit assessment'}
+                {busy ? 'Scoring…' : 'Submit quiz'}
               </Button>
             </Card>
           )}
           <Card className="space-y-3 p-5">
-            <h2 className="font-semibold text-ink">Lesson guide</h2>
+            <h2 className="font-semibold text-ink">Ask about this lesson</h2>
+            <p className="max-w-[65ch] text-sm leading-relaxed text-ink-dim">
+              Type a question about the reading. The reply uses this lesson. It does not give away
+              the quiz answers.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {lesson.outline.slice(0, 3).map((step) => (
+                <button
+                  key={step}
+                  type="button"
+                  className="learn-step"
+                  disabled={asking}
+                  onClick={() => void ask(`What should I know about this: ${step}`)}
+                >
+                  {step}
+                </button>
+              ))}
+            </div>
             <div className="flex gap-2">
               <input
                 aria-label="Question about this lesson"
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
-                placeholder="Ask about this lesson"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void ask();
+                }}
+                placeholder="Example: What does the right atrium do?"
                 className="min-w-0 flex-1 rounded-control border border-hairline bg-surface p-3 text-sm text-ink"
               />
-              <Button disabled={busy || question.trim().length < 2} onClick={ask}>
-                Ask
+              <Button disabled={asking || question.trim().length < 2} onClick={() => void ask()}>
+                {asking ? 'Looking…' : 'Ask'}
               </Button>
             </div>
             {answer ? (
-              <div>
-                <p className="text-xs text-brand">
-                  {mentorMode === 'ai'
-                    ? 'AI response · check against the transcript'
-                    : 'Transcript reference'}
+              <div className="learn-note" role="status">
+                <p className="mb-2 text-xs font-semibold text-brand">
+                  {mentorMode === 'ai' ? 'Answer from the lesson model' : 'Answer from this lesson'}
                 </p>
-                <p className="mt-2 whitespace-pre-wrap text-ink-dim">{answer}</p>
+                <p className="whitespace-pre-wrap leading-relaxed">{answer}</p>
               </div>
             ) : null}
           </Card>

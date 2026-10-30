@@ -11,7 +11,7 @@ interface Saved extends ProgressState {
 }
 const empty = (): ProgressState => ({ step: 0, assessment: false, answers: {} });
 /** Serial autosave with revision checks. Reading state never counts as a passed attempt. */
-export function useLessonProgress(lessonId: string, assetVersionId: string | undefined) {
+export function useLessonProgress(lessonId: string, assetVersionId: string | null) {
   const [state, setState] = useState<ProgressState>(empty);
   const [loaded, setLoaded] = useState(false);
   const [status, setStatus] = useState('Loading saved progress…');
@@ -45,7 +45,7 @@ export function useLessonProgress(lessonId: string, assetVersionId: string | und
     };
   }, [lessonId]);
   useEffect(() => {
-    if (!loaded || !assetVersionId) return;
+    if (!loaded) return;
     const snapshot = JSON.stringify(state);
     if (snapshot === lastSaved.current) return;
     setStatus('Saving progress…');
@@ -55,7 +55,7 @@ export function useLessonProgress(lessonId: string, assetVersionId: string | und
       try {
         const { progress } = await apiFetch<{ progress: Saved }>(`/lessons/${lessonId}/progress`, {
           method: 'PATCH',
-          body: { ...state, assetVersionId, revision: revision.current },
+          body: { ...state, assetVersionId: assetVersionId ?? null, revision: revision.current },
         });
         revision.current = progress.revision;
         lastSaved.current = snapshot;

@@ -128,11 +128,12 @@ export default function FieldGuidesPage() {
     <div className="space-y-7">
       <header className="flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p className="eyebrow">AT THE POINT OF WORK</p>
-          <h1 className="mt-2">Field guides</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-ink-dim">
-            Clear instructions, relevant safety notes and a record of completion. Take the next step
-            with confidence.
+          <p className="eyebrow">Field guides</p>
+          <h1 className="mt-2">Guidance at the point of work</h1>
+          <p className="mt-3 max-w-[65ch] text-sm leading-7 text-ink-dim">
+            A field guide is a short procedure tied to a released lesson. Completing it records that
+            you acknowledged each step. A passing assessment still comes from a lesson or a practice
+            run.
           </p>
         </div>
         {can('learning:manage') ? (
@@ -290,7 +291,14 @@ export default function FieldGuidesPage() {
               </span>
             </div>
             <h2 className="text-xl font-semibold">{guide.title}</h2>
-            <p className="mb-6 mt-3 text-sm leading-7 text-ink-dim">{guide.description}</p>
+            <p className="mt-3 text-sm leading-7 text-ink-dim">{guide.description}</p>
+            {guide.steps[0] ? (
+              <p className="mb-6 mt-4 border-l-2 border-brand pl-3 text-sm leading-6 text-ink">
+                Starts with: {guide.steps[0].instruction}
+              </p>
+            ) : (
+              <div className="mb-6" />
+            )}
             <div className="mt-auto flex flex-wrap items-center gap-2">
               {guide.status === 'published' ? (
                 <>
@@ -374,10 +382,24 @@ function GuideRun({ guide, close }: { guide: Guide; close: () => void }) {
       </Button>
       <div>
         <p className="eyebrow">
-          {guide.status === 'draft' ? 'AUTHOR PREVIEW' : 'GUIDED PROCEDURE'}
+          {guide.status === 'draft' ? 'Author preview' : 'Guided procedure'}
         </p>
         <h1 className="mt-2">{guide.title}</h1>
-        <p className="mt-3 text-sm leading-7 text-ink-dim">{guide.description}</p>
+        <p className="mt-3 max-w-[65ch] text-sm leading-7 text-ink-dim">{guide.description}</p>
+        <div className="mt-5 max-w-md">
+          <div className="learn-progress" aria-hidden>
+            <span
+              style={{
+                width: `${Math.round(((result ? guide.steps.length : step) / guide.steps.length) * 100)}%`,
+              }}
+            />
+          </div>
+          <p className="mt-2 text-xs text-ink-faint">
+            {result
+              ? 'All steps acknowledged'
+              : `Step ${step + 1} of ${guide.steps.length}`}
+          </p>
+        </div>
       </div>
       {guide.lessonId ? (
         <Link
@@ -405,10 +427,21 @@ function GuideRun({ guide, close }: { guide: Guide; close: () => void }) {
           </div>
         ) : (
           <>
-            <p className="text-xs font-semibold text-brand">
-              Step {step + 1} of {guide.steps.length}
-            </p>
-            <h2 className="mt-5 text-xl font-semibold leading-8">{current.instruction}</h2>
+            <ol className="mb-6 space-y-2" aria-label="Procedure steps">
+              {guide.steps.map((item, index) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className={`learn-step ${index === step ? 'is-current' : ''}`}
+                    disabled={index > done.length}
+                    onClick={() => setStep(index)}
+                  >
+                    <span className="mr-2 font-mono text-[11px] text-ink-faint">{index + 1}</span>
+                    {item.instruction}
+                  </button>
+                </li>
+              ))}
+            </ol>
             {current.safetyNote ? (
               <div className="mt-6 rounded-lg border border-heat-40 bg-heat-8 p-4">
                 <strong className="text-sm text-brand">Before you continue</strong>

@@ -33,12 +33,22 @@ export const lessonContentSchema = z
   );
 export type LessonContent = z.infer<typeof lessonContentSchema>;
 
-export const createLessonSchema = z.object({
-  generateWithAi: z.boolean().default(false),
-  sourceText: z.string().trim().min(20).max(20000).optional(),
-  assetId: z.string().uuid(),
-  title: z.string().min(3).max(200).optional(),
-  passingScore: z.number().int().min(1).max(100).default(80),
+export const createLessonSchema = z
+  .object({
+    generateWithAi: z.boolean().default(false),
+    sourceText: z.string().trim().min(20).max(20000).optional(),
+    assetId: z.string().uuid().optional(),
+    title: z.string().trim().min(3).max(200).optional(),
+    passingScore: z.number().int().min(1).max(100).default(80),
+  })
+  .refine((value) => Boolean(value.assetId) || Boolean(value.title && value.sourceText), {
+    message: 'A lesson needs an approved model, or a subject title and lesson notes',
+    path: ['sourceText'],
+  });
+
+export const generateQuestionsSchema = z.object({
+  title: z.string().trim().min(3).max(200),
+  notes: z.string().trim().min(20).max(20000),
 });
 export type CreateLessonInput = z.infer<typeof createLessonSchema>;
 

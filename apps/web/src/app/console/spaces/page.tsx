@@ -11,7 +11,7 @@ import { Card } from '../../../components/ui/card';
 import { LessonPlayer, type DeliveryLesson } from '../../../components/lesson-player';
 import { ExperiencePlayer } from '../../../components/experience-player';
 import { ModelStage } from '../../../components/model-stage';
-import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
+import { ErrorNote, EmptyState, LoadingBlock } from '../../../components/ui/feedback';
 
 interface Lesson {
   id: string;
@@ -83,7 +83,7 @@ export default function SpacesPage() {
         }}
       />
     );
-  if (rooms.isLoading) return <LoadingBlock label="LOADING SHARED SPACES" />;
+  if (rooms.isLoading) return <LoadingBlock label="Loading shared spaces" />;
   if (rooms.error) return <ErrorNote message={(rooms.error as Error).message} />;
   async function create() {
     setBusy(true);
@@ -110,17 +110,16 @@ export default function SpacesPage() {
     }
   }
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="eyebrow">SPATIAL DELIVERY</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-ink">
-          Shared learning spaces
-        </h1>
-        <p className="mt-2 max-w-2xl text-ink-dim">
-          Persistent, tenant-isolated contexts for browser, mobile, VR and AR learners. Presence
-          expires automatically when a device stops reporting.
+    <div className="space-y-8">
+      <header className="border-b border-hairline pb-6">
+        <p className="eyebrow">Spaces</p>
+        <h1 className="mt-2 text-ink">Shared learning spaces</h1>
+        <p className="mt-3 max-w-[65ch] text-ink-dim">
+          A space is a live browser session around one published lesson or practice experience.
+          People in the room share the current step. Presence drops when a browser stops checking
+          in.
         </p>
-      </div>
+      </header>
       {can('spatial:manage') ? (
         <Card className="space-y-3 p-5">
           <h2 className="font-semibold text-ink">Open a live space</h2>
@@ -159,27 +158,43 @@ export default function SpacesPage() {
           {error ? <p className="text-sm text-state-rejected">{error}</p> : null}
         </Card>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-2">
-        {rooms.data?.rooms.map((room) => (
-          <Card key={room.id} className="space-y-3 p-5">
-            <p className="font-mono text-[11px] text-brand">
-              LIVE · {room.participants.length} PRESENT
-            </p>
-            <h2 className="text-xl font-semibold text-ink">{room.title}</h2>
-            <p className="text-sm text-ink-dim">
-              {room.lessonId
-                ? 'Lesson-linked collaborative session'
-                : 'Approved asset collaborative session'}
-            </p>
-            <Button onClick={() => setActive(room.id)}>Join space</Button>
-          </Card>
-        ))}
-        {rooms.data?.rooms.length === 0 ? (
-          <Card className="p-5 text-ink-dim">
-            No live spaces. A workspace facilitator can open the first lesson-linked room.
-          </Card>
-        ) : null}
-      </div>
+      {rooms.data?.rooms.length ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {rooms.data.rooms.map((room) => (
+            <Card key={room.id} className="flex flex-col space-y-3 p-5">
+              <p className="text-xs font-semibold text-brand">
+                Live · {room.participants.length}{' '}
+                {room.participants.length === 1 ? 'person' : 'people'}
+              </p>
+              <h2 className="text-xl font-semibold text-ink">{room.title}</h2>
+              <p className="text-sm leading-relaxed text-ink-dim">
+                {room.lessonId
+                  ? 'Everyone follows the same lesson step.'
+                  : 'Everyone works in the same practice experience.'}
+              </p>
+              {room.participants.length ? (
+                <p className="text-xs text-ink-faint">
+                  {room.participants
+                    .slice(0, 4)
+                    .map((person) => person.fullName)
+                    .join(', ')}
+                  {room.participants.length > 4 ? ` +${room.participants.length - 4}` : ''}
+                </p>
+              ) : (
+                <p className="text-xs text-ink-faint">No one is in the room right now.</p>
+              )}
+              <Button className="mt-auto w-fit" onClick={() => setActive(room.id)}>
+                Join space
+              </Button>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          title="No live spaces"
+          hint="A facilitator opens a space from a published lesson or practice experience. It stays live while someone is present."
+        />
+      )}
     </div>
   );
 }
@@ -272,14 +287,14 @@ function RoomSession({ roomId, leave }: { roomId: string; leave: () => void }) {
       setSyncing(false);
     }
   }
-  if (room.isLoading) return <LoadingBlock label="ENTERING LEARNING SPACE" />;
+  if (room.isLoading) return <LoadingBlock label="Entering the space" />;
   const current = room.data?.room;
   const sharedStep = current?.worldState.lessonStep;
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="eyebrow">SHARED LEARNING SPACE</p>
+          <p className="eyebrow">Shared space</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink">
             {current?.title ?? 'Space unavailable'}
           </h1>
@@ -296,7 +311,7 @@ function RoomSession({ roomId, leave }: { roomId: string; leave: () => void }) {
       <div className="grid items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_16rem]">
         <div className="min-w-0">
           {lesson.error ? <ErrorNote message={(lesson.error as Error).message} /> : null}
-          {lessonId && lesson.isLoading ? <LoadingBlock label="LOADING ROOM LESSON" /> : null}
+          {lessonId && lesson.isLoading ? <LoadingBlock label="Loading the room lesson" /> : null}
           {experienceId && current ? (
             <ExperiencePlayer
               scenarioId={experienceId}
@@ -327,7 +342,7 @@ function RoomSession({ roomId, leave }: { roomId: string; leave: () => void }) {
           ) : null}
         </div>
         <Card className="space-y-4 p-5">
-          <p className="eyebrow">{current?.participants.length ?? 0} PRESENT</p>
+          <p className="eyebrow">{current?.participants.length ?? 0} present</p>
           {can('spatial:manage') ? (
             <Button variant="outline" disabled={leaving} onClick={endSession}>
               End session for everyone

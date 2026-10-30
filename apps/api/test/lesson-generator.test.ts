@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generateLessonDraft } from '../src/modules/learning/generator';
+import {
+  coerceQuestions,
+  generateLessonDraft,
+  generateQuestionsFromNotes,
+  questionsFromNotes,
+} from '../src/modules/learning/generator';
 const asset = {
   name: 'Cordless drill',
   category: 'Tooling',
@@ -62,5 +67,42 @@ describe('Source-grounded lesson generation', () => {
         }),
       );
     await expect(generateLessonDraft(asset, undefined, config, f)).rejects.toThrow();
+  });
+  it('keeps usable quiz rows when the model wraps them in prose and names the answer', async () => {
+    const messy = `Here is the quiz:\n\`\`\`json\n${JSON.stringify({
+      questions: [
+        {
+          prompt: 'Which chamber pumps blood to the body?',
+          options: ['Left ventricle', 'Right atrium', 'A valve'],
+          correctOption: 'Left ventricle',
+          explanation: 'The notes name the left ventricle as the chamber that pumps to the body.',
+        },
+        { prompt: 'Too thin', options: ['only one'] },
+      ],
+    })}\n\`\`\``;
+    const questions = coerceQuestions(messy);
+    expect(questions).toHaveLength(1);
+    expect(questions[0]).toMatchObject({ correctOption: 0, options: ['Left ventricle', 'Right atrium', 'A valve'] });
+    const f = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({ done: true, model: 'mistral:7b', response: messy }),
+    );
+    const result = await generateQuestionsFromNotes(
+      { title: 'Heart anatomy', notes: 'The left ventricle pumps blood to the body.' },
+      config,
+      f,
+    );
+    expect(result.generation).toMatchObject({ mode: 'ai', model: 'mistral:7b' });
+    expect(result.questions[0]?.options[0]).toBe('Left ventricle');
+    expect(result.questions[0]?.correctOption).toBe(0);
+  });
+  it('builds fill-in questions from the lesson notes', () => {
+    const questions = questionsFromNotes(
+      'The right atrium receives blood from the body. The left ventricle pumps blood to the body through the aorta.',
+    );
+    expect(questions.length).toBeGreaterThan(0);
+    expect(questions[0]?.prompt.startsWith('Fill the blank:')).toBe(true);
+    expect(questions[0]?.options[0]?.length).toBeGreaterThan(4);
+    expect(questions[0]?.options[1]).not.toBe(questions[0]?.options[0]);
+    expect(questions[0]?.correctOption).toBe(0);
   });
 });

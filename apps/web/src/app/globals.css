@@ -1708,3 +1708,151 @@ input[type='checkbox'] {
     min-height: 260px !important;
   }
 }
+
+/*
+ * Asset inspection chrome.
+ *
+ * The toolbar used to be one wrapping flex row with an auto left margin on the
+ * last group. In the asset column that margin pulled Stage, Shadow and
+ * Turntable onto the canvas. Each group is now its own full-width row, and the
+ * canvas starts below the toolbar.
+ */
+.studio {
+  display: grid;
+  grid-template-areas:
+    'toolbar'
+    'transport'
+    'viewport'
+    'hint'
+    'status';
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.studio-top {
+  grid-area: toolbar;
+  position: relative;
+  top: auto;
+  right: auto;
+  left: auto;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  pointer-events: auto;
+}
+.studio-transport {
+  grid-area: transport;
+}
+.studio-viewport,
+.studio-loading {
+  grid-area: viewport;
+}
+.studio-hint {
+  grid-area: hint;
+}
+.studio-bottom {
+  grid-area: status;
+}
+.studio-dock {
+  grid-area: viewport;
+  justify-self: end;
+  z-index: 3;
+  width: min(280px, 46%);
+  max-height: 100%;
+  overflow: auto;
+}
+.studio-top > *,
+.studio-group,
+.studio-top .studio-spacer {
+  margin-left: 0;
+  width: 100%;
+  max-width: 100%;
+}
+.studio-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+.studio-viewport {
+  position: relative;
+  inset: auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+}
+.studio-hint,
+.studio-bottom,
+.studio-transport {
+  position: relative;
+  inset: auto;
+}
+
+/* Shared learning surfaces: one catalog, one progress mark, one choice state. */
+.learn-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--vs-line);
+}
+.learn-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--fc-heat);
+}
+.learn-choice {
+  display: flex;
+  width: 100%;
+  cursor: pointer;
+  gap: 12px;
+  border: 1px solid var(--vs-line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--vs-fg-dim);
+  background: transparent;
+  transition:
+    border-color 160ms,
+    background 160ms,
+    color 160ms;
+}
+.learn-choice:hover {
+  border-color: var(--vs-line-strong);
+  color: var(--vs-fg);
+}
+.learn-choice.is-selected,
+.learn-step.is-current {
+  border-color: var(--fc-heat-40);
+  background: var(--fc-heat-8);
+  color: var(--vs-fg);
+}
+.learn-step {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--vs-line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--vs-fg-dim);
+  background: transparent;
+}
+.learn-step:hover {
+  border-color: var(--vs-line-strong);
+  color: var(--vs-fg);
+}
+.learn-note {
+  border-left: 2px solid var(--fc-heat);
+  padding-left: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vs-fg-dim);
+}

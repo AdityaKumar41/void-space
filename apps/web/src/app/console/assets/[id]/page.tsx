@@ -372,15 +372,9 @@ export default function AssetConsolePage() {
 
       {error ? <ErrorNote message={error.message} code={error.code} /> : null}
 
-      {/*
-      {/*
-       * 50/50 Side-by-side Layout:
-       * Left: 3D Viewport with generous canvas height (580px - 690px)
-       * Right: Dedicated Integrity Panel (Polygons, Heights, Dimensions, Topology, Cryptographic Proof)
-       */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-        <section className="lg:col-span-6 xl:col-span-7 flex flex-col rounded-card border border-hairline bg-surface shadow-panel overflow-hidden">
-          <div className="h-[580px] lg:h-[640px] xl:h-[690px] w-full">
+      <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
+        <section className="flex min-w-0 flex-col overflow-hidden rounded-card border border-hairline bg-surface shadow-panel">
+          <div className="h-[680px] w-full lg:h-[760px]">
             <ModelViewer
               cid={version?.ipfsCid ?? null}
               format={version?.format ?? '.glb'}
@@ -395,7 +389,7 @@ export default function AssetConsolePage() {
           </div>
         </section>
 
-        <div className="lg:col-span-6 xl:col-span-5 flex flex-col">
+        <div className="flex min-w-0 flex-col">
           <AssetIntegrityPanel
             asset={asset}
             version={version}

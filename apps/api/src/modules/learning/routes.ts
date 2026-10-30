@@ -9,6 +9,7 @@ import { createHash } from 'node:crypto';
 import { recordAudit, withTenant } from '@void-space/db';
 import {
   createLessonSchema,
+  generateQuestionsSchema,
   idParamsSchema,
   lessonQuestionSchema,
   lessonContentSchema,
@@ -22,7 +23,12 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { parseBody } from '../../lib/http';
 import { answerLessonQuestion } from './mentor';
 import type { ApiEnv } from '../../env';
-import { generateLessonDraft } from './generator';
+import {
+  generateLessonDraft,
+  generateQuestionsFromNotes,
+  questionsFromNotes,
+} from './generator';
+import { TextAiError } from '@void-space/studio-ai/text';
 
 const lessonParamsSchema = z.object({ id: z.string().uuid() });
 const deliveryInclude = {
@@ -83,7 +89,7 @@ function generatedLesson(asset: {
     },
   ];
   return {
-    title: `${subject}: guided XR lesson`,
+    title: `${subject}: guided lesson`,
     summary: context.slice(0, 2000),
     narration: `Welcome to ${subject}. ${context} First, orient yourself to the approved asset and its intended use. Next, practise the key checks in a safe environment. Finally, complete the short assessment to verify your understanding.`,
     outline: [
@@ -96,9 +102,35 @@ function generatedLesson(asset: {
   };
 }
 
+function subjectDraft(title: string, source: string) {
+  const notes = source.replace(/\s+/g, ' ').trim();
+  const sentences = source
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 12);
+  const outline = (sentences.length > 0 ? sentences : [notes]).slice(0, 6).map((line) => line.slice(0, 1000));
+  const recalled = (outline[0] ?? notes).slice(0, 280);
+  return {
+    title: title.slice(0, 200),
+    summary: notes.slice(0, 2000),
+    narration: source.trim().slice(0, 8000),
+    outline,
+    questions: [
+      {
+        id: 'recall',
+        prompt: 'Which statement comes from this lesson?',
+        options: [recalled, 'A claim that does not appear in the lesson notes'],
+        correctOption: 0,
+        explanation:
+          'This checks that the question stays inside the notes. Replace it with a harder question before you publish.',
+      },
+    ],
+  };
+}
+
 function safeLesson(lesson: {
   id: string;
-  assetId: string;
+  assetId: string | null;
   title: string;
   summary: string;
   narration: string;
@@ -106,7 +138,12 @@ function safeLesson(lesson: {
   questions: unknown;
   passingScore: number;
   isPublished: boolean;
-  assetVersion?: { id: string; ipfsCid: string | null; format: string; polycount: number | null };
+  assetVersion?: {
+    id: string;
+    ipfsCid: string | null;
+    format: string;
+    polycount: number | null;
+  } | null;
 }) {
   const questions = z
     .array(lessonQuestionSchema)
@@ -147,66 +184,75 @@ export async function learningRoutes(
       if (!principal) throw new ForbiddenError('Authentication required', 'UNAUTHENTICATED');
       const input = parseBody(createLessonSchema, request.body);
       // The model call must not hold a database transaction open.
-      const asset = await withTenant(principal.tenantId, (db) =>
-        db.asset.findFirst({
-          where: {
-            id: input.assetId,
-            tenantId: principal.tenantId,
-            status: { in: ['approved', 'published'] },
-          },
-          include: { currentVersion: { select: { id: true } } },
-        }),
-      );
-      if (!asset?.currentVersion)
-        throw new ValidationError('Lessons require an approved asset with a current version');
-      const versionId = asset.currentVersion.id;
-      let generated = generatedLesson(asset);
+      const asset = input.assetId
+        ? await withTenant(principal.tenantId, (db) =>
+            db.asset.findFirst({
+              where: {
+                id: input.assetId,
+                tenantId: principal.tenantId,
+                status: { in: ['approved', 'published'] },
+              },
+              include: { currentVersion: { select: { id: true } } },
+            }),
+          )
+        : null;
+      if (input.assetId && !asset?.currentVersion)
+        throw new ValidationError('The selected model must be approved and have a current version');
+      const versionId = asset?.currentVersion?.id ?? null;
+      const subject = {
+        name: asset?.name ?? input.title ?? 'Lesson',
+        category: asset?.category ?? 'Subject',
+        description: asset?.description ?? input.sourceText ?? null,
+        tags: asset?.tags ?? [],
+      };
+      let generated = asset
+        ? generatedLesson(subject)
+        : subjectDraft(input.title ?? 'Lesson', input.sourceText ?? '');
       let generation: {
         mode: 'ai' | 'template';
         provider?: string;
         model?: string;
         reason?: string;
-      } = { mode: 'template' };
+      } = {
+        mode: 'template',
+        reason: input.sourceText
+          ? 'Your notes are in the lesson. Add questions yourself, or use Write questions with AI.'
+          : 'This draft is a starting point. Replace it with the subject material before publishing.',
+      };
       if (input.generateWithAi) {
         try {
-          const result = await generateLessonDraft(
-            {
-              name: asset.name,
-              category: asset.category,
-              description: asset.description,
-              tags: asset.tags,
-            },
-            input.sourceText,
-            options.env,
-          );
+          const result = await generateLessonDraft(subject, input.sourceText, options.env);
           generated = result.content;
           generation = result.generation;
         } catch {
+          if (input.sourceText && input.title) generated = subjectDraft(input.title, input.sourceText);
           generation = {
             mode: 'template',
             reason:
-              'AI generation is unavailable. This draft is a template that requires authoring.',
+              'The model did not return a usable draft. The notes are in the lesson so you can write the quiz yourself.',
           };
         }
       }
       const lesson = await withTenant(principal.tenantId, async (db) => {
-        const current = await db.asset.findFirst({
-          where: {
-            id: asset.id,
-            tenantId: principal.tenantId,
-            status: { in: ['approved', 'published'] },
-            currentVersionId: versionId,
-          },
-          select: { id: true },
-        });
-        if (!current)
-          throw new ConflictError(
-            'The approved asset changed during generation. Start a new draft from the reviewed version.',
-          );
+        if (asset && versionId) {
+          const current = await db.asset.findFirst({
+            where: {
+              id: asset.id,
+              tenantId: principal.tenantId,
+              status: { in: ['approved', 'published'] },
+              currentVersionId: versionId,
+            },
+            select: { id: true },
+          });
+          if (!current)
+            throw new ConflictError(
+              'The approved asset changed during generation. Start a new draft from the reviewed version.',
+            );
+        }
         const created = await db.lesson.create({
           data: {
             tenantId: principal.tenantId,
-            assetId: asset.id,
+            assetId: asset?.id ?? null,
             assetVersionId: versionId,
             createdById: principal.userId,
             title: input.title ?? generated.title,
@@ -225,7 +271,7 @@ export async function learningRoutes(
             actorId: principal.userId,
             actorLabel: principal.fullName,
             afterState: {
-              assetId: asset.id,
+              assetId: asset?.id ?? null,
               generation,
               sourceProvided: Boolean(input.sourceText),
               sourceSha256: input.sourceText
@@ -312,6 +358,29 @@ export async function learningRoutes(
     },
   );
 
+  app.post(
+    '/lessons/questions',
+    { preHandler: app.requirePermission('learning:manage') },
+    async (request) => {
+      const input = parseBody(generateQuestionsSchema, request.body);
+      try {
+        return await generateQuestionsFromNotes(input, options.env);
+      } catch (error) {
+        const questions = questionsFromNotes(input.notes);
+        return {
+          questions,
+          generation: {
+            mode: 'notes' as const,
+            reason:
+              error instanceof TextAiError
+                ? 'The lesson model is not answering. These questions were built from the notes.'
+                : 'The model reply could not be used. These questions were built from the notes.',
+          },
+        };
+      }
+    },
+  );
+
   app.get(
     '/lessons/:id/author',
     { preHandler: app.requirePermission('learning:manage') },
@@ -380,13 +449,16 @@ export async function learningRoutes(
         });
         if (!candidate) throw new NotFoundError('Lesson');
         parseBody(lessonContentSchema, candidate);
-        if (
-          !['approved', 'published'].includes(candidate.asset.status) ||
-          candidate.asset.currentVersionId !== candidate.assetVersionId
-        )
-          throw new ConflictError(
-            'The lesson must reference the current approved asset version before release.',
-          );
+        if (candidate.assetId || candidate.assetVersionId) {
+          if (
+            !candidate.asset ||
+            !['approved', 'published'].includes(candidate.asset.status) ||
+            candidate.asset.currentVersionId !== candidate.assetVersionId
+          )
+            throw new ConflictError(
+              'The lesson must reference the current approved model before release.',
+            );
+        }
         const updated = await db.lesson.updateMany({
           where: { id, tenantId: principal.tenantId },
           data: { isPublished: true },
@@ -405,6 +477,49 @@ export async function learningRoutes(
         return db.lesson.findUniqueOrThrow({ where: { id } });
       });
       return { lesson: safeLesson(lesson) };
+    },
+  );
+
+  app.post(
+    '/lessons/:id/revise',
+    { preHandler: app.requirePermission('learning:manage') },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const { id } = lessonParamsSchema.parse(request.params);
+      const lesson = await withTenant(principal.tenantId, async (db) => {
+        const existing = await db.lesson.findFirst({
+          where: { id, tenantId: principal.tenantId },
+        });
+        if (!existing) throw new NotFoundError('Lesson');
+        const created = await db.lesson.create({
+          data: {
+            tenantId: principal.tenantId,
+            assetId: existing.assetId,
+            assetVersionId: existing.assetVersionId,
+            createdById: principal.userId,
+            title: existing.title,
+            summary: existing.summary,
+            narration: existing.narration,
+            outline: existing.outline ?? [],
+            questions: existing.questions ?? [],
+            passingScore: existing.passingScore,
+            isPublished: false,
+          },
+        });
+        await recordAudit(
+          {
+            action: 'learning.lesson_created',
+            entityType: 'lesson',
+            entityId: created.id,
+            actorId: principal.userId,
+            actorLabel: principal.fullName,
+            afterState: { revisedFrom: existing.id },
+          },
+          db,
+        );
+        return created;
+      });
+      return reply.status(201).send({ lesson: { id: lesson.id } });
     },
   );
 
@@ -515,13 +630,22 @@ export async function learningRoutes(
           db,
         );
       }
-      return { attempt, credential, correct, completedCourses };
+      const review = questions.map((question) => ({
+        id: question.id,
+        prompt: question.prompt,
+        correct: input.answers[question.id] === question.correctOption,
+        yourAnswer: question.options[input.answers[question.id] ?? -1] ?? '',
+        rightAnswer: question.options[question.correctOption] ?? '',
+        explanation: question.explanation,
+      }));
+      return { attempt, credential, correct, completedCourses, review };
     });
     return reply.status(201).send({
       score: result.attempt.score,
       passed: result.attempt.passed,
       stage: result.attempt.stage,
       correctAnswers: result.correct,
+      review: result.review,
       credential: result.credential
         ? {
             id: result.credential.id,
