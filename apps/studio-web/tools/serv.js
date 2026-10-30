@@ -110,6 +110,19 @@ const serv = http.createServer(
 
     globalThis.ORIGIN = req.headers['origin'] ?? '*' //Boolean(origin.trim().length) ? origin : undefined
 
+    // The launch guide lives on VOID·SPACE at /docs. The editor has no
+    // page of its own there, so the same path on this server opens it.
+    if (p === '/docs' || p.startsWith('/docs/')) {
+      const origin = (process.env.VOIDSPACE_CONSOLE_URL || 'http://localhost:3000').replace(/\/$/, '')
+      const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')).split('#')[0] : ''
+      res.statusCode = 302
+      res.setHeader('Location', origin + p + query)
+      res.setHeader('Cache-Control', 'no-store')
+      res._addHeaders()
+      res.end()
+      return
+    }
+
     console.log(req.method, p, ORIGIN)
 
     if (p === '/') {

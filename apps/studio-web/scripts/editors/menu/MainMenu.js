@@ -256,6 +256,13 @@ MenuBarEditor {
       'app.export_ply()|Export Stanford (.ply)',
     ]
 
+    fileMenu.push(Menu.SEP, [
+      'Guide',
+      () => {
+        window.open('/docs', '_blank', 'noopener')
+      },
+    ])
+
     // Only the NW.js shell owns a window to close; the browser build has no Exit.
     if (window.haveNwjs) {
       fileMenu.push(Menu.SEP, [
