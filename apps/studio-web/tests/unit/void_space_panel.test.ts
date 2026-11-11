@@ -102,6 +102,9 @@ test('chooses the Studio API base URL from the page it finds itself on', () => {
   // 4. Otherwise the editor's dev server, where the API genuinely is a second process on its own port.
   expect(studioApiBaseUrl(page)).toBe('http://localhost:4100')
 
+  expect(studioApiBaseUrl({...page, staticHost: true})).toBe('')
+  expect(studioApiBaseUrl({...page, staticHost: true, override: 'https://api.example/'})).toBe('https://api.example')
+
   // An empty override is absent, not a base URL of ''.
   expect(studioApiBaseUrl({...page, override: ''})).toBe('http://localhost:4100')
 })

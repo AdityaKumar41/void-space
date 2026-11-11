@@ -126,6 +126,7 @@ apps/studio-web/*.pid.lock
 # `gen:paths` showed up as a diff.
 # ---------------------------------------------------------------------------
 apps/studio-web/tsconfig.paths.json
+apps/studio-web/_site/
 apps/studio-web/scripts/data_api/generated/
 
 # ---------------------------------------------------------------------------

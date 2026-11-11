@@ -47,6 +47,7 @@ export interface StudioApiUrlSource {
   readonly protocol: string
   readonly origin: string
   readonly override?: string
+  readonly staticHost?: boolean
 }
 
 export function studioApiBaseUrl(source: StudioApiUrlSource): string {
@@ -54,6 +55,8 @@ export function studioApiBaseUrl(source: StudioApiUrlSource): string {
   if (fromQuery) return stripTrailingSlashes(fromQuery)
 
   if (source.override) return stripTrailingSlashes(source.override)
+
+  if (source.staticHost) return ''
 
   if (source.protocol === 'https:') return source.origin
 
@@ -188,6 +191,7 @@ function apiBaseUrl(): string {
     protocol: location.protocol,
     origin  : location.origin,
     override: (window as unknown as {VOID_STUDIO_API_URL?: string}).VOID_STUDIO_API_URL,
+    staticHost: (window as unknown as {VOID_STUDIO_STATIC_HOST?: boolean}).VOID_STUDIO_STATIC_HOST,
   })
 }
 
@@ -1306,6 +1310,18 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
   const render = async (): Promise<void> => {
     let status: BridgeStatus | null = null
     let failure: string | null = null
+
+    if (!base) {
+      badge.textContent = 'local editor'
+      badge.className = 'vsp__badge'
+      if (triggerDot) triggerDot.style.background = p.accent
+      body.innerHTML = `
+        <div class="vsp__name">Create in your browser</div>
+        <div class="vsp__note">Model, sculpt, save project files, and export on this device.</div>
+        <div class="vsp__note">Account sign-in, cloud projects, AI services, and publishing to VOID·SPACE require a connected backend. They are unavailable on this free editor deployment.</div>
+      `
+      return
+    }
 
     try {
       const response = await fetch(`${base}/studio/api/v1/voidspace/status`, {
