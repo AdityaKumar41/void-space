@@ -83,7 +83,7 @@ export const LEAFMESH_PLY_FORMAT: IFileFormat<ToolContext> = {
 
   exportToBytes(ctx) {
     const ob = ctx.scene?.objects?.active || [...(ctx.scene?.objects || [])].find((o: any) => o.data?.mesh || triangleSourceOf(o?.data))
-    if (ob?.data?.mesh) {
+    if (ob?.data instanceof LeafMeshData) {
       return exportLeafMeshToPLY(ob.data, ob.name || 'Model')
     }
     const src = triangleSourceOf(ob?.data)

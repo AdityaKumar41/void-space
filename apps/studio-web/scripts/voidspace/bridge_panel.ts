@@ -1307,6 +1307,31 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
   }
   document.addEventListener('visibilitychange', onVisible)
 
+  const wireLocalExports = (): void => {
+    body.querySelectorAll('[data-action="quick-export"]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const fmt = el.getAttribute('data-fmt') || 'glb'
+        const c = getToolContext()
+        const exported = exportSceneFormat(c, fmt, 'StudioModel')
+        if (exported.bytes && exported.bytes.length > 0) {
+          const blob = new Blob([new Uint8Array(exported.bytes)], {type: 'application/octet-stream'})
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `StudioModel${exported.extension}`
+          document.body.appendChild(a)
+          a.click()
+          setTimeout(() => {
+            a.remove()
+            URL.revokeObjectURL(url)
+          }, 1000)
+        } else if (c?.api && typeof c.api.execTool === 'function') {
+          c.api.execTool(c, `app.export_${fmt}()`)
+        }
+      })
+    })
+  }
+
   const render = async (): Promise<void> => {
     let status: BridgeStatus | null = null
     let failure: string | null = null
@@ -1318,8 +1343,13 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       body.innerHTML = `
         <div class="vsp__name">Create in your browser</div>
         <div class="vsp__note">Model, sculpt, save project files, and export on this device.</div>
+        <div class="vsp__card">
+          <div class="vsp__name">Export this scene</div>
+          ${['glb', 'fbx', 'obj', 'stl', 'ply'].filter(fmt => fmt === 'glb' || getFileFormat(fmt)?.exportToBytes).map(fmt => `<button type="button" class="vsp__btn vsp__btn--subtle" data-action="quick-export" data-fmt="${fmt}">Export .${fmt}</button>`).join('')}
+        </div>
         <div class="vsp__note">Account sign-in, cloud projects, AI services, and publishing to VOID·SPACE require a connected backend. They are unavailable on this free editor deployment.</div>
       `
+      wireLocalExports()
       return
     }
 
@@ -1693,28 +1723,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       openPublishBtn.addEventListener('click', () => renderPublishForm(status))
     }
 
-    body.querySelectorAll('[data-action="quick-export"]').forEach((el) => {
-      el.addEventListener('click', () => {
-        const fmt = el.getAttribute('data-fmt') || 'glb'
-        const c = getToolContext()
-        const exported = exportSceneFormat(c, fmt, 'StudioModel')
-        if (exported.bytes && exported.bytes.length > 0) {
-          const blob = new Blob([new Uint8Array(exported.bytes)], {type: 'application/octet-stream'})
-          const url = URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = url
-          a.download = `StudioModel${exported.extension}`
-          document.body.appendChild(a)
-          a.click()
-          setTimeout(() => {
-            a.remove()
-            URL.revokeObjectURL(url)
-          }, 1000)
-        } else if (c?.api && typeof c.api.execTool === 'function') {
-          c.api.execTool(c, `app.export_${fmt}()`)
-        }
-      })
-    })
+    wireLocalExports()
 
     const retryImportBtn = body.querySelector('[data-action="retry-import"]')
     if (retryImportBtn) {

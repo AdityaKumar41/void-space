@@ -12,6 +12,21 @@ test('free deployment explains backend availability and round-trips a project lo
   await expect(page.getByText('Create in your browser')).toBeVisible()
   await expect(page.getByText(/unavailable on this free editor deployment/)).toBeVisible()
 
+  const exportButtons = page.locator('[data-action="quick-export"]')
+  expect(await exportButtons.count()).toBeGreaterThan(0)
+  for (const button of await exportButtons.all()) {
+    const format = await button.getAttribute('data-fmt')
+    const downloadPromise = page.waitForEvent('download')
+    await button.click()
+    const download = await downloadPromise
+    expect(download.suggestedFilename()).toBe(`StudioModel.${format}`)
+    expect(await download.failure()).toBeNull()
+    const stream = await download.createReadStream()
+    let size = 0
+    for await (const chunk of stream!) size += chunk.length
+    expect(size).toBeGreaterThan(0)
+  }
+
   const result = await page.evaluate(async () => {
     const app = (window as any)._appstate
     const scene = () => [...app.ctx.scene.objects].map((ob: any) => ({name: ob.name, type: ob.data?.constructor.name}))

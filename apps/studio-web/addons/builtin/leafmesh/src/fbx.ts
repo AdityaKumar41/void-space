@@ -10,7 +10,7 @@ import {InvalidationKind, SceneObject, makeDefaultMaterial, triangleSourceOf} fr
 
 import {LeafMeshData} from './leafmesh.js'
 import type {FbxReadStats} from './fbx_read.js'
-import {readFBX, exportLeafMeshToFBX} from './fbx_read.js'
+import {readFBX, exportLeafMeshToFBX, exportTrianglesToFBX} from './fbx_read.js'
 
 export {readFBX, exportLeafMeshToFBX, type FbxReadStats}
 
@@ -104,6 +104,8 @@ export const LEAFMESH_FBX_FORMAT: IFileFormat<ToolContext> = {
     if (ob && ob.data instanceof LeafMeshData) {
       return exportLeafMeshToFBX(ob.data.mesh, ob.name || 'Model')
     }
+    const source = triangleSourceOf(ob?.data)
+    if (source) return exportTrianglesToFBX(source.extractTriangles(), ob?.name || 'Model')
     return ''
   },
 }

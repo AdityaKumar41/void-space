@@ -496,6 +496,20 @@ export function exportLeafMeshToFBX(mesh: LeafMesh, name = 'Model'): string {
     polyIndices.push(i0, i1, ~i2)
   }
 
+  return writeAsciiFBX(vertCoords, polyIndices, name)
+}
+
+/** Triangle-source export for sculpt meshes which do not use LeafMesh handles. */
+export function exportTrianglesToFBX(tris: {positions: ArrayLike<number>; indices: ArrayLike<number>}, name = 'Model'): string {
+  const vertCoords: string[] = []
+  for (let i = 0; i < tris.positions.length; i += 3) {
+    vertCoords.push(`${tris.positions[i].toFixed(6)},${tris.positions[i + 1].toFixed(6)},${tris.positions[i + 2].toFixed(6)}`)
+  }
+  const polyIndices = Array.from(tris.indices, (index, i) => i % 3 === 2 ? ~index : index)
+  return writeAsciiFBX(vertCoords, polyIndices, name)
+}
+
+function writeAsciiFBX(vertCoords: string[], polyIndices: number[], name: string): string {
   return `; FBX 7.4.0 project file
 ; Created by VOID·STUDIO
 

@@ -278,7 +278,7 @@
       /* Backstop: never leave the overlay up if the mount stalls. */
       const backstop = setTimeout(hideLoadingOverlay, LOADING_TIMEOUT_MS)
 
-      import("./build/entry_point.js?chat=3").then(entry_point => entry_point.init()).then(() => {
+      Promise.resolve(window.VOID_STUDIO_ISOLATION_READY).then(() => import("./build/entry_point.js?chat=3")).then(entry_point => entry_point.init()).then(() => {
         clearTimeout(backstop)
         hideLoadingOverlay()
       }).catch(err => {

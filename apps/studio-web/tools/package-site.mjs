@@ -32,7 +32,8 @@ let html = await readFile(Path.join(root, 'index.html'), 'utf8')
 let scripts = '<script src="deployment-config.js"></script>'
 if (pages) {
   await cp(Path.join(root, 'coi-serviceworker.js'), Path.join(out, 'coi-serviceworker.js'))
-  scripts += '\n  <script src="coi-serviceworker.js"></script>'
+  await cp(Path.join(root, 'isolation-bootstrap.js'), Path.join(out, 'isolation-bootstrap.js'))
+  scripts += '\n  <script src="isolation-bootstrap.js"></script>'
 }
 html = html.replace('<head>', `<head>\n  ${scripts}`)
 await writeFile(Path.join(out, 'index.html'), html)
