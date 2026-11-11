@@ -55,6 +55,11 @@ the necessary accounts. A sleeping web service alone is insufficient.
 Build locally with `pnpm --dir apps/studio-web build:release`, then run
 `node apps/studio-web/tools/package-site.mjs --pages`. The package is in
 `apps/studio-web/_site`. Production CI starts with a clean build and rejects
-source maps. Once a backend is connected, verify login, session handoff, project
+source maps. Test the packaged artifact using `node node_modules/@playwright/test/cli.js
+test --config playwright.pages.config.ts` from `apps/studio-web` (requires
+Chromium installed). Once a backend is connected, verify login, session handoff, project
 save/reload, AI jobs, GLB export, publishing, and marketplace retrieval against
 that deployment before treating those integrations as live.
+
+Set `STUDIO_E2E_URL=https://adityakumar41.github.io/void-space/` when running
+the Pages test configuration to check the public deployment instead.

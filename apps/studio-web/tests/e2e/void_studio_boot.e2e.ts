@@ -33,7 +33,7 @@ test('app boots, loads sculptcore WASM, and applies the VOID·STUDIO theme', asy
 
   page.on('pageerror', (err) => pageErrors.push(String(err)))
 
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
 
   // The screen is the boot barrier: it exists only once the process boot (which
   // loads sculptcore) has resolved.

@@ -89,6 +89,12 @@ Two files look like they belong on the list above and do not:
 
 ## Building this fork
 
+Hosting update: the root `.github/workflows/deploy-studio.yml` now builds and
+publishes this fork to GitHub Pages. `tools/package-site.mjs --pages` includes
+the retained `coi-serviceworker.js` to supply cross-origin isolation on that
+host; the nginx deployment continues to send real headers. See
+[`docs/HOSTING.md`](../../docs/HOSTING.md) for the backend boundary and setup.
+
 It does **not** participate in the root pnpm workspace — see the comment in
 [`pnpm-workspace.yaml`](../../pnpm-workspace.yaml) for why. It keeps its own lockfile.
 Drive it through the root scripts so the invocation stays in one place:
