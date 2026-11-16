@@ -48,12 +48,9 @@ Approved asset -> lesson draft -> publish -> guided assessment
 - `POST /api/v1/lessons/:id/attempts` grades answers, stores the attempt,
   computes the Awareness / Practice / Apply / Mastery stage and issues a
   SHA-256 verification credential upon a passing score.
-- `POST /api/v1/lessons/:id/mentor` is intentionally scoped to the active
-  lesson; it does not search arbitrary tenant content or accept private context.
 - `GET /api/v1/credentials/:id` lets the credential holder recover their
   portable proof.
-- The console now has a **Lessons** area with guided delivery, assessment and
-  mentor interaction.
+- The console now has a **Lessons** area with guided delivery and assessment.
 
 The learning records, attempts and credentials are tenant-scoped, included in
 RLS policy application and auditable through the existing append-only ledger.

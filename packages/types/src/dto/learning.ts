@@ -57,11 +57,6 @@ export const submitLessonAttemptSchema = z.object({
 });
 export type SubmitLessonAttemptInput = z.infer<typeof submitLessonAttemptSchema>;
 
-export const mentorQuestionSchema = z.object({
-  question: z.string().trim().min(2).max(1000),
-});
-export type MentorQuestionInput = z.infer<typeof mentorQuestionSchema>;
-
 const courseSlugSchema = z
   .string()
   .trim()

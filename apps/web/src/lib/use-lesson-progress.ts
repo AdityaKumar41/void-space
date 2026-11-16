@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from './api';
+import { startForegroundTime } from './foreground-time';
 interface ProgressState {
   step: number;
   assessment: boolean;
@@ -69,6 +70,17 @@ export function useLessonProgress(lessonId: string, assetVersionId: string | nul
     }, 650);
     return () => clearTimeout(timer);
   }, [state, loaded, assetVersionId, lessonId, tick]);
+  useEffect(() => {
+    if (!loaded) return;
+    return startForegroundTime(() => {
+      void apiFetch<{ learningTimeSeconds: number }>(`/lessons/${lessonId}/time`, {
+        method: 'POST',
+        body: { assetVersionId },
+      }).catch((error: unknown) => {
+        if (mounted.current) setStatus(`Learning time not saved: ${(error as Error).message}`);
+      });
+    });
+  }, [assetVersionId, lessonId, loaded]);
   return {
     state,
     loaded,

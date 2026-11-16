@@ -96,6 +96,7 @@ export { loadRootEnv, migrateDatabaseUrl, REPO_ROOT } from './env';
 // Prisma enums/types so consumers never import from the generated path directly.
 export {
   AssetStatus,
+  DocumentKind,
   JobQueue,
   JobStatus,
   LicenseStatus,

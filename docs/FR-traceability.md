@@ -141,21 +141,19 @@ tested against a mock would prove nothing about whether the policy exists.
 
 | Req | Status | Evidence | Test |
 |---|---|---|---|
-| FR-5.1 live rotating WebGL thumbnail per card | **Partial — see note** | `scripts/render-thumbnails.mjs`, `components/console-kit.tsx` (`ConsoleThumb`) | UI audit |
+| FR-5.1 live rotating WebGL thumbnail per card | **Partial — see note** | `scripts/render-thumbnails.mjs`, `apps/web/src/components/asset-thumbnail.tsx`, `apps/web/src/lib/model-thumbnails.ts` | `apps/web/test/model-thumbnails.test.ts`, UI audit |
 | FR-5.2 full-screen, orbit-controlled viewer | Implemented | `components/model-viewer.tsx` (React Three Fiber), `model-stage.tsx` | `web/test`, UI audit |
 | FR-5.3 metadata beside the viewer | Implemented | `apps/web/src/app/m/[assetId]/page.tsx` | UI audit |
 
-**FR-5.1 is the one deliberate deviation in this matrix**, and it is a deviation in *mechanism*
-rather than in behaviour. The SRS asks for a live WebGL preview per card. What ships is a **static
-render produced once at publish time** by headless Chromium with a real GPU context
-(`pnpm assets:thumbnails`), served through the same `/thumbnails/[cid]` route, with a drawn
-fallback when no render can exist.
+**FR-5.1 remains a deliberate deviation in mechanism** rather than in behaviour. The SRS asks for a
+live rotating WebGL preview per card. Published assets can use a static render produced by headless
+Chromium (`pnpm assets:thumbnails`). A visible card without a render generates a still preview from
+the actual GLB/GLTF in the browser, then stores it in IndexedDB by CID for subsequent visits. A drawn
+fallback remains for unsupported formats or models that cannot be rendered.
 
-A card grid is the wrong place for a WebGL context. Twenty-four live canvases on one screen is
-twenty-four GPU contexts against a browser limit of roughly sixteen, so the grid would blank as
-soon as a page held more than a handful of previews — failing NFR-PERF.2 rather than meeting it.
-Rendering once at publish, at the moment the asset is already having a licence minted for it, gives
-every card the same visual result at zero runtime cost.
+A card grid is the wrong place for a live WebGL context per card. Twenty-four live canvases on one
+screen can exceed browser context limits. On-demand renders are serialized and limited to cards near
+the viewport; their cached images avoid repeated model downloads and rendering after the first visit.
 
 Recorded as a deviation rather than shipped silently because the SRS names a mechanism, and a
 reviewer comparing the two documents should find the difference explained here rather than discover
@@ -376,7 +374,7 @@ document exists to avoid.
 | Req | Status | Evidence |
 |---|---|---|
 | NFR-PERF.1 p95 < 400 ms for `GET /assets` at 10,000 assets/tenant | **Unmeasured** | No benchmark exists. The indexes the query needs do (`[tenantId, createdAt]`, `[tenantId, entityType, entityId]`, `[tenantId, status]`), but designed-for is not measured. |
-| NFR-PERF.2 thumbnails initialise < 1 s on a mid-range GPU | **Unmeasured** | Met by construction — a pre-rendered JPEG cannot take a second to decode — but never timed. Note the deviation at FR-5.1: this target is *why* the SRS's WebGL-per-card mechanism was not adopted. |
+| NFR-PERF.2 thumbnails initialise < 1 s on a mid-range GPU | **Unmeasured** | Existing JPEGs and cached previews decode as images; a first-time GLB/GLTF render includes model download and GPU work. Neither path has a timing benchmark. See the mechanism note at FR-5.1. |
 | NFR-PERF.3 enrichment is asynchronous and does not block upload | Verified structurally | The upload returns after the enqueue (`assets/service.ts`); `ai-enrichment` runs in a separate process. `api/test/assets.test.ts` asserts the response carries a queued job, not a result. |
 | NFR-PERF.4 a repeated CID read is served from the gateway cache | Verified by configuration | `docker/nginx/templates/default.conf.template`: `proxy_cache_valid 200 206 30d`, `proxy_cache_use_stale`, `proxy_cache_lock on`. Not measured under load. |
 | NFR-PERF.5 a mint confirms within 5 s on local Anvil | **Unmeasured** | Anvil mines instantly by default, so this should hold with a wide margin, but no timing assertion exists. |
@@ -632,4 +630,3 @@ names, that is called out (FR-5.1). Where a guarantee is structural rather than 
 called out too (FR-7.6). The rows marked **Unmeasured** mean exactly that — not failed, not verified,
 simply never put under a stopwatch. A traceability matrix is only worth keeping if it can say those
 three things and be believed.
-

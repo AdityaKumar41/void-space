@@ -17,7 +17,13 @@ import {
   withPlatform,
   withTenant,
 } from '@void-space/db';
-import { ROLE_PERMISSIONS, type AuthPrincipal, type Role, type SessionUser } from '@void-space/types';
+import {
+  ROLE_PERMISSIONS,
+  type AuthPrincipal,
+  type LanguageCode,
+  type Role,
+  type SessionUser,
+} from '@void-space/types';
 import type { Permission } from '@void-space/types';
 
 import {
@@ -66,6 +72,7 @@ export interface TenantChoice {
   readonly id: string;
   readonly name: string;
   readonly slug: string;
+  readonly roles: readonly Role[];
 }
 
 export interface TenantSelectionRequired {
@@ -102,6 +109,7 @@ export interface PersonMembership {
   readonly tenantStatus: string;
   readonly email: string;
   readonly fullName: string;
+  readonly preferredLanguage: LanguageCode;
   readonly status: string;
   readonly roles: string[];
 }
@@ -179,6 +187,7 @@ export async function loadMemberships(email: string): Promise<PersonMembership[]
         tenantId: true,
         email: true,
         fullName: true,
+        preferredLanguage: true,
         status: true,
         tenant: { select: { id: true, name: true, slug: true, status: true } },
         roles: { select: { role: { select: { name: true } } } },
@@ -195,6 +204,7 @@ export async function loadMemberships(email: string): Promise<PersonMembership[]
     tenantStatus: row.tenant.status,
     email: row.email,
     fullName: row.fullName,
+    preferredLanguage: row.preferredLanguage,
     status: row.status,
     roles: row.roles.map((membership) => membership.role.name),
   }));
@@ -259,6 +269,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       email: params.email,
       fullName: current?.fullName ?? '',
       activeTenantId: params.tenantId,
+      preferredLanguage: current?.preferredLanguage ?? memberships[0]?.preferredLanguage ?? 'en',
       // Every workspace this person can switch to (FR-1.4).
       tenants: memberships.map((membership) => ({
         id: membership.tenantId,
@@ -441,6 +452,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           passwordHash: true,
           status: true,
           tenant: { select: { id: true, name: true, slug: true, status: true } },
+          roles: { select: { role: { select: { name: true } } } },
         },
         orderBy: { createdAt: 'asc' },
       }),
@@ -490,6 +502,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
             id: candidate.tenant.id,
             name: candidate.tenant.name,
             slug: candidate.tenant.slug,
+            roles: candidate.roles.map((membership) => membership.role.name),
           })),
         };
       }
@@ -993,4 +1006,3 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     listSessions,
   };
 }
-

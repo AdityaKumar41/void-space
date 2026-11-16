@@ -11,7 +11,12 @@ authoring, saved-version 3D delivery, local transcript guidance, usable learning
 rooms, presence/leave/session-end behavior and campus progress/recognition of
 prior passing evidence. PDF/DOCX ingestion and bulk curriculum generation, physics simulations,
 WebAR, full realtime collaboration and on-chain skill issuance remain incomplete.
-The user subsequently authorized the CUTM AI host and OpenRouter fallback. See [AI provider setup](./AI-PROVIDERS.md): the mentor and source-text lesson generation now use the shared adapter, with local fallback. Requested Qwen is unavailable remotely; same-host Mistral was live-verified.
+The user subsequently authorized the CUTM AI host and OpenRouter fallback for
+lesson authoring and enrichment. See [AI provider setup](./AI-PROVIDERS.md).
+Lesson chat now uses the server-side OpenAI API and persists each learner's
+conversation in tenant-scoped PostgreSQL; it returns an explicit error rather
+than a local fallback when OpenAI is unavailable. Requested Qwen is unavailable
+remotely; same-host Mistral was live-verified for the shared text adapter.
 The original dirty worktree is preserved. The subsequent interactive spatial runtime requires additive migration `20261029090000_interactive_experiences` and RLS application. See [spatial experiences](./SPATIAL-EXPERIENCES.md) for the implemented scene workflow, demo and remaining limits.
 
 This is the handoff file for the next human or agent session. It is deliberately

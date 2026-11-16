@@ -44,6 +44,14 @@ enum UserStatus {
   suspended
 }
 
+enum UserLanguage {
+  en
+  te
+  hi
+
+  @@map("user_language")
+}
+
 /// §3.9.3: a managed wallet is tenant-owned (publisher signer), a linked wallet
 /// belongs to a user (SIWE identity / license recipient).
 enum WalletType {
@@ -131,6 +139,13 @@ enum FieldGuideStatus {
   archived
 }
 
+/// Documents & Notes — a stored file or an authored note. Both can be filed under
+/// a program (Course), a Lesson and a free-form topic in the learning workspace.
+enum DocumentKind {
+  file
+  note
+}
+
 // ------------------------------------------------------------- tenancy & auth
 
 /// §5.1 Tenant — the root of tenant isolation.
@@ -144,44 +159,47 @@ model Tenant {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  users           User[]
-  userRoles       UserRole[]
-  wallets         Wallet[]
-  assets          Asset[]
-  assetVersions   AssetVersion[]
-  aiSuggestions   AISuggestion[]
-  apiKeys         ApiKey[]
-  auditLogs       AuditLog[]
-  notifications   Notification[]
-  licenses        License[]
-  reviewDecisions ReviewDecision[]
-  reviewComments  ReviewComment[]
-  invites         Invite[]
-  webhooks        Webhook[]
-  jobs            Job[]
-  sessions        Session[]
-  settings        TenantSettings?
-  lessons         Lesson[]
-  lessonAttempts  LessonAttempt[]
-  credentials     SkillCredential[]
-  courses         Course[]
-  courseLessons   CourseLesson[]
-  spatialRooms    SpatialRoom[]
+  users               User[]
+  userRoles           UserRole[]
+  wallets             Wallet[]
+  assets              Asset[]
+  assetVersions       AssetVersion[]
+  aiSuggestions       AISuggestion[]
+  apiKeys             ApiKey[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  licenses            License[]
+  reviewDecisions     ReviewDecision[]
+  reviewComments      ReviewComment[]
+  invites             Invite[]
+  webhooks            Webhook[]
+  jobs                Job[]
+  sessions            Session[]
+  settings            TenantSettings?
+  lessons             Lesson[]
+  lessonAttempts      LessonAttempt[]
+  credentials         SkillCredential[]
+  courses             Course[]
+  courseLessons       CourseLesson[]
+  spatialRooms        SpatialRoom[]
   spatialParticipants SpatialParticipant[]
-  iotDevices      IoTDevice[]
-  telemetry       DeviceTelemetry[]
-  digitalTwins    DigitalTwin[]
-  scenarios       SimulationScenario[]
-  scenarioAttempts ScenarioAttempt[]
-  fieldGuides     FieldGuide[]
-  fieldGuideRuns  FieldGuideRun[]
-  ventures        VenturePlan[]
-  enrollments     CourseEnrollment[]
+  iotDevices          IoTDevice[]
+  telemetry           DeviceTelemetry[]
+  digitalTwins        DigitalTwin[]
+  scenarios           SimulationScenario[]
+  scenarioAttempts    ScenarioAttempt[]
+  fieldGuides         FieldGuide[]
+  fieldGuideRuns      FieldGuideRun[]
+  ventures            VenturePlan[]
+  enrollments         CourseEnrollment[]
+  documents           Document[]
+  lessonProgress      LessonProgress[]
+  lessonConversations LessonConversation[]
+  lessonChatMessages  LessonChatMessage[]
+  experienceRuns      ExperienceRun[]
+  experienceEvents    ExperienceEvent[]
 
   @@map("tenants")
-  lessonProgress LessonProgress[]
-  experienceRuns ExperienceRun[]
-  experienceEvents ExperienceEvent[]
 }
 
 /// §5.1 Role — fixed, platform-defined role set (§3.6).
@@ -198,52 +216,56 @@ model Role {
 
 /// §5.1 User — one row per (person, tenant) membership.
 model User {
-  id            String     @id @default(uuid()) @db.Uuid
-  tenantId      String     @map("tenant_id") @db.Uuid
-  email         String     @db.VarChar(254)
-  fullName      String     @map("full_name") @db.VarChar(120)
-  passwordHash  String?    @map("password_hash")
-  googleId      String?    @map("google_id") @db.VarChar(120)
-  walletAddress String?    @map("wallet_address") @db.VarChar(42)
-  status        UserStatus @default(active)
-  lastLoginAt   DateTime?  @map("last_login_at")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  id                String       @id @default(uuid()) @db.Uuid
+  tenantId          String       @map("tenant_id") @db.Uuid
+  email             String       @db.VarChar(254)
+  fullName          String       @map("full_name") @db.VarChar(120)
+  preferredLanguage UserLanguage @default(en) @map("preferred_language")
+  passwordHash      String?      @map("password_hash")
+  googleId          String?      @map("google_id") @db.VarChar(120)
+  walletAddress     String?      @map("wallet_address") @db.VarChar(42)
+  status            UserStatus   @default(active)
+  lastLoginAt       DateTime?    @map("last_login_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  roles            UserRole[]
-  assetsCreated    Asset[]          @relation("AssetCreator")
-  versionsCreated  AssetVersion[]   @relation("VersionCreator")
-  decisions        ReviewDecision[] @relation("DecisionAssessor")
-  licensesApproved License[]        @relation("LicenseApprover")
-  comments         ReviewComment[]
-  apiKeys          ApiKey[]
-  notifications    Notification[]
-  auditLogs        AuditLog[]
-  wallets          Wallet[]
-  invitesSent      Invite[]         @relation("InviteSender")
-  sessions         Session[]
-  lessonAttempts   LessonAttempt[]
-  credentials      SkillCredential[]
-  lessonsCreated   Lesson[]         @relation("LessonAuthor")
-  coursesCreated    Course[]           @relation("CourseAuthor")
-  courseEnrollments CourseEnrollment[]
-  spatialRoomsCreated SpatialRoom[]     @relation("SpatialRoomAuthor")
-  spatialPresence   SpatialParticipant[]
-  iotDevicesCreated IoTDevice[] @relation("IoTDeviceAuthor")
-  scenariosCreated SimulationScenario[] @relation("ScenarioAuthor")
-  scenarioAttempts ScenarioAttempt[]
-  fieldGuidesCreated FieldGuide[] @relation("FieldGuideAuthor")
-  fieldGuideRuns  FieldGuideRun[]
-  venturesCreated VenturePlan[] @relation("VentureAuthor")
+  roles               UserRole[]
+  assetsCreated       Asset[]              @relation("AssetCreator")
+  versionsCreated     AssetVersion[]       @relation("VersionCreator")
+  decisions           ReviewDecision[]     @relation("DecisionAssessor")
+  licensesApproved    License[]            @relation("LicenseApprover")
+  comments            ReviewComment[]
+  apiKeys             ApiKey[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  wallets             Wallet[]
+  invitesSent         Invite[]             @relation("InviteSender")
+  sessions            Session[]
+  lessonAttempts      LessonAttempt[]
+  credentials         SkillCredential[]
+  lessonsCreated      Lesson[]             @relation("LessonAuthor")
+  coursesCreated      Course[]             @relation("CourseAuthor")
+  courseEnrollments   CourseEnrollment[]
+  spatialRoomsCreated SpatialRoom[]        @relation("SpatialRoomAuthor")
+  spatialPresence     SpatialParticipant[]
+  iotDevicesCreated   IoTDevice[]          @relation("IoTDeviceAuthor")
+  scenariosCreated    SimulationScenario[] @relation("ScenarioAuthor")
+  scenarioAttempts    ScenarioAttempt[]
+  fieldGuidesCreated  FieldGuide[]         @relation("FieldGuideAuthor")
+  fieldGuideRuns      FieldGuideRun[]
+  venturesCreated     VenturePlan[]        @relation("VentureAuthor")
+  documentsCreated    Document[]           @relation("DocumentAuthor")
+  lessonProgress      LessonProgress[]
+  lessonConversations LessonConversation[]
+  lessonChatMessages  LessonChatMessage[]
+  experienceRuns      ExperienceRun[]
 
   @@unique([tenantId, email])
   @@index([email])
   @@index([googleId])
   @@map("users")
-  lessonProgress LessonProgress[]
-  experienceRuns ExperienceRun[]
 }
 
 /// §5.1 UserRole — join table; one active role per user per tenant in this release.
@@ -387,35 +409,77 @@ model Asset {
 /// payload is deliberately versioned and immutable after publication: an attempt
 /// must always be gradeable against the questions the learner actually saw.
 model Lesson {
-  id            String   @id @default(uuid()) @db.Uuid
-  tenantId      String   @map("tenant_id") @db.Uuid
-  assetId       String?  @map("asset_id") @db.Uuid
-  assetVersionId String? @map("asset_version_id") @db.Uuid
-  title         String   @db.VarChar(200)
-  summary       String   @db.VarChar(2000)
-  narration     String   @db.VarChar(8000)
-  outline       Json
-  questions     Json
-  passingScore  Int      @default(80) @map("passing_score")
-  isPublished   Boolean  @default(false) @map("is_published")
-  createdById   String   @map("created_by_id") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  assetId        String?  @map("asset_id") @db.Uuid
+  assetVersionId String?  @map("asset_version_id") @db.Uuid
+  title          String   @db.VarChar(200)
+  summary        String   @db.VarChar(2000)
+  narration      String   @db.VarChar(8000)
+  outline        Json
+  questions      Json
+  passingScore   Int      @default(80) @map("passing_score")
+  isPublished    Boolean  @default(false) @map("is_published")
+  createdById    String   @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  asset Asset?        @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  assetVersion AssetVersion? @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
-  createdBy User      @relation("LessonAuthor", fields: [createdById], references: [id], onDelete: Restrict)
-  progress LessonProgress[]
-  attempts LessonAttempt[]
-  courseLinks CourseLesson[]
-  spatialRooms SpatialRoom[]
-  scenarios SimulationScenario[]
-  fieldGuides FieldGuide[]
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset         Asset?               @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetVersion  AssetVersion?        @relation(fields: [assetVersionId], references: [id], onDelete: Restrict)
+  createdBy     User                 @relation("LessonAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  progress      LessonProgress[]
+  attempts      LessonAttempt[]
+  courseLinks   CourseLesson[]
+  spatialRooms  SpatialRoom[]
+  scenarios     SimulationScenario[]
+  fieldGuides   FieldGuide[]
+  documents     Document[]
+  conversations LessonConversation[]
 
   @@index([tenantId, assetId, createdAt])
   @@index([tenantId, isPublished])
   @@map("lessons")
+}
+
+model LessonConversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  lessonId  String   @map("lesson_id") @db.Uuid
+  learnerId String   @map("learner_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lesson   Lesson              @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  learner  User                @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  messages LessonChatMessage[]
+
+  @@unique([tenantId, lessonId, learnerId])
+  @@index([tenantId, learnerId, updatedAt])
+  @@map("lesson_conversations")
+}
+
+model LessonChatMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  sequence       Int
+  role           String   @db.VarChar(12)
+  content        String   @db.VarChar(12000)
+  mode           String?  @db.VarChar(20)
+  provider       String?  @db.VarChar(60)
+  model          String?  @db.VarChar(120)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation LessonConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User?              @relation(fields: [userId], references: [id])
+  userId       String?            @db.Uuid
+
+  @@unique([conversationId, sequence])
+  @@index([tenantId, conversationId, sequence])
+  @@map("lesson_chat_messages")
 }
 
 // ---------------------------------------------------------- virtual campus
@@ -434,10 +498,11 @@ model Course {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User @relation("CourseAuthor", fields: [createdById], references: [id], onDelete: Restrict)
-  lessons CourseLesson[]
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User               @relation("CourseAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  lessons     CourseLesson[]
   enrollments CourseEnrollment[]
+  documents   Document[]
 
   @@unique([tenantId, slug])
   @@index([tenantId, isPublished, updatedAt])
@@ -474,13 +539,60 @@ model CourseEnrollment {
   enrolledAt  DateTime         @default(now()) @map("enrolled_at")
   completedAt DateTime?        @map("completed_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  learner User @relation(fields: [learnerId], references: [id], onDelete: Restrict)
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  learner User   @relation(fields: [learnerId], references: [id], onDelete: Restrict)
 
   @@unique([courseId, learnerId])
   @@index([tenantId, learnerId, status])
   @@map("course_enrollments")
+}
+
+/// Documents & Notes — the reading material behind a program and its lessons.
+///
+/// `kind = file` stores metadata and a private storage key; the bytes live on
+/// disk outside the database, and the API serves them only after a tenant-scoped
+/// lookup. `kind = note` stores authored text in `content`.
+///
+/// Program and lesson links are optional and `SetNull` on delete, so removing a
+/// lesson never silently deletes the reading a learner may still need.
+model Document {
+  id          String       @id @default(uuid()) @db.Uuid
+  tenantId    String       @map("tenant_id") @db.Uuid
+  createdById String       @map("created_by_id") @db.Uuid
+  kind        DocumentKind @default(file)
+  title       String       @db.VarChar(200)
+  description String?      @db.VarChar(4000)
+  category    String       @default("General") @db.VarChar(60)
+  topic       String?      @db.VarChar(120)
+  courseId    String?      @map("course_id") @db.Uuid
+  lessonId    String?      @map("lesson_id") @db.Uuid
+
+  /// Authored note body. Null for uploaded files.
+  content String? @db.Text
+
+  /// Uploaded-file metadata. All null for notes.
+  fileName   String? @map("file_name") @db.VarChar(255)
+  mimeType   String? @map("mime_type") @db.VarChar(160)
+  sizeBytes  BigInt? @map("size_bytes")
+  /// Relative path under the document store. Never an absolute path, never client-supplied.
+  storageKey String? @map("storage_key") @db.VarChar(300)
+  /// SHA-256 computed while streaming the upload, for integrity checks and audit.
+  sha256     String? @db.VarChar(64)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("DocumentAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  course    Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  lesson    Lesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, kind, updatedAt])
+  @@index([tenantId, category])
+  @@index([tenantId, courseId])
+  @@index([tenantId, lessonId])
+  @@map("documents")
 }
 
 // ------------------------------------------------ spatial delivery / worlds
@@ -500,10 +612,10 @@ model SpatialRoom {
   createdAt   DateTime          @default(now()) @map("created_at")
   updatedAt   DateTime          @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lesson Lesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
-  asset Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  createdBy User @relation("SpatialRoomAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lesson       Lesson?              @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  asset        Asset?               @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  createdBy    User                 @relation("SpatialRoomAuthor", fields: [createdById], references: [id], onDelete: Restrict)
   participants SpatialParticipant[]
 
   @@index([tenantId, status, updatedAt])
@@ -522,9 +634,9 @@ model SpatialParticipant {
   lastSeenAt DateTime @default(now()) @map("last_seen_at")
   joinedAt   DateTime @default(now()) @map("joined_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  room SpatialRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  room   SpatialRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([roomId, userId])
   @@index([tenantId, roomId, lastSeenAt])
@@ -548,10 +660,10 @@ model IoTDevice {
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User @relation("IoTDeviceAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User              @relation("IoTDeviceAuthor", fields: [createdById], references: [id], onDelete: Restrict)
   telemetry DeviceTelemetry[]
-  twins DigitalTwin[]
+  twins     DigitalTwin[]
 
   @@index([tenantId, status, updatedAt])
   @@map("iot_devices")
@@ -560,14 +672,14 @@ model IoTDevice {
 /// Immutable observed device payloads. Event time is supplied by equipment;
 /// received time is the authoritative server timestamp for compliance replay.
 model DeviceTelemetry {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @map("tenant_id") @db.Uuid
-  deviceId    String    @map("device_id") @db.Uuid
-  payload     Json
-  eventAt     DateTime? @map("event_at")
-  receivedAt  DateTime  @default(now()) @map("received_at")
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  deviceId   String    @map("device_id") @db.Uuid
+  payload    Json
+  eventAt    DateTime? @map("event_at")
+  receivedAt DateTime  @default(now()) @map("received_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   device IoTDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, deviceId, receivedAt])
@@ -577,18 +689,18 @@ model DeviceTelemetry {
 /// A digital twin binds a registered physical device to an optional approved
 /// DAM asset and stores the latest normalized state for spatial/scenario use.
 model DigitalTwin {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  deviceId    String   @map("device_id") @db.Uuid
-  assetId     String?  @map("asset_id") @db.Uuid
-  label       String   @db.VarChar(160)
-  state       Json
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  deviceId  String   @map("device_id") @db.Uuid
+  assetId   String?  @map("asset_id") @db.Uuid
+  label     String   @db.VarChar(160)
+  state     Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  device IoTDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  asset Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device    IoTDevice            @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  asset     Asset?               @relation(fields: [assetId], references: [id], onDelete: SetNull)
   scenarios SimulationScenario[]
 
   @@unique([tenantId, deviceId, label])
@@ -615,12 +727,12 @@ model SimulationScenario {
   createdAt   DateTime       @default(now()) @map("created_at")
   updatedAt   DateTime       @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lesson Lesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
-  twin DigitalTwin? @relation(fields: [twinId], references: [id], onDelete: SetNull)
-  createdBy User @relation("ScenarioAuthor", fields: [createdById], references: [id], onDelete: Restrict)
-  attempts ScenarioAttempt[]
-  runs ExperienceRun[]
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lesson    Lesson?           @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  twin      DigitalTwin?      @relation(fields: [twinId], references: [id], onDelete: SetNull)
+  createdBy User              @relation("ScenarioAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  attempts  ScenarioAttempt[]
+  runs      ExperienceRun[]
 
   @@index([tenantId, status, updatedAt])
   @@map("simulation_scenarios")
@@ -638,10 +750,10 @@ model ScenarioAttempt {
   passed      Boolean
   completedAt DateTime @default(now()) @map("completed_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   interactiveRun ExperienceRun?
-  scenario SimulationScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
-  learner User @relation(fields: [learnerId], references: [id], onDelete: Restrict)
+  scenario       SimulationScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  learner        User               @relation(fields: [learnerId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, learnerId, completedAt])
   @@index([tenantId, scenarioId])
@@ -650,42 +762,45 @@ model ScenarioAttempt {
 
 /// A resumable runtime with its own immutable scenario snapshot and ordered server events.
 model ExperienceRun {
-  id String @id @default(uuid()) @db.Uuid
-  tenantId String @map("tenant_id") @db.Uuid
-  scenarioId String @map("scenario_id") @db.Uuid
-  learnerId String @map("learner_id") @db.Uuid
-  mode String @db.VarChar(20)
-  status String @default("active") @db.VarChar(20)
-  revision Int @default(0)
-  definition Json
-  state Json
-  attemptId String? @unique @map("attempt_id") @db.Uuid
-  startedAt DateTime @default(now()) @map("started_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  completedAt DateTime? @map("completed_at")
-  tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
-  scenario SimulationScenario @relation(fields:[scenarioId], references:[id], onDelete:Cascade)
-  learner User @relation(fields:[learnerId], references:[id], onDelete:Restrict)
-  attempt ScenarioAttempt? @relation(fields:[attemptId], references:[id], onDelete:SetNull)
-  events ExperienceEvent[]
-  @@index([tenantId,learnerId,scenarioId,status])
+  id          String             @id @default(uuid()) @db.Uuid
+  tenantId    String             @map("tenant_id") @db.Uuid
+  scenarioId  String             @map("scenario_id") @db.Uuid
+  learnerId   String             @map("learner_id") @db.Uuid
+  mode        String             @db.VarChar(20)
+  status      String             @default("active") @db.VarChar(20)
+  revision    Int                @default(0)
+  definition  Json
+  state       Json
+  attemptId   String?            @unique @map("attempt_id") @db.Uuid
+  startedAt   DateTime           @default(now()) @map("started_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  completedAt DateTime?          @map("completed_at")
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  scenario    SimulationScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  learner     User               @relation(fields: [learnerId], references: [id], onDelete: Restrict)
+  attempt     ScenarioAttempt?   @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  events      ExperienceEvent[]
+
+  @@index([tenantId, learnerId, scenarioId, status])
   @@map("experience_runs")
 }
+
 model ExperienceEvent {
-  id String @id @default(uuid()) @db.Uuid
-  tenantId String @map("tenant_id") @db.Uuid
-  runId String @map("run_id") @db.Uuid
-  eventKey String @map("event_key") @db.Uuid
-  sequence Int
-  stepId String @map("step_id") @db.VarChar(80)
-  action Json
-  outcome Json
-  createdAt DateTime @default(now()) @map("created_at")
-  tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
-  run ExperienceRun @relation(fields:[runId], references:[id], onDelete:Cascade)
-  @@unique([runId,eventKey])
-  @@unique([runId,sequence])
-  @@index([tenantId,runId,sequence])
+  id        String        @id @default(uuid()) @db.Uuid
+  tenantId  String        @map("tenant_id") @db.Uuid
+  runId     String        @map("run_id") @db.Uuid
+  eventKey  String        @map("event_key") @db.Uuid
+  sequence  Int
+  stepId    String        @map("step_id") @db.VarChar(80)
+  action    Json
+  outcome   Json
+  createdAt DateTime      @default(now()) @map("created_at")
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  run       ExperienceRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, eventKey])
+  @@unique([runId, sequence])
+  @@index([tenantId, runId, sequence])
   @@map("experience_events")
 }
 
@@ -706,11 +821,11 @@ model FieldGuide {
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lesson Lesson? @relation(fields: [lessonId], references: [id], onDelete: SetNull)
-  asset Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  createdBy User @relation("FieldGuideAuthor", fields: [createdById], references: [id], onDelete: Restrict)
-  runs FieldGuideRun[]
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lesson    Lesson?         @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  asset     Asset?          @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  createdBy User            @relation("FieldGuideAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  runs      FieldGuideRun[]
 
   @@index([tenantId, status, updatedAt])
   @@map("field_guides")
@@ -719,17 +834,17 @@ model FieldGuide {
 /// Append-only field completion record. Every completed step is server-stamped;
 /// client-reported clocks can be retained as evidence but cannot replace it.
 model FieldGuideRun {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  guideId     String   @map("guide_id") @db.Uuid
-  userId      String   @map("user_id") @db.Uuid
-  completedSteps Json  @map("completed_steps")
-  device      String?  @db.VarChar(40)
-  completedAt DateTime @default(now()) @map("completed_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  guideId        String   @map("guide_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  completedSteps Json     @map("completed_steps")
+  device         String?  @db.VarChar(40)
+  completedAt    DateTime @default(now()) @map("completed_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  guide FieldGuide @relation(fields: [guideId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  guide  FieldGuide @relation(fields: [guideId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, userId, completedAt])
   @@index([tenantId, guideId])
@@ -739,19 +854,19 @@ model FieldGuideRun {
 /// Venture Builder workspace: structured, tenant-owned founder evidence that
 /// can be iterated without mixing speculative plans into DAM metadata.
 model VenturePlan {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  title       String   @db.VarChar(200)
-  problem     String   @db.VarChar(4000)
-  customer    String   @db.VarChar(2000)
-  solution    String   @db.VarChar(4000)
-  nextMilestone String @map("next_milestone") @db.VarChar(1000)
-  createdById String   @map("created_by_id") @db.Uuid
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  title         String   @db.VarChar(200)
+  problem       String   @db.VarChar(4000)
+  customer      String   @db.VarChar(2000)
+  solution      String   @db.VarChar(4000)
+  nextMilestone String   @map("next_milestone") @db.VarChar(1000)
+  createdById   String   @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User @relation("VentureAuthor", fields: [createdById], references: [id], onDelete: Restrict)
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("VentureAuthor", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([tenantId, updatedAt])
   @@map("venture_plans")
@@ -768,9 +883,9 @@ model LessonAttempt {
   stage       String   @db.VarChar(20)
   completedAt DateTime @default(now()) @map("completed_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  learner User  @relation(fields: [learnerId], references: [id], onDelete: Restrict)
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lesson     Lesson           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  learner    User             @relation(fields: [learnerId], references: [id], onDelete: Restrict)
   credential SkillCredential?
 
   @@index([tenantId, learnerId, completedAt])
@@ -789,9 +904,9 @@ model SkillCredential {
   verificationHash String   @unique @map("verification_hash") @db.VarChar(64)
   issuedAt         DateTime @default(now()) @map("issued_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   attempt LessonAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  learner User @relation(fields: [learnerId], references: [id], onDelete: Restrict)
+  learner User          @relation(fields: [learnerId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, learnerId, issuedAt])
   @@map("skill_credentials")
@@ -1013,46 +1128,46 @@ model Session {
 /// It carries no tenant RLS by design: these rows are public. `tenant_id` records provenance for
 /// operators; `tenant_name` is the snapshot shown to visitors.
 model PublicCatalogEntry {
-  id                 String    @id @default(uuid()) @db.Uuid
+  id         String @id @default(uuid()) @db.Uuid
   /// The public identifier in URLs (`/models/<assetId>`). Not a separate slug: names collide,
   /// and a stable opaque id means a rename never breaks a shared link.
-  assetId            String    @unique @map("asset_id") @db.Uuid
-  tenantId           String    @map("tenant_id") @db.Uuid
+  assetId    String @unique @map("asset_id") @db.Uuid
+  tenantId   String @map("tenant_id") @db.Uuid
   /// Snapshot at publish time, so the marketplace does not depend on tenant-table reads.
-  tenantName         String    @map("tenant_name") @db.VarChar(120)
+  tenantName String @map("tenant_name") @db.VarChar(120)
 
-  name               String    @db.VarChar(200)
-  description        String?   @db.VarChar(4000)
-  category           String    @db.VarChar(60)
-  tags               String[]  @default([])
+  name        String   @db.VarChar(200)
+  description String?  @db.VarChar(4000)
+  category    String   @db.VarChar(60)
+  tags        String[] @default([])
 
-  format             String    @db.VarChar(10)
-  sizeBytes          BigInt    @map("size_bytes")
-  polycount          Int?
-  vertices           Int?
-  materials          Int?
-  textures           Int?
-  animations         Int?
+  format     String @db.VarChar(10)
+  sizeBytes  BigInt @map("size_bytes")
+  polycount  Int?
+  vertices   Int?
+  materials  Int?
+  textures   Int?
+  animations Int?
   /// FR-8.1 — content address of the published version; also keys the rendered thumbnail.
-  ipfsCid            String    @map("ipfs_cid") @db.VarChar(120)
+  ipfsCid    String @map("ipfs_cid") @db.VarChar(120)
 
-  licenseType        String    @map("license_type") @db.VarChar(40)
-  licenseTerms       String?   @map("license_terms")
-  tokenId            BigInt?   @map("token_id")
-  contractAddress    String?   @map("contract_address") @db.VarChar(42)
-  txHash             String?   @map("tx_hash") @db.VarChar(66)
+  licenseType        String  @map("license_type") @db.VarChar(40)
+  licenseTerms       String? @map("license_terms")
+  tokenId            BigInt? @map("token_id")
+  contractAddress    String? @map("contract_address") @db.VarChar(42)
+  txHash             String? @map("tx_hash") @db.VarChar(66)
   /// §3.9.2 — the ipfs:// licence document, so a visitor can verify without an account.
-  licenseMetadataCid String?   @map("license_metadata_cid") @db.VarChar(120)
-  xrManifestRef      String?   @map("xr_manifest_ref") @db.VarChar(255)
+  licenseMetadataCid String? @map("license_metadata_cid") @db.VarChar(120)
+  xrManifestRef      String? @map("xr_manifest_ref") @db.VarChar(255)
 
   /// NFR-COMP.1 — imported third-party assets must keep their original licence visible.
-  sourceLicense      String?   @map("source_license") @db.VarChar(120)
-  sourceAttribution  String?   @map("source_attribution") @db.VarChar(500)
-  sourceUrl          String?   @map("source_url") @db.VarChar(1000)
+  sourceLicense     String? @map("source_license") @db.VarChar(120)
+  sourceAttribution String? @map("source_attribution") @db.VarChar(500)
+  sourceUrl         String? @map("source_url") @db.VarChar(1000)
 
-  publishedAt        DateTime  @map("published_at")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
+  publishedAt DateTime @map("published_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   /// Engagement written by visitors. Relations rather than loose ids on purpose: taking an
   /// entry down deletes its likes and comments with it, so a delisted asset cannot leave an
@@ -1089,11 +1204,10 @@ model PublicCatalogEntry {
 /// button twice is one row, so a double-click or a retried request cannot inflate a count. Unlike a
 /// counter column, that also means "did *I* like this" is a lookup rather than a second table.
 model AssetLike {
-  id      String   @id @default(uuid()) @db.Uuid
-  assetId String   @map("asset_id") @db.Uuid
-  /*
+  id            String @id @default(uuid()) @db.Uuid
+  assetId       String @map("asset_id") @db.Uuid
+  /**
    * The liker's workspace, named explicitly rather than `tenantId`.
-   *
    * Everywhere else in this schema `tenant_id` IS the isolation key, so a column of that name here
    * would read as one — and someone reaching for it as a scope would be using the *actor's* workspace
    * as if it identified the data. It records attribution; it does not isolate anything.
@@ -1118,20 +1232,18 @@ model AssetLike {
 /// someone else's has to leave a record of having done so, or abuse handling becomes unaccountable.
 /// `hiddenAt` is what the public read filters on; the row stays for the audit trail.
 model AssetComment {
-  id       String @id @default(uuid()) @db.Uuid
-  assetId  String @map("asset_id") @db.Uuid
+  id             String @id @default(uuid()) @db.Uuid
+  assetId        String @map("asset_id") @db.Uuid
   /// The author's workspace, named explicitly rather than `tenantId` — see the note on `AssetLike`.
   authorTenantId String @map("author_tenant_id") @db.Uuid
   authorId       String @map("author_id") @db.Uuid
 
-  /*
+  /**
    * The author's display name and workspace name, snapshotted at write time.
-   *
    * Denormalized for exactly the reason `PublicCatalogEntry.tenantName` is: `users` is protected by
    * tenant-scoped RLS, so a visitor in one workspace reading a comment left by another cannot join to
    * it. Without this column the thread would have to render anonymous authors or issue a query that
    * RLS is designed to refuse.
-   *
    * It is a snapshot rather than a derived value, with the consequence that a rename does not
    * retroactively rewrite old comments. That is the normal trade for a public projection, and the
    * alternative — a name that changes under a comment someone already replied to — is worse.
@@ -1264,20 +1376,23 @@ model Job {
 
 /// Saved reading and answer state is separate from submitted assessment evidence.
 model LessonProgress {
- id String @id @default(uuid()) @db.Uuid
- tenantId String @map("tenant_id") @db.Uuid
- lessonId String @map("lesson_id") @db.Uuid
- learnerId String @map("learner_id") @db.Uuid
- assetVersionId String? @map("asset_version_id") @db.Uuid
- step Int @default(0)
- assessment Boolean @default(false)
- answers Json
- revision Int @default(1)
- updatedAt DateTime @updatedAt @map("updated_at")
- tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
- lesson Lesson @relation(fields:[lessonId],references:[id],onDelete:Cascade)
- learner User @relation(fields:[learnerId],references:[id],onDelete:Restrict)
- @@unique([tenantId,lessonId,learnerId])
- @@index([tenantId,learnerId])
- @@map("lesson_progress")
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenantId            String    @map("tenant_id") @db.Uuid
+  lessonId            String    @map("lesson_id") @db.Uuid
+  learnerId           String    @map("learner_id") @db.Uuid
+  assetVersionId      String?   @map("asset_version_id") @db.Uuid
+  step                Int       @default(0)
+  assessment          Boolean   @default(false)
+  answers             Json
+  revision            Int       @default(1)
+  learningTimeSeconds Int       @default(0) @map("learning_time_seconds")
+  lastActivityAt      DateTime? @map("last_activity_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  tenant              Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lesson              Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  learner             User      @relation(fields: [learnerId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, lessonId, learnerId])
+  @@index([tenantId, learnerId])
+  @@map("lesson_progress")
 }

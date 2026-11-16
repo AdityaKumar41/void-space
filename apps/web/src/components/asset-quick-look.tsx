@@ -29,6 +29,7 @@ export interface QuickLookAsset {
     readonly format: string;
     readonly sizeBytes: number;
     readonly polycount: number | null;
+    readonly pinStatus: string;
     readonly ipfsCid: string | null;
     readonly dimensions: { x: number; y: number; z: number } | null;
     readonly stats: {

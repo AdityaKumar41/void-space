@@ -9,9 +9,11 @@ import {
   Boxes,
   CircleHelp,
   Compass,
+  FileText,
   FolderOpen,
   GraduationCap,
   History,
+  BarChart3,
   LayoutDashboard,
   Menu,
   Radio,
@@ -24,11 +26,13 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Permission } from '@void-space/types';
+import { canChangeLanguage } from '@void-space/types';
 
 import { apiFetch } from '../lib/api';
 import { cn } from '../lib/cn';
 import { SessionProvider, useSession } from '../lib/session';
 import type { SessionView } from '../lib/session-types';
+import { LANGUAGES, LanguageProvider, useLanguage } from '../lib/language';
 import { Avatar } from './ui/avatar';
 import { Chip } from './ui/chip';
 import { CubeIcon } from './ui/icons';
@@ -56,6 +60,18 @@ const GROUPS: readonly { label: string; items: NavItem[] }[] = [
         icon: GraduationCap,
       },
       { href: '/console/lessons', label: 'Lessons', permission: 'catalog:view', icon: BookOpen },
+      {
+        href: '/console/documents',
+        label: 'Documents & notes',
+        permission: 'catalog:view',
+        icon: FileText,
+      },
+      {
+        href: '/console/analytics',
+        label: 'Learning analytics',
+        permission: 'learning:manage',
+        icon: BarChart3,
+      },
       {
         href: '/console/simulations',
         label: 'Practice',
@@ -110,6 +126,7 @@ const GROUPS: readonly { label: string; items: NavItem[] }[] = [
       { href: '/console/audit', label: 'Audit', permission: 'audit:view', icon: History },
       { href: '/console/admin', label: 'Team', permission: 'tenant:manage-users', icon: Settings },
       { href: '/console/tenants', label: 'Workspaces', permission: 'tenant:manage', icon: Users },
+      { href: '/console/settings', label: 'Settings', permission: 'catalog:view', icon: Settings },
     ],
   },
 ];
@@ -150,18 +167,20 @@ export function Wordmark({ compact = false }: { compact?: boolean }) {
  * fault panel that used to flash "SESSION REFUSED … REDIRECTING" on every signed-out visit).
  */
 function HoldingScreen() {
+  const { t } = useLanguage();
   return (
     <div className="flex min-h-screen items-center justify-center bg-base">
       <div className="flex flex-col items-center gap-5">
         <Wordmark />
         <div aria-hidden className="h-0.5 w-16 animate-dot-pulse rounded-full bg-brand" />
-        <p className="text-[12.5px] text-ink-faint">Checking your session</p>
+        <p className="text-[12.5px] text-ink-faint">{t('Checking your session')}</p>
       </div>
     </div>
   );
 }
 
 function NotificationBell() {
+  const { t } = useLanguage();
   const { data } = useQuery<{ unreadCount: number }>({
     queryKey: ['notifications', 'count'],
     queryFn: () => apiFetch<{ unreadCount: number }>('/notifications/count'),
@@ -174,8 +193,8 @@ function NotificationBell() {
   return (
     <Link
       href="/console/notifications"
-      aria-label={count > 0 ? `${count} unread notifications` : 'Notifications'}
-      title="Notifications"
+      aria-label={count > 0 ? t('{count} unread notifications', { count }) : t('Notifications')}
+      title={t('Notifications')}
       className="relative inline-flex h-9 w-9 items-center justify-center rounded-control border border-hairline bg-surface text-ink-dim transition-colors duration-150 ease-standard hover:border-hairline-strong hover:bg-surface-raised hover:text-ink"
     >
       <BellIcon />
@@ -196,6 +215,7 @@ function NotificationBell() {
  * filters a page you are not on is the most common decorative control in a dashboard.
  */
 function WorkspaceSearch() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { can } = useSession();
   const destination = can('asset:upload-own') ? '/console/library' : '/console/catalog';
@@ -218,13 +238,13 @@ function WorkspaceSearch() {
         <SearchIcon />
       </span>
       <label className="sr-only" htmlFor={inputId}>
-        Search assets by name or tag
+        {t('Search assets by name or tag')}
       </label>
       <input
         id={inputId}
         type="search"
         value={value}
-        placeholder="Search assets by name or tag"
+        placeholder={t('Search assets by name or tag')}
         onChange={(event) => setValue(event.target.value)}
         className="h-10 w-full rounded-control border border-hairline bg-surface pl-10 pr-3.5 text-[14px] text-ink transition-colors duration-150 ease-standard placeholder:text-ink-faint hover:border-hairline-strong focus:border-brand focus:outline-none"
       />
@@ -233,6 +253,7 @@ function WorkspaceSearch() {
 }
 
 function WorkspaceSwitcher() {
+  const { t } = useLanguage();
   const { session, memberships, switchTenant } = useSession();
   const [busy, setBusy] = useState(false);
 
@@ -243,7 +264,7 @@ function WorkspaceSwitcher() {
     return (
       <span
         className="block truncate text-[12px] text-ink-dim"
-        title={`Workspace: ${session.tenant.name}`}
+        title={t('Workspace: {name}', { name: session.tenant.name })}
       >
         <span aria-hidden className="hidden" />
         {session.tenant.name}
@@ -255,7 +276,7 @@ function WorkspaceSwitcher() {
     <select
       value={session.tenant.id}
       disabled={busy}
-      aria-label="Switch workspace"
+      aria-label={t('Switch workspace')}
       onChange={async (event) => {
         setBusy(true);
         try {
@@ -284,11 +305,28 @@ function WorkspaceSwitcher() {
  * menu also carries the workspace list as a fallback on narrow screens where the switcher is hidden.
  */
 function AccountMenu() {
+  const { language, setLanguage, t } = useLanguage();
   const { session, signOut } = useSession();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [languageSaving, setLanguageSaving] = useState(false);
+  const [languageFeedback, setLanguageFeedback] = useState<'saved' | 'error' | null>(null);
 
   if (!session) return null;
+  const canChange = canChangeLanguage(session.user.email);
+
+  async function saveLanguage(nextLanguage: (typeof LANGUAGES)[number]['code']) {
+    setLanguageSaving(true);
+    setLanguageFeedback(null);
+    try {
+      await setLanguage(nextLanguage);
+      setLanguageFeedback('saved');
+    } catch {
+      setLanguageFeedback('error');
+    } finally {
+      setLanguageSaving(false);
+    }
+  }
 
   return (
     <div className="relative">
@@ -323,16 +361,17 @@ function AccountMenu() {
               </div>
               {session.readOnly ? (
                 <div className="mt-2.5 text-[12px] leading-snug text-ink-faint">
-                  Read-only session — write actions are refused by the API, not hidden here.
+                  {t('Read-only session — write actions are refused by the API, not hidden here.')}
                 </div>
               ) : null}
             </div>
 
             <div className="py-1.5">
               {[
-                { href: '/console/notifications', label: 'Notifications' },
-                { href: '/docs', label: 'Studio guide' },
-                { href: '/catalog', label: 'Public catalogue' },
+                { href: '/console/notifications', label: t('Notifications') },
+                { href: '/docs', label: t('Studio guide') },
+                { href: '/catalog', label: t('Public catalogue') },
+                { href: '/console/settings', label: t('Settings') },
               ].map((entry) => (
                 <Link
                   key={entry.href}
@@ -349,9 +388,45 @@ function AccountMenu() {
                 rel="noreferrer"
                 className="block px-4 py-2 text-[13.5px] text-ink-dim transition-colors duration-150 ease-standard hover:bg-veil-6 hover:text-ink"
               >
-                API reference
+                {t('API reference')}
               </a>
             </div>
+
+            {canChange ? (
+              <div className="border-t border-hairline px-4 py-3">
+                <label
+                  htmlFor="profile-language"
+                  className="mb-2 block text-[12px] font-medium text-ink-dim"
+                >
+                  {t('Language')}
+                </label>
+                <select
+                  id="profile-language"
+                  aria-label={t('Language')}
+                  value={language}
+                  disabled={languageSaving}
+                  onChange={(event) =>
+                    void saveLanguage(event.target.value as (typeof LANGUAGES)[number]['code'])
+                  }
+                  className="h-9 w-full rounded-control border border-hairline bg-surface px-2 text-[13px] text-ink disabled:opacity-60"
+                >
+                  {LANGUAGES.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <p aria-live="polite" className="mt-2 min-h-4 text-[11px] text-ink-faint">
+                  {languageSaving
+                    ? t('Saving…')
+                    : languageFeedback === 'saved'
+                      ? t('Language preference saved.')
+                      : languageFeedback === 'error'
+                        ? t('Could not save your language preference. Try again.')
+                        : null}
+                </p>
+              </div>
+            ) : null}
 
             <div className="border-t border-hairline py-1.5">
               <button
@@ -362,7 +437,7 @@ function AccountMenu() {
                 }}
                 className="block w-full px-4 py-2 text-left text-[13.5px] text-state-rejected transition-colors duration-150 ease-standard hover:bg-veil-6"
               >
-                Sign out
+                {t('Sign out')}
               </button>
             </div>
           </div>
@@ -381,6 +456,7 @@ function AccountMenu() {
  * exist.
  */
 function Header({ openNavigation }: { openNavigation: () => void }) {
+  const { t } = useLanguage();
   const pathname = usePathname();
   const current =
     NAV.find((item) => item.href === pathname) ??
@@ -391,17 +467,17 @@ function Header({ openNavigation }: { openNavigation: () => void }) {
       <div className="flex min-w-0 items-center gap-3">
         <button
           className="workspace-menu-button"
-          aria-label="Open navigation"
+          aria-label={t('Open navigation')}
           onClick={openNavigation}
         >
           <Menu size={20} />
         </button>
-        <span className="hidden text-sm text-ink-faint sm:inline">Workspace</span>
+        <span className="hidden text-sm text-ink-faint sm:inline">{t('Workspace')}</span>
         <span aria-hidden className="hidden text-ink-faint sm:inline">
           /
         </span>
         <span className="truncate text-sm font-semibold text-ink">
-          {current?.label ?? 'Details'}
+          {current ? t(current.label) : t('Details')}
         </span>
       </div>
       <div className="ml-auto hidden w-full max-w-[330px] lg:block">
@@ -416,6 +492,7 @@ function Header({ openNavigation }: { openNavigation: () => void }) {
   );
 }
 function Sidebar({ open, close }: { open: boolean; close: () => void }) {
+  const { t } = useLanguage();
   const pathname = usePathname();
   const { can, session } = useSession();
   useEffect(() => {
@@ -430,14 +507,14 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
     <>
       {open ? (
         <button
-          aria-label="Close navigation overlay"
+          aria-label={t('Close navigation overlay')}
           className="workspace-nav-overlay"
           onClick={close}
         />
       ) : null}
       <aside
         className={cn('workspace-sidebar', open && 'is-open')}
-        aria-label="Workspace navigation"
+        aria-label={t('Workspace navigation')}
       >
         <div className="flex items-center justify-between px-6 pb-6 pt-7">
           <Link href="/console" aria-label="VOID·SPACE console home" onClick={close}>
@@ -449,7 +526,7 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
         </div>
         <div className="mx-4 mb-6 rounded-xl border border-hairline bg-surface px-4 py-3">
           <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[.14em] text-ink-faint">
-            Learning workspace
+            {t('Learning workspace')}
           </span>
           <WorkspaceSwitcher />
         </div>
@@ -459,7 +536,7 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
             return items.length ? (
               <div key={group.label}>
                 <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[.13em] text-ink-faint">
-                  {group.label}
+                  {t(group.label)}
                 </p>
                 <div className="space-y-1">
                   {items.map((item) => {
@@ -476,7 +553,7 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
                         className={cn('workspace-nav-link', active && 'is-active')}
                       >
                         <Icon size={17} strokeWidth={1.7} />
-                        <span>{item.label}</span>
+                        <span>{t(item.label)}</span>
                         {active ? (
                           <span className="ml-auto h-1.5 w-1.5 rounded-full bg-brand" />
                         ) : null}
@@ -495,7 +572,7 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
             className="flex items-center gap-3 rounded-lg px-2 py-2 text-xs text-ink-dim hover:text-ink"
           >
             <CircleHelp size={17} />
-            <span>Guidance when you need it</span>
+            <span>{t('Guidance when you need it')}</span>
           </Link>
           <p className="mt-3 truncate px-2 text-[10px] text-ink-faint">{session?.tenant.name}</p>
         </div>
@@ -511,6 +588,7 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
  * table of forty audit rows wants the width, and the storefront's measure is about reading prose.
  */
 function Shell({ children }: { children: React.ReactNode }) {
+  const { t } = useLanguage();
   const { session, isLoading, error } = useSession();
   const [navigationOpen, setNavigationOpen] = useState(false);
   const status = (error as { status?: number } | null)?.status;
@@ -525,16 +603,18 @@ function Shell({ children }: { children: React.ReactNode }) {
       <div className="mx-auto max-w-lg px-6 py-20">
         <ErrorNote
           message={
-            status ? `The session check failed with HTTP ${status}.` : 'No session was returned.'
+            status
+              ? t('The session check failed with HTTP {status}.', { status })
+              : t('No session was returned.')
           }
           code="SESSION_UNAVAILABLE"
-          hint="The API may still be starting — retry in a moment, or sign in again."
+          hint={t('The API may still be starting — retry in a moment, or sign in again.')}
         />
         <a
           className="h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-4 inline-flex"
           href="/login"
         >
-          Go to sign in
+          {t('Go to sign in')}
         </a>
       </div>
     );
@@ -550,7 +630,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </main>
         <footer className="workspace-footer">
           <span>VOID·SPACE</span>
-          <span>Learn by exploring. Build through practice.</span>
+          <span>{t('Learn by exploring. Build through practice.')}</span>
         </footer>
       </div>
     </div>
@@ -567,7 +647,9 @@ export function AppShell({
 }) {
   return (
     <SessionProvider initialSession={initialSession}>
-      <Shell>{children}</Shell>
+      <LanguageProvider>
+        <Shell>{children}</Shell>
+      </LanguageProvider>
     </SessionProvider>
   );
 }

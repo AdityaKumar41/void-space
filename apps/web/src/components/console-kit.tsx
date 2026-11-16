@@ -22,12 +22,12 @@
  *      file or a stylesheet.
  */
 import Link from 'next/link';
-import { useState } from 'react';
 
 import { cn } from '../lib/cn';
 import { formatNumber } from '../lib/format';
-import { thumbnailUrl } from '../lib/public-api';
 import { toggleBookmark, useBookmarks } from '../lib/bookmarks';
+import { useLanguage } from '../lib/language';
+import { AssetThumbnail } from './asset-thumbnail';
 import { StatusChip } from './ui/chip';
 import { SearchField } from './ui/field';
 import { EmptyState } from './ui/feedback';
@@ -50,66 +50,57 @@ export function CubeGlyph({ size = 34 }: { readonly size?: number }) {
 /**
  * The card's preview.
  *
- * Renders are produced ahead of time by `scripts/render-thumbnails.mjs` and served by the
- * `/thumbnails/[cid]` route handler. Until one exists — or if the read fails — the fallback is a drawn
- * figure derived from the asset id rather than a broken-image glyph, so a brand-new asset still looks
- * designed while its render is pending. Deterministic, so the same asset always gets the same figure
- * and a grid does not reshuffle on every visit.
+ * Existing renders are served by `/thumbnails/[cid]`. For a pinned GLB/GLTF without a render,
+ * `AssetThumbnail` creates a preview when the card approaches the viewport and keeps it in the
+ * browser's persistent cache. Other media and unavailable models retain this deterministic fallback.
  */
 export function ConsoleThumb({
   cid,
   alt,
   seed,
+  format,
+  pinStatus,
 }: {
   readonly cid: string | null;
   readonly alt: string;
   readonly seed: string;
+  readonly format?: string | null;
+  readonly pinStatus?: string | null;
 }) {
-  const [failed, setFailed] = useState(!cid);
-
-  if (failed || !cid) {
-    let hash = 0;
-    for (let index = 0; index < seed.length; index += 1) {
-      hash = (hash * 31 + seed.charCodeAt(index)) % 100000;
-    }
-    const rings = 2 + (hash % 3);
-    const rotation = hash % 40;
-
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-grid-faint bg-grid-sm text-ink-faint">
-        <svg
-          width="72"
-          height="72"
-          viewBox="0 0 100 100"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="0.8"
-          style={{ transform: `rotate(${rotation}deg)`, opacity: 0.5 }}
-          aria-hidden
-        >
-          {Array.from({ length: rings }, (_, index) => {
-            const side = 22 + index * (56 / rings);
-            return (
-              <rect key={index} x={50 - side / 2} y={50 - side / 2} width={side} height={side} />
-            );
-          })}
-          <line x1="50" y1="10" x2="50" y2="90" />
-          <line x1="10" y1="50" x2="90" y2="50" />
-        </svg>
-      </div>
-    );
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) % 100000;
   }
-
+  const rings = 2 + (hash % 3);
+  const rotation = hash % 40;
+  const fallback = (
+    <div className="flex h-full w-full items-center justify-center bg-grid-faint bg-grid-sm text-ink-faint">
+      <svg
+        width="72"
+        height="72"
+        viewBox="0 0 100 100"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="0.8"
+        style={{ transform: `rotate(${rotation}deg)`, opacity: 0.5 }}
+        aria-hidden
+      >
+        {Array.from({ length: rings }, (_, index) => {
+          const side = 22 + index * (56 / rings);
+          return <rect key={index} x={50 - side / 2} y={50 - side / 2} width={side} height={side} />;
+        })}
+        <line x1="50" y1="10" x2="50" y2="90" />
+        <line x1="10" y1="50" x2="90" y2="50" />
+      </svg>
+    </div>
+  );
   return (
-    // A plain <img>, not next/image: these are already correctly sized renders served from our own
-    // route handler, so the optimizer would only add a second cache in front of a cache.
-    <img
-      src={thumbnailUrl(cid)}
+    <AssetThumbnail
+      cid={cid}
       alt={alt}
-      loading="lazy"
-      decoding="async"
-      onError={() => setFailed(true)}
-      className="h-full w-full object-cover"
+      format={format}
+      pinned={pinStatus === 'pinned'}
+      fallback={fallback}
     />
   );
 }
@@ -126,13 +117,14 @@ export function PageHead({
   readonly meta?: string;
   readonly actions?: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-wrap items-start justify-between gap-5">
       <div className="min-w-0">
         <h1 className="text-[clamp(1.5rem,2.4vw,1.875rem)] font-semibold tracking-[-0.028em] text-ink">
-          {title}
+          {t(title)}
         </h1>
-        {meta ? <div className="mt-2 font-mono text-[12.5px] text-ink-faint">{meta}</div> : null}
+        {meta ? <div className="mt-2 font-mono text-[12.5px] text-ink-faint">{t(meta)}</div> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
@@ -163,7 +155,8 @@ export function StatCell({
   readonly hint?: string;
   readonly tone?: 'plain' | 'heat' | 'forest' | 'honey';
 }) {
-  return <Stat label={label} value={value} hint={hint} tone={tone} />;
+  const { t } = useLanguage();
+  return <Stat label={t(label)} value={value} hint={hint ? t(hint) : undefined} tone={tone} />;
 }
 
 /* ------------------------------------------------------------------------ banner */
@@ -193,20 +186,21 @@ export function ConsoleBanner({
   readonly actions?: React.ReactNode;
   readonly stats: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   return (
     <section className="overflow-hidden rounded-surface border border-hairline bg-surface">
       <div className="relative bg-heat-glow">
         <div className="flex flex-wrap items-start justify-between gap-6 px-6 py-6">
           <div className="min-w-0">
             <span className="text-[12px] font-semibold uppercase tracking-[0.14em] text-brand">
-              {eyebrow}
+              {t(eyebrow)}
             </span>
             <h2 className="mt-3 text-[clamp(1.4rem,2.2vw,1.75rem)] font-semibold tracking-[-0.024em] text-ink">
-              {title}
+              {t(title)}
             </h2>
             {description ? (
               <p className="mt-2.5 max-w-2xl text-[13.5px] leading-relaxed text-ink-dim">
-                {description}
+                {t(description)}
               </p>
             ) : null}
           </div>
@@ -230,6 +224,8 @@ export interface ItemCardProps {
   /** The "collection" line. A tenant name in the console; the category in the catalogue. */
   readonly collection: string;
   readonly cid: string | null;
+  readonly format?: string | null;
+  readonly pinStatus?: string | null;
   readonly polycount: number | null;
   readonly sizeBytes: number | null;
   /** Corner badge: the licence or the version. Absent when the asset is not licensed. */
@@ -257,6 +253,8 @@ export function ItemCard({
   href,
   collection,
   cid,
+  format,
+  pinStatus,
   polycount,
   sizeBytes,
   badge,
@@ -282,6 +280,8 @@ export function ItemCard({
             cid={cid}
             alt={`Render of ${name}`}
             seed={assetId}
+            format={format}
+            pinStatus={pinStatus}
           />
         </Link>
 
@@ -397,10 +397,11 @@ export function Toolbar({
   readonly children?: React.ReactNode;
   readonly count?: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-wrap items-center gap-3">
       <SearchField
-        label={placeholder}
+        label={t(placeholder)}
         value={search}
         onChange={(event) => onSearch(event.target.value)}
         className="min-w-[220px] flex-1"
@@ -463,6 +464,7 @@ const EVENT_CLASS: Record<EventKind, string> = {
 
 /** An event, as a typed chip: colour plus a word, never colour alone. */
 export function EventChip({ action }: { readonly action: string }) {
+  const { t } = useLanguage();
   const kind = eventKind(action);
   return (
     <span
@@ -472,7 +474,7 @@ export function EventChip({ action }: { readonly action: string }) {
       )}
     >
       <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
-      {eventLabel(action)}
+      {t(eventLabel(action))}
     </span>
   );
 }
@@ -520,9 +522,9 @@ export function EmptyBlock({
   readonly hint: string;
   readonly action?: React.ReactNode;
 }) {
-  return <EmptyState title={title} hint={hint} action={action} />;
+  const { t } = useLanguage();
+  return <EmptyState title={t(title)} hint={t(hint)} action={action} />;
 }
 
 /** Kept exported because the review screen prints the initials of an anonymous actor. */
 export { initialsOf };
-

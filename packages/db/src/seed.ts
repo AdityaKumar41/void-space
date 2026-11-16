@@ -188,7 +188,14 @@ async function seedTenantRow(spec: { id: string; name: string; slug: string }): 
         tenantId: spec.id,
         defaultPolycountBudget: 50_000,
         requiredMetadataFields: ['tags'],
-        allowedCategories: ['Machinery', 'Safety Equipment', 'Environment', 'Prop', 'Vehicle', 'Anatomy'],
+        allowedCategories: [
+          'Machinery',
+          'Safety Equipment',
+          'Environment',
+          'Prop',
+          'Vehicle',
+          'Anatomy',
+        ],
       },
     });
 
@@ -296,11 +303,7 @@ export async function runSeed(): Promise<SeedSummary> {
   const auroraUsers = usersByTenant.get(DEMO_TENANTS.aurora.id) ?? {};
   const northwindUsers = usersByTenant.get(DEMO_TENANTS.northwind.id) ?? {};
 
-  const aurora = await seedTenantAssets(
-    DEMO_TENANTS.aurora.id,
-    DEMO_ASSETS.aurora,
-    auroraUsers,
-  );
+  const aurora = await seedTenantAssets(DEMO_TENANTS.aurora.id, DEMO_ASSETS.aurora, auroraUsers);
   const northwind = await seedTenantAssets(
     DEMO_TENANTS.northwind.id,
     DEMO_ASSETS.northwind,
@@ -365,7 +368,11 @@ export function printSummary(summary: SeedSummary): void {
     `  password: ${DEMO_PASSWORD}`,
   ];
   if (summary.apiKey) {
-    lines.push('', `  API key (${summary.apiKey.label}) — shown once:`, `    ${summary.apiKey.key}`);
+    lines.push(
+      '',
+      `  API key (${summary.apiKey.label}) — shown once:`,
+      `    ${summary.apiKey.key}`,
+    );
   } else {
     lines.push('', '  API key: an existing demo key was kept (rotate it from the UI).');
   }
@@ -382,7 +389,12 @@ async function seedUser(
   await withTenant(spec.tenantId, async (db) => {
     await db.user.upsert({
       where: { id: userId },
-      update: { fullName: spec.fullName, status: UserStatus.active },
+      update: {
+        email: spec.email,
+        fullName: spec.fullName,
+        passwordHash,
+        status: UserStatus.active,
+      },
       create: {
         id: userId,
         tenantId: spec.tenantId,
@@ -407,4 +419,3 @@ async function seedUser(
 
 // The CLI entry point lives in ./seed-cli.ts, which loads the root .env before
 // importing this module (Prisma clients are built at module-evaluation time).
-

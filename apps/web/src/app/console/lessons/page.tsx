@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import type { LessonContent } from '@void-space/types';
 import { apiFetch } from '../../../lib/api';
 import { useSession } from '../../../lib/session';
+import { useLanguage } from '../../../lib/language';
 import { ConsoleThumb } from '../../../components/console-kit';
 import { Button } from '../../../components/ui/button';
 import { Chip } from '../../../components/ui/chip';
@@ -15,6 +16,7 @@ import { LessonPlayer, type DeliveryLesson } from '../../../components/lesson-pl
 
 const field = 'w-full rounded-control border border-hairline bg-surface p-3 text-sm text-ink';
 export default function LessonsPage() {
+  const { t } = useLanguage();
   const { can } = useSession();
   const cache = useQueryClient();
   const params = useSearchParams();
@@ -39,6 +41,10 @@ export default function LessonsPage() {
   const [generationNote, setGenerationNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [revising, setRevising] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<{ lessonId: string; message: string } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const id = params.get('lesson');
@@ -90,6 +96,23 @@ export default function LessonsPage() {
       setRevising(null);
     }
   }
+  async function deleteLesson(lesson: DeliveryLesson) {
+    const confirmed = window.confirm(
+      t('Delete "{title}"? This permanently removes the lesson, learner attempts, progress, and issued completion credentials. This cannot be undone.', { title: lesson.title }),
+    );
+    if (!confirmed) return;
+
+    setDeleting(lesson.id);
+    setDeleteError(null);
+    try {
+      await apiFetch(`/lessons/${lesson.id}`, { method: 'DELETE' });
+      await cache.invalidateQueries({ queryKey: ['lessons'] });
+    } catch (e) {
+      setDeleteError({ lessonId: lesson.id, message: (e as Error).message });
+    } finally {
+      setDeleting(null);
+    }
+  }
   if (editing)
     return (
       <LessonEditor
@@ -104,22 +127,21 @@ export default function LessonsPage() {
       />
     );
   if (active) return <LessonPlayer key={active.id} lesson={active} close={() => setActive(null)} />;
-  if (lessons.isLoading) return <LoadingBlock label="Loading lessons" />;
+  if (lessons.isLoading) return <LoadingBlock label={t('Loading lessons')} />;
   if (lessons.error) return <ErrorNote message={(lessons.error as Error).message} />;
   const publishedCount = lessons.data?.lessons.filter((lesson) => lesson.isPublished).length ?? 0;
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-6 border-b border-hairline pb-6">
         <div>
-          <p className="eyebrow">Learning library</p>
-          <h1 className="mt-2 text-ink">Lessons</h1>
+          <p className="eyebrow">{t('Learning library')}</p>
+          <h1 className="mt-2 text-ink">{t('Lessons')}</h1>
           <p className="mt-3 max-w-2xl text-ink-dim">
-            A lesson is a subject someone can study: a reading, a quiz, and an optional 3D model.
-            Learners see it after you publish it.
+            {t('A lesson is a subject someone can study: a reading, a quiz, and an optional 3D model. Learners see it after you publish it.')}
           </p>
         </div>
         <p className="text-sm text-ink-faint">
-          {publishedCount} published · {lessons.data?.lessons.length ?? 0} in this workspace
+          {t('{published} published · {total} in this workspace', { published: publishedCount, total: lessons.data?.lessons.length ?? 0 })}
         </p>
       </header>
       {manage ? (
@@ -127,35 +149,35 @@ export default function LessonsPage() {
           className="rounded-card border border-hairline bg-surface p-5"
           open={!lessons.data?.lessons.length}
         >
-          <summary className="cursor-pointer font-semibold text-ink">Create a lesson</summary>
+          <summary className="cursor-pointer font-semibold text-ink">{t('Create a lesson')}</summary>
           <div className="mt-5 space-y-4">
             <label className="block text-sm text-ink">
-              Subject
+              {t('Subject')}
               <input
                 className={`${field} mt-2`}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Anatomy of the heart"
+                placeholder={t('Anatomy of the heart')}
               />
             </label>
             <label className="block space-y-2 text-sm text-ink">
-              <span>Lesson notes</span>
+              <span>{t('Lesson notes')}</span>
               <textarea
                 maxLength={20000}
                 className={`${field} min-h-36`}
                 value={sourceText}
                 onChange={(e) => setSourceText(e.target.value)}
-                placeholder="Write what a learner should know. For a heart lesson, name the chambers, the great vessels, and what each one does."
+                placeholder={t('Write what a learner should know. For a heart lesson, name the chambers, the great vessels, and what each one does.')}
               />
             </label>
             <label className="block text-sm text-ink">
-              3D model
+              {t('3D model')}
               <select
                 className={`${field} mt-2`}
                 value={assetId}
                 onChange={(e) => setAssetId(e.target.value)}
               >
-                <option value="">No model — reading and quiz only</option>
+                <option value="">{t('No model — reading and quiz only')}</option>
                 {assets.data?.assets.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name} · {a.category}
@@ -170,11 +192,10 @@ export default function LessonsPage() {
                 checked={generateWithAi}
                 onChange={(e) => setGenerateWithAi(e.target.checked)}
               />
-              Write the reading and quiz with AI from these notes
+              {t('Write the reading and quiz with AI from these notes')}
             </label>
             <p className="text-xs leading-relaxed text-ink-dim">
-              The draft stays private until you publish it. Check every correct answer. If the
-              model is unavailable, the notes are kept so you can write the quiz yourself.
+              {t('The draft stays private until you publish it. Check every correct answer. If the model is unavailable, the notes are kept so you can write the quiz yourself.')}
             </p>
             <Button
               disabled={
@@ -185,7 +206,7 @@ export default function LessonsPage() {
               }
               onClick={create}
             >
-              {busy ? 'Creating…' : 'Create lesson'}
+              {busy ? t('Creating…') : t('Create lesson')}
             </Button>
             {error ? <ErrorNote message={error} /> : null}
           </div>
@@ -200,25 +221,44 @@ export default function LessonsPage() {
               </div>
               <div className="px-6 pt-6">
                 <Chip tone={l.isPublished ? 'live' : 'warn'} dot>
-                  {l.isPublished ? 'Published' : 'Draft · review before release'}
+                  {l.isPublished ? t('Published') : t('Draft · review before release')}
                 </Chip>
                 <h2 className="mt-3 text-2xl font-semibold text-ink">{l.title}</h2>
                 <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-ink-dim">{l.summary}</p>
                 <p className="mt-3 text-xs text-ink-faint">
-                  {l.outline.length} guided steps · {l.questions.length} questions · pass at{' '}
-                  {l.passingScore}%
+                  {t('{steps} guided steps · {questions} questions · pass at {score}%', { steps: l.outline.length, questions: l.questions.length, score: l.passingScore })}
                 </p>
               </div>
-              <div className="mt-auto flex flex-wrap gap-2 p-6">
-                {l.isPublished ? (
-                  <Button onClick={() => setActive(l)}>Start lesson</Button>
-                ) : (
-                  <Button onClick={() => setEditing(l.id)}>Edit draft</Button>
-                )}
-                {manage && l.isPublished ? (
-                  <Button variant="ghost" disabled={revising === l.id} onClick={() => revise(l.id)}>
-                    {revising === l.id ? 'Copying…' : 'Edit a copy'}
-                  </Button>
+              <div className="mt-auto p-6">
+                <div className="flex flex-wrap gap-2">
+                  {l.isPublished ? (
+                    <Button onClick={() => setActive(l)}>{t('Start lesson')}</Button>
+                  ) : (
+                    <Button onClick={() => setEditing(l.id)}>{t('Edit draft')}</Button>
+                  )}
+                  {manage && l.isPublished ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        disabled={revising === l.id}
+                        onClick={() => revise(l.id)}
+                      >
+                        {revising === l.id ? t('Copying…') : t('Edit a copy')}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        disabled={deleting === l.id}
+                        onClick={() => void deleteLesson(l)}
+                      >
+                        {deleting === l.id ? t('Deleting…') : t('Delete')}
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+                {deleteError?.lessonId === l.id ? (
+                  <div className="mt-4">
+                    <ErrorNote message={deleteError.message} />
+                  </div>
                 ) : null}
               </div>
             </article>
@@ -226,8 +266,8 @@ export default function LessonsPage() {
         </div>
       ) : (
         <EmptyState
-          title="No lessons yet"
-          hint="Start from a subject and your notes. Add a 3D model when the subject needs one."
+          title={t('No lessons yet')}
+          hint={t('Start from a subject and your notes. Add a 3D model when the subject needs one.')}
         />
       )}
     </div>
@@ -244,6 +284,7 @@ function LessonEditor({
   generationNote?: string | null;
   onCopy: (id: string) => Promise<void>;
 }) {
+  const { t } = useLanguage();
   const data = useQuery({
     queryKey: ['lesson-author', id],
     queryFn: () =>
@@ -257,7 +298,7 @@ function LessonEditor({
     if (data.data) setDraft(data.data.lesson);
   }, [data.data]);
   if (data.error) return <ErrorNote message={(data.error as Error).message} />;
-  if (!draft) return <LoadingBlock label="Loading the lesson draft" />;
+  if (!draft) return <LoadingBlock label={t('Loading the lesson draft')} />;
   const published = data.data?.lesson.isPublished;
   const update = (value: Partial<LessonContent>) => setDraft({ ...draft, ...value });
   async function save(publish: boolean) {
@@ -267,7 +308,7 @@ function LessonEditor({
     try {
       const outline = draft.outline.map((line) => line.trim()).filter((line) => line.length >= 3);
       if (outline.length < 1) {
-        setError('Add at least one guided step. Each step needs 3 characters on its own line.');
+        setError(t('Add at least one guided step. Each step needs 3 characters on its own line.'));
         setBusy(false);
         return;
       }
@@ -314,19 +355,19 @@ function LessonEditor({
   return (
     <div className="max-w-4xl space-y-5">
       <Button variant="ghost" onClick={close}>
-        ← All lessons
+        ← {t('All lessons')}
       </Button>
       <h1 className="text-3xl font-semibold text-ink">
-        {published ? 'Released lesson' : 'Edit lesson'}
+        {published ? t('Released lesson') : t('Edit lesson')}
       </h1>
       <p className="max-w-[65ch] text-ink-dim">
         {published
-          ? 'This release stays as it was when learners took it. Edit a copy to change the reading or the quiz, then publish that copy.'
-          : 'Change the reading, the study steps, and every quiz question. Saving keeps this draft private.'}
+          ? t('This release stays as it was when learners took it. Edit a copy to change the reading or the quiz, then publish that copy.')
+          : t('Change the reading, the study steps, and every quiz question. Saving keeps this draft private.')}
       </p>
       {published ? (
         <Button disabled={busy} onClick={() => void onCopy(id)}>
-          Edit a copy
+          {t('Edit a copy')}
         </Button>
       ) : null}
       {error ? <ErrorNote message={error} /> : null}
@@ -347,9 +388,9 @@ function LessonEditor({
         <Card className="space-y-4 p-5">
           {(
             [
-              ['title', 'Title'],
-              ['summary', 'Short summary'],
-              ['narration', 'Reading'],
+              ['title', t('Title')],
+              ['summary', t('Short summary')],
+              ['narration', t('Reading')],
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="block space-y-2 text-sm text-ink">
@@ -362,7 +403,7 @@ function LessonEditor({
             </label>
           ))}
           <label className="block space-y-2 text-sm text-ink">
-            <span>Study steps, one per line</span>
+            <span>{t('Study steps, one per line')}</span>
             <textarea
               className={`${field} min-h-32`}
               value={draft.outline.join('\n')}
@@ -382,30 +423,29 @@ function LessonEditor({
           </label>
         </Card>
         <div>
-          <h2 className="text-xl font-semibold text-ink">Quiz</h2>
+          <h2 className="text-xl font-semibold text-ink">{t('Quiz')}</h2>
           <p className="mt-2 max-w-[65ch] text-sm text-ink-dim">
-            Write each question, add the choices, and mark the right one. You can also ask for
-            questions from the reading and then edit them.
+            {t('Write each question, add the choices, and mark the right one. You can also ask for questions from the reading and then edit them.')}
           </p>
         </div>
         {draft.questions.map((q, i) => (
           <Card key={q.id} className="space-y-3 p-5">
             <div className="flex justify-between gap-3">
-              <h3 className="font-semibold text-ink">Question {i + 1}</h3>
+              <h3 className="font-semibold text-ink">{t('Question {number}', { number: i + 1 })}</h3>
               <Button
                 variant="ghost"
                 disabled={draft.questions.length === 1}
                 onClick={() => update({ questions: draft.questions.filter((_, j) => j !== i) })}
               >
-                Remove question
+                {t('Remove question')}
               </Button>
             </div>
             <label className="block text-sm text-ink">
-              Question
+              {t('Question')}
               <input
                 className={`${field} mt-2`}
                 value={q.prompt}
-                placeholder="What does the right atrium do?"
+                placeholder={t('What does the right atrium do?')}
                 onChange={(e) =>
                   update({
                     questions: draft.questions.map((v, j) =>
@@ -415,11 +455,11 @@ function LessonEditor({
                 }
               />
             </label>
-            <p className="text-xs text-ink-dim">Mark the correct choice.</p>
+            <p className="text-xs text-ink-dim">{t('Mark the correct choice.')}</p>
             {q.options.map((option, k) => (
               <div key={k} className="flex items-center gap-3">
                 <input
-                  aria-label={`Choice ${k + 1} is correct`}
+                  aria-label={t('Choice {number} is correct', { number: k + 1 })}
                   type="radio"
                   name={`correct-${q.id}`}
                   checked={q.correctOption === k}
@@ -432,10 +472,10 @@ function LessonEditor({
                   }
                 />
                 <input
-                  aria-label={`Choice ${k + 1}`}
+                  aria-label={t('Choice {number}', { number: k + 1 })}
                   className={field}
                   value={option}
-                  placeholder={`Choice ${k + 1}`}
+                  placeholder={t('Choice {number}', { number: k + 1 })}
                   onChange={(e) =>
                     update({
                       questions: draft.questions.map((v, j) =>
@@ -471,7 +511,7 @@ function LessonEditor({
                     })
                   }
                 >
-                  Remove
+                  {t('Remove')}
                 </Button>
               </div>
             ))}
@@ -486,10 +526,10 @@ function LessonEditor({
                 })
               }
             >
-              Add a choice
+              {t('Add a choice')}
             </Button>
             <label className="block text-sm text-ink">
-              Why this answer is right
+              {t('Why this answer is right')}
               <textarea
                 className={`${field} mt-2`}
                 value={q.explanation}
@@ -523,24 +563,24 @@ function LessonEditor({
               })
             }
           >
-            Add your own question
+            {t('Add your own question')}
           </Button>
           <Button
             variant="ghost"
             disabled={published || busy || draft.narration.trim().length < 20}
             onClick={() => void writeQuestions()}
           >
-            {busy ? 'Writing…' : 'Write questions from the reading'}
+            {busy ? t('Writing…') : t('Write questions from the reading')}
           </Button>
         </div>
       </fieldset>
       {!published ? (
         <div className="flex gap-3">
           <Button disabled={busy} onClick={() => save(false)}>
-            Save draft
+            {t('Save draft')}
           </Button>
           <Button disabled={busy} onClick={() => save(true)}>
-            Save and publish
+            {t('Save and publish')}
           </Button>
         </div>
       ) : null}

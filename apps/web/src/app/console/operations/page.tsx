@@ -71,6 +71,7 @@ interface AssetSummaryView {
   readonly status: AssetStatus;
   readonly currentVersion: {
     readonly versionNumber: number;
+    readonly format: string;
     readonly sizeBytes: number;
     readonly polycount: number | null;
     readonly pinStatus: string;
@@ -209,6 +210,8 @@ export default function OverviewPage() {
                       href={`/console/assets/${asset.id}`}
                       collection={asset.category}
                       cid={asset.currentVersion?.ipfsCid ?? null}
+                      format={asset.currentVersion?.format ?? null}
+                      pinStatus={asset.currentVersion?.pinStatus ?? null}
                       polycount={asset.currentVersion?.polycount ?? null}
                       sizeBytes={asset.currentVersion?.sizeBytes ?? null}
                       badge="ERC-721"

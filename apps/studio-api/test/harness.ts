@@ -52,6 +52,8 @@ export function applyStudioTestEnv(
     AI_BASE_URL: undefined,
     AI_TEXT_BASE_URL: undefined,
     OPENROUTER_API_KEY: undefined,
+    OPENAI_API_KEY: undefined,
+    GEMINI_API_KEY: undefined,
     ...overrides,
   })) {
     if (value === undefined) delete process.env[key];

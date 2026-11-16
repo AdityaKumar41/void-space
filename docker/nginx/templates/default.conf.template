@@ -87,6 +87,8 @@ server {
   # ---------------------------------------------------------------- API
   location /api/ {
     limit_req zone=edge_api burst=100 nodelay;
+    proxy_intercept_errors on;
+    error_page 502 504 = @api_unavailable;
     proxy_pass http://void_space_api;
     proxy_http_version 1.1;
     proxy_set_header Host              $host;
@@ -100,6 +102,11 @@ server {
     proxy_request_buffering off;
     proxy_read_timeout 300s;
     proxy_send_timeout 300s;
+  }
+
+  location @api_unavailable {
+    default_type application/json;
+    return 503 '{"statusCode":503,"error":"Service Unavailable","code":"API_UNAVAILABLE","message":"The API service is temporarily unavailable. Please try again.","requestId":"$request_id","timestamp":"$time_iso8601"}';
   }
 
   # ------------------------------------------- IPFS gateway (cached, FR-8.3)

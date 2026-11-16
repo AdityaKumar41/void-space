@@ -15,6 +15,12 @@ export const textAiEnvSchema = z.object({
     unset,
     z.coerce.number().int().min(100).max(120000).default(30000),
   ),
+  GEMINI_API_KEY: optionalString,
+  GEMINI_MODEL: optionalString,
+  GEMINI_BASE_URL: optionalUrl,
+  OPENAI_API_KEY: optionalString,
+  OPENAI_MODEL: optionalString,
+  OPENAI_BASE_URL: optionalUrl,
   OPENROUTER_API_KEY: optionalString,
   OPENROUTER_MODEL: optionalString,
   OPENROUTER_BASE_URL: optionalUrl,
@@ -27,6 +33,12 @@ export interface TextAiConfig {
   AI_TEXT_PROTOCOL?: 'auto' | 'ollama' | 'openai' | undefined;
   AI_TEXT_API_KEY?: string | undefined;
   AI_TEXT_TIMEOUT_MS?: number | undefined;
+  GEMINI_API_KEY?: string | undefined;
+  GEMINI_MODEL?: string | undefined;
+  GEMINI_BASE_URL?: string | undefined;
+  OPENAI_API_KEY?: string | undefined;
+  OPENAI_MODEL?: string | undefined;
+  OPENAI_BASE_URL?: string | undefined;
   OPENROUTER_API_KEY?: string | undefined;
   OPENROUTER_MODEL?: string | undefined;
   OPENROUTER_BASE_URL?: string | undefined;
@@ -77,6 +89,30 @@ export class TextAiError extends Error {
     this.name = 'TextAiError';
   }
 }
+/**
+ * Read the provider's error envelope and reduce it to a short, allow-listed code
+ * (e.g. `insufficient_quota`, `credit_balance_exhausted`, `rate_limit_exceeded`).
+ * Only [a-z0-9_] survives, so no prompt, key, URL or free-text body is retained.
+ * Returns undefined when the body is missing, not JSON, or carries no usable code.
+ */
+async function providerErrorCode(response: Response): Promise<string | undefined> {
+  try {
+    const parsed = (await response.json()) as
+      | { error?: { code?: unknown; type?: unknown; status?: unknown } }
+      | { error?: { code?: unknown; type?: unknown; status?: unknown } }[]
+      | null;
+    // Google's OpenAI-compatible surface wraps errors in a single-element array.
+    const body = Array.isArray(parsed) ? parsed[0] : parsed;
+    const raw = [body?.error?.code, body?.error?.type, body?.error?.status].find(
+      (value) => typeof value === 'string',
+    ) as string | undefined;
+    if (typeof raw !== 'string') return undefined;
+    const normalized = raw.trim().toLowerCase();
+    return /^[a-z0-9_]{1,64}$/.test(normalized) ? normalized : undefined;
+  } catch {
+    return undefined;
+  }
+}
 function endpoint(base: string): string {
   const url = new URL(base);
   if (
@@ -91,7 +127,10 @@ function endpoint(base: string): string {
   url.pathname =
     path.endsWith('/chat/completions') || path.endsWith('/api/generate')
       ? path
-      : path + (path.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions');
+      : path +
+        (path.endsWith('/v1') || path.endsWith('/openai')
+          ? '/chat/completions'
+          : '/v1/chat/completions');
   return url.href;
 }
 export function textProviders(config: TextAiConfig): Provider[] {
@@ -126,6 +165,31 @@ export function textProviders(config: TextAiConfig): Provider[] {
         name: 'compatible',
       });
   }
+  // Built-in Google Gemini provider (free tier). Read server-side only and never
+  // forwarded to another provider. Pinned to Google's OpenAI-compatible surface,
+  // which keeps the shared request/response contract intact. Tried ahead of the
+  // OpenAI provider, which remains as automatic fallback.
+  if (config.GEMINI_API_KEY?.trim())
+    providers.push({
+      url: endpoint(
+        config.GEMINI_BASE_URL?.trim() ||
+          'https://generativelanguage.googleapis.com/v1beta/openai',
+      ),
+      protocol: 'openai',
+      model: config.GEMINI_MODEL?.trim() || 'gemini-3.1-flash-lite',
+      key: config.GEMINI_API_KEY.trim(),
+      name: 'gemini',
+    });
+  // Built-in OpenAI provider. Both are explicit: no implicit paid model. The key is
+  // read server-side only and is never forwarded to another provider.
+  if (config.OPENAI_API_KEY?.trim())
+    providers.push({
+      url: endpoint(config.OPENAI_BASE_URL?.trim() || 'https://api.openai.com/v1'),
+      protocol: 'openai',
+      model: config.OPENAI_MODEL?.trim() || 'gpt-4o-mini',
+      key: config.OPENAI_API_KEY.trim(),
+      name: 'openai',
+    });
   // Both are explicit: no implicit paid model or unexpected fallback destination.
   if (config.OPENROUTER_API_KEY?.trim() && config.OPENROUTER_MODEL?.trim())
     providers.push({
@@ -277,7 +341,10 @@ export async function generateText(
         },
         body: JSON.stringify(payload),
       });
-      if (!response.ok) throw new Error(`Provider HTTP ${response.status}`);
+      if (!response.ok) {
+        const code = await providerErrorCode(response);
+        throw new Error(`Provider HTTP ${response.status}${code ? ` ${code}` : ''}`);
+      }
       const result = parseResult(await response.json(), provider);
       if (request.tools?.length === 0 && result.toolCalls.length)
         throw new Error('Unexpected tool calls');
@@ -290,7 +357,7 @@ export async function generateText(
         provider: provider.name,
         reason:
           error instanceof Error &&
-          /^(Provider HTTP \d+|Configured model is unavailable|Provider reported an error|Empty generation|Incomplete generation|Truncated generation)$/.test(
+          /^(Provider HTTP \d{3}( [a-z0-9_]{1,64})?|Configured model is unavailable|Provider reported an error|Empty generation|Incomplete generation|Truncated generation)$/.test(
             error.message,
           )
             ? error.message

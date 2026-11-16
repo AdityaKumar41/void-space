@@ -20,6 +20,9 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const studioWebDir = path.resolve(rootDir, 'apps/studio-web');
+const turboCli = path.join(rootDir, 'node_modules', 'turbo', 'bin', 'turbo');
+const pnpmExecutable = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+const pnpmShell = process.platform === 'win32';
 
 function configuredPort(name, fallback) {
   if (process.env[name]) return Number(process.env[name]);
@@ -70,10 +73,11 @@ async function prepareEnvironment() {
       console.log(
         '\x1b[1;36m[dev:setup]\x1b[0m Building VOID·STUDIO Web bundle (build/entry_point.js)...',
       );
-      const studioBuild = spawnSync('pnpm', ['--dir', 'apps/studio-web', 'build'], {
+      const studioBuild = spawnSync(pnpmExecutable, ['--dir', 'apps/studio-web', 'build'], {
         cwd: rootDir,
         stdio: 'inherit',
         env: process.env,
+        shell: pnpmShell,
       });
       if (studioBuild.status !== 0) {
         console.warn(
@@ -128,6 +132,20 @@ async function prepareEnvironment() {
         err.message,
       );
     }
+  }
+
+  // A TCP listener can outlive the database behind Docker's port forwarder. Apply pending
+  // migrations here so an apparently open port cannot leave the API on a stale schema.
+  const migrations = spawnSync(pnpmExecutable, ['db:migrate'], {
+    cwd: rootDir,
+    stdio: 'inherit',
+    env: process.env,
+    shell: pnpmShell,
+  });
+  if (migrations.status !== 0) {
+    throw new Error(
+      'PostgreSQL migrations could not be applied; start Docker Desktop and run `pnpm dev:up` before starting the application.',
+    );
   }
 
   // This runner serves web/API natively. The same .env is also used by `stack:up`, where those
@@ -227,10 +245,9 @@ for (const [packageName, port] of [
 turboFilters.push('--filter=@void-space/worker', '--filter=@void-space/studio-worker');
 
 const turbo = spawn(
-  'pnpm',
+  process.execPath,
   [
-    'exec',
-    'turbo',
+    turboCli,
     'run',
     'dev',
     '--parallel',

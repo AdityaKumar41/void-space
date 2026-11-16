@@ -16,11 +16,10 @@
  * a link inside a link would only add an unreachable focus stop.
  */
 import Link from 'next/link';
-import { useState } from 'react';
 import type { PublicCatalogItem } from '@void-space/types';
 
 import { formatBytes, formatNumber } from '../lib/format';
-import { thumbnailUrl } from '../lib/public-api';
+import { AssetThumbnail } from './asset-thumbnail';
 import { Chip } from './ui/chip';
 import { CubeIcon } from './ui/icons';
 
@@ -28,7 +27,6 @@ import { CubeIcon } from './ui/icons';
 const HEAVY_TRIANGLES = 150_000;
 
 export function MarketCard({ item }: { item: PublicCatalogItem }) {
-  const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const heavy = item.polycount !== null && item.polycount > HEAVY_TRIANGLES;
 
   return (
@@ -38,23 +36,19 @@ export function MarketCard({ item }: { item: PublicCatalogItem }) {
       className="group flex flex-col overflow-hidden rounded-card border border-hairline bg-surface transition-all duration-200 ease-standard hover:-translate-y-0.5 hover:border-hairline-strong hover:shadow-float"
     >
       <div className="relative aspect-[4/3] overflow-hidden border-b border-hairline bg-deeper">
-        {thumbnailFailed ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-grid-faint bg-grid-sm text-ink-faint">
-            <CubeIcon width={44} height={44} className="opacity-40" />
-          </div>
-        ) : (
-          // A plain <img>, not next/image: these are already correctly sized renders served from our
-          // own route handler, so the optimizer would only add a second cache in front of a cache.
-          <img
-            src={thumbnailUrl(item.ipfsCid)}
+        <div className="h-full w-full transition-transform duration-500 ease-standard group-hover:scale-[1.04]">
+          <AssetThumbnail
+            cid={item.ipfsCid}
             alt={`Render of ${item.name}`}
-            loading="lazy"
-            width={1200}
-            height={900}
-            onError={() => setThumbnailFailed(true)}
-            className="h-full w-full object-cover transition-transform duration-500 ease-standard group-hover:scale-[1.04]"
+            format={item.format}
+            pinned
+            fallback={
+              <div className="absolute inset-0 flex items-center justify-center bg-grid-faint bg-grid-sm text-ink-faint">
+                <CubeIcon width={44} height={44} className="opacity-40" />
+              </div>
+            }
           />
-        )}
+        </div>
 
         <span className="absolute left-3 top-3">
           <Chip tone="brand">{item.licenseType}</Chip>

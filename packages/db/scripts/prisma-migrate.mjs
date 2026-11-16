@@ -50,13 +50,16 @@ if (!migrateUrl) {
 
 // Resolve the local Prisma CLI directly so this script works whether it is run
 // through a pnpm script (node_modules/.bin already on PATH) or via bare `node`.
-const localBin = resolve(here, '../node_modules/.bin/prisma');
+const localBin = resolve(
+  here,
+  `../node_modules/.bin/prisma${process.platform === 'win32' ? '.cmd' : ''}`,
+);
 const command = existsSync(localBin) ? localBin : 'prisma';
 
 const result = spawnSync(command, args, {
   stdio: 'inherit',
   env: { ...process.env, DATABASE_URL: migrateUrl },
-  shell: process.platform === 'win32' && command === 'prisma',
+  shell: process.platform === 'win32',
 });
 
 if (result.error) {
@@ -65,4 +68,3 @@ if (result.error) {
 }
 
 process.exit(result.status ?? 1);
-

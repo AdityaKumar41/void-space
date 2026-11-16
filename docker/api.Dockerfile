@@ -31,7 +31,10 @@ ENV PORT=4000
 EXPOSE 4000
 
 # Non-root runtime user (§2.5 minimises the local attack surface).
-RUN addgroup -S void && adduser -S void -G void && chown -R void:void /app
+RUN addgroup -S void \
+    && adduser -S void -G void \
+    && mkdir -p /var/lib/void-space/uploads /var/lib/void-space/documents \
+    && chown -R void:void /app /var/lib/void-space
 USER void
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \

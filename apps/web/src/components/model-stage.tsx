@@ -15,7 +15,11 @@
  * The height is fixed rather than fluid, because a model that resizes the page as you orbit it is the
  * single most disorienting thing a 3D page can do.
  */
-import { ModelViewer, type SceneInteraction, type ModelViewerProps } from './model-viewer';
+import {
+  ModelViewer,
+  type SceneInteraction,
+  type ModelViewerProps,
+} from './model-viewer';
 
 export interface ModelStageProps {
   readonly interaction?: SceneInteraction;

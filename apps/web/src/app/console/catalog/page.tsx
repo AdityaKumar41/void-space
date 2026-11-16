@@ -7,9 +7,8 @@
  * on the left, a toolbar, and a grid of items. The rules the earlier table-based version already
  * followed are kept, because they are about honesty rather than layout:
  *
- * - **Nothing heavy loads unasked.** Cards carry metadata and a badge; the 3D model is fetched only
- *   when someone opens the preview, one at a time. A grid of live canvases would be a slideshow, and
- *   the bundled whale skeleton alone is 13.6 MB with 28 textures.
+ * - **Thumbnails load on demand.** A visible card only generates a cached still preview when no
+ *   render exists; the full interactive model is fetched when someone opens the preview.
  * - **Filtering is instant and local.** The catalogue is small enough to filter in the browser, so a
  *   keystroke does not wait on a round trip. A deliberate contrast with the *public* catalogue, which
  *   re-queries the server because its facet counts must describe the whole collection rather than the
@@ -275,6 +274,8 @@ export default function ConsoleCatalogPage() {
                       href={`/console/assets/${item.id}`}
                       collection={item.category}
                       cid={version?.ipfsCid ?? null}
+                      format={version?.format ?? null}
+                      pinStatus={version?.pinStatus ?? null}
                       polycount={version?.polycount ?? null}
                       sizeBytes={version?.sizeBytes ?? null}
                       badge={item.license ? `#${item.license.tokenId}` : undefined}

@@ -212,7 +212,7 @@ export function LoginForm({
                           {tenant.name}
                         </b>
                         <span className="block truncate font-mono text-[11px] text-ink-faint">
-                          {tenant.roles.join(' / ')}
+                          {tenant.roles?.length ? tenant.roles.join(' / ') : 'Role unavailable'}
                         </span>
                       </span>
                     </button>

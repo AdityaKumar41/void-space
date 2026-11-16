@@ -27,6 +27,9 @@ const TENANT_SCOPED_TABLES = [
   'notifications',
   'audit_logs',
   'jobs',
+  'lessons',
+  'lesson_conversations',
+  'lesson_chat_messages',
 ] as const;
 
 interface RlsRow {

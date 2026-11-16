@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, BookOpen, Compass, GraduationCap, Users } from 'lucide-react';
 import { useSession } from '../../lib/session';
+import { useLanguage } from '../../lib/language';
 import { apiFetch } from '../../lib/api';
 import { ModelStage } from '../../components/model-stage';
 import { ConsoleThumb } from '../../components/console-kit';
@@ -37,6 +38,7 @@ interface Room {
   participants: { userId: string }[];
 }
 export default function HomePage() {
+  const { t } = useLanguage();
   const { session, can } = useSession();
   const courses = useQuery({
     queryKey: ['courses'],
@@ -56,7 +58,7 @@ export default function HomePage() {
     enabled: can('spatial:join'),
   });
   if (courses.isLoading || lessons.isLoading || experiences.isLoading)
-    return <LoadingBlock label="Preparing your learning workspace" />;
+    return <LoadingBlock label={t('Preparing your learning workspace')} />;
   const error = courses.error || lessons.error || experiences.error;
   if (error) return <ErrorNote message={(error as Error).message} />;
   const programs = courses.data?.courses ?? [];
@@ -70,21 +72,21 @@ export default function HomePage() {
     <div>
       <div className="learning-welcome">
         <div>
-          <p className="mb-2 text-xs text-ink-dim">Your learning workspace</p>
-          <h1>Welcome back, {firstName}.</h1>
+          <p className="mb-2 text-xs text-ink-dim">{t('Your learning workspace')}</p>
+          <h1>{t('Welcome back, {name}.', { name: firstName })}</h1>
           <p className="mt-3 text-[13px] text-ink-dim">
-            Explore something new. Put what you learn into practice.
+            {t('Explore something new. Put what you learn into practice.')}
           </p>
         </div>
         <Link href="/console/campus" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-          Browse programs <ArrowRight size={14} />
+          {t('Browse programs')} <ArrowRight size={14} />
         </Link>
       </div>
       {featured ? (
-        <section className="learning-hero" aria-label="Featured practice experience">
+        <section className="learning-hero" aria-label={t('Featured practice experience')}>
           <div className="learning-hero-copy">
             <span className="flex items-center gap-2 text-xs font-semibold text-brand">
-              <Compass size={16} /> Learn through practice
+              <Compass size={16} /> {t('Learn through practice')}
             </span>
             <h2>{featured.title}</h2>
             <p className="line-clamp-3">{featured.description}</p>
@@ -93,10 +95,10 @@ export default function HomePage() {
                 href={`/console/simulations?experience=${featured.id}`}
                 className={buttonVariants({ variant: 'primary' })}
               >
-                Enter experience <ArrowRight size={15} />
+                {t('Enter experience')} <ArrowRight size={15} />
               </Link>
               <span className="text-[11px] text-ink-faint">
-                {featured.taskCount} interactive tasks
+                {t('{count} interactive tasks', { count: featured.taskCount })}
               </span>
             </div>
           </div>
@@ -113,14 +115,14 @@ export default function HomePage() {
       ) : (
         <section className="learning-hero">
           <div className="learning-hero-copy">
-            <span className="text-xs font-semibold text-brand">Start with curiosity</span>
-            <h2>Your next skill starts here.</h2>
-            <p>Explore guided lessons and programs built from your workspace’s reviewed content.</p>
+            <span className="text-xs font-semibold text-brand">{t('Start with curiosity')}</span>
+            <h2>{t('Your next skill starts here.')}</h2>
+            <p>{t('Explore guided lessons and programs built from your workspace’s reviewed content.')}</p>
             <Link
               href="/console/lessons"
               className={buttonVariants({ variant: 'primary', className: 'mt-6' })}
             >
-              Explore lessons <ArrowRight size={15} />
+              {t('Explore lessons')} <ArrowRight size={15} />
             </Link>
           </div>
           <div className="grid place-items-center bg-deeper p-8">
@@ -128,11 +130,11 @@ export default function HomePage() {
           </div>
         </section>
       )}
-      <section className="learning-stats" aria-label="Your learning overview">
+      <section className="learning-stats" aria-label={t('Your learning overview')}>
         {[
-          { label: 'Programs in progress', value: enrolled.length - completed, icon: BookOpen },
-          { label: 'Programs completed', value: completed, icon: GraduationCap },
-          { label: 'Rooms live now', value: live.length, icon: Users },
+          { label: t('Programs in progress'), value: enrolled.length - completed, icon: BookOpen },
+          { label: t('Programs completed'), value: completed, icon: GraduationCap },
+          { label: t('Rooms live now'), value: live.length, icon: Users },
         ].map((stat) => (
           <div key={stat.label} className="learning-stat">
             <div>
@@ -148,9 +150,9 @@ export default function HomePage() {
       <div className="learning-columns">
         <section>
           <div className="learning-section-head">
-            <h2>{enrolled.length ? 'Continue your learning' : 'Explore lessons'}</h2>
+            <h2>{enrolled.length ? t('Continue your learning') : t('Explore lessons')}</h2>
             <Link href={enrolled.length ? '/console/campus' : '/console/lessons'}>
-              View all <span aria-hidden>↗</span>
+              {t('View all')} <span aria-hidden>↗</span>
             </Link>
           </div>
           {enrolled.length ? (
@@ -169,8 +171,7 @@ export default function HomePage() {
                     <div className="min-w-0 flex-1">
                       <h3>{course.title}</h3>
                       <p>
-                        {course.progress?.completed ?? 0} of {course.lessons.length} lessons
-                        complete
+                        {course.progress?.completed ?? 0} of {course.lessons.length} {t('lessons complete')}
                       </p>
                     </div>
                     <ArrowRight size={16} className="text-ink-faint" />
@@ -203,21 +204,21 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="learning-section-empty">
-              Your workspace has no released lessons yet.{' '}
+              {t('Your workspace has no released lessons yet')}{' '}
               {can('learning:manage') ? (
                 <Link className="text-brand underline" href="/console/lessons">
-                  Create your first lesson.
+                  {t('Create your first lesson.')}
                 </Link>
               ) : (
-                'Released lessons will appear here when an author publishes them.'
+                t('Released lessons will appear here when an author publishes them.')
               )}
             </div>
           )}
         </section>
         <section>
           <div className="learning-section-head">
-            <h2>Learn together</h2>
-            <Link href="/console/spaces">All spaces ↗</Link>
+            <h2>{t('Learn together')}</h2>
+            <Link href="/console/spaces">{t('All spaces ↗')}</Link>
           </div>
           <div className="learning-list">
             {live.length ? (
@@ -232,7 +233,7 @@ export default function HomePage() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <h3>{room.title}</h3>
-                    <p>{room.participants.length} present · Live room</p>
+                    <p>{t('{count} present · Live room', { count: room.participants.length })}</p>
                   </div>
                   <ArrowRight size={16} />
                 </Link>
@@ -240,16 +241,15 @@ export default function HomePage() {
             ) : (
               <div className="p-6">
                 <Users size={26} strokeWidth={1.3} className="mb-4 text-ink-faint" />
-                <h3 className="font-semibold text-ink">Space to learn together</h3>
+                <h3 className="font-semibold text-ink">{t('Space to learn together')}</h3>
                 <p className="mt-2 text-xs leading-7 text-ink-dim">
-                  Join a shared lesson or practice alongside your team. Live rooms appear here when
-                  a facilitator opens one.
+                  {t('Join a shared lesson or practice alongside your team. Live rooms appear here when a facilitator opens one.')}
                 </p>
                 <Link
                   href="/console/spaces"
                   className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-brand"
                 >
-                  Explore spaces <ArrowRight size={14} />
+                  {t('Explore spaces')} <ArrowRight size={14} />
                 </Link>
               </div>
             )}
@@ -262,8 +262,8 @@ export default function HomePage() {
               <Compass size={21} />
             </span>
             <div>
-              <h3 className="text-sm font-semibold">Guidance at the point of work</h3>
-              <p className="mt-1 text-xs text-ink-dim">Open a field guide, one step at a time.</p>
+              <h3 className="text-sm font-semibold">{t('Guidance at the point of work')}</h3>
+              <p className="mt-1 text-xs text-ink-dim">{t('Open a field guide, one step at a time.')}</p>
             </div>
           </Link>
         </section>

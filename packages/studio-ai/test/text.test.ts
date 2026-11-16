@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generateText, isTextAiConfigured, textProviders } from '../src/text';
+import { generateText, isTextAiConfigured, textProviders, TextAiError } from '../src/text';
 const config = {
   AI_TEXT_BASE_URL: 'https://qwen.example/api/generate',
   AI_TEXT_MODEL: 'qwen2.5-coder:32b',
@@ -51,6 +51,65 @@ describe('Text provider routing', () => {
     expect(isTextAiConfigured({ OPENROUTER_API_KEY: 'secret' })).toBe(false);
     expect(isTextAiConfigured({ OPENROUTER_MODEL: 'provider/model' })).toBe(false);
   });
+  it('enables the built-in OpenAI provider from OPENAI_API_KEY alone', async () => {
+    expect(isTextAiConfigured({ OPENAI_API_KEY: 'sk-test' })).toBe(true);
+    expect(textProviders({ OPENAI_API_KEY: 'sk-test' })[0]).toMatchObject({
+      url: 'https://api.openai.com/v1/chat/completions',
+      protocol: 'openai',
+      model: 'gpt-4o-mini',
+      name: 'openai',
+    });
+    expect(
+      textProviders({ OPENAI_API_KEY: 'sk-test', OPENAI_MODEL: 'gpt-4o', OPENAI_BASE_URL: 'https://proxy.example/v1' })[0],
+    ).toMatchObject({ url: 'https://proxy.example/v1/chat/completions', model: 'gpt-4o' });
+    const f = vi.fn<typeof fetch>().mockResolvedValue(chat());
+    const result = await generateText({ OPENAI_API_KEY: 'sk-test' }, request, f);
+    expect(result.provider).toBe('openai');
+    expect(f.mock.calls[0]![1]!.headers).toMatchObject({ authorization: 'Bearer sk-test' });
+    expect(JSON.parse(String(f.mock.calls[0]![1]!.body))).toMatchObject({
+      model: 'gpt-4o-mini',
+      stream: false,
+    });
+  });
+  it('enables the built-in Gemini provider from GEMINI_API_KEY alone, ahead of OpenAI', () => {
+    expect(isTextAiConfigured({ GEMINI_API_KEY: 'google-key' })).toBe(true);
+    expect(textProviders({ GEMINI_API_KEY: 'google-key' })[0]).toMatchObject({
+      url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      protocol: 'openai',
+      model: 'gemini-3.1-flash-lite',
+      name: 'gemini',
+    });
+    expect(
+      textProviders({
+        GEMINI_API_KEY: 'google-key',
+        GEMINI_MODEL: 'gemini-3.1-flash-lite',
+        GEMINI_BASE_URL: 'https://gateway.example/v1beta/openai',
+      })[0],
+    ).toMatchObject({
+      url: 'https://gateway.example/v1beta/openai/chat/completions',
+      model: 'gemini-3.1-flash-lite',
+    });
+    expect(
+      textProviders({ ...config, GEMINI_API_KEY: 'google-key', OPENAI_API_KEY: 'sk-test' }).map(
+        (provider) => provider.name,
+      ),
+    ).toEqual(['compatible', 'gemini', 'openai']);
+  });
+  it('sends the Gemini key only to Google, never to the OpenAI provider', async () => {
+    const f = vi.fn<typeof fetch>().mockResolvedValue(chat());
+    await generateText(
+      { GEMINI_API_KEY: 'google-key', OPENAI_API_KEY: 'sk-openai' },
+      request,
+      f,
+    );
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(String(f.mock.calls[0]![0])).toContain('generativelanguage.googleapis.com');
+    expect(f.mock.calls[0]![1]!.headers).toMatchObject({ authorization: 'Bearer google-key' });
+  });
+  it('keeps an explicitly configured AI_TEXT provider ahead of the built-in OpenAI provider', () => {
+    const providers = textProviders({ ...config, OPENAI_API_KEY: 'sk-test' });
+    expect(providers.map((provider) => provider.name)).toEqual(['compatible', 'openai']);
+  });
   it('treats HTTP 200 error envelopes and empty compatible answers as failures', async () => {
     await expect(
       generateText(
@@ -66,6 +125,29 @@ describe('Text provider routing', () => {
         vi.fn<typeof fetch>().mockResolvedValue(chat('')),
       ),
     ).rejects.toThrow('No configured text provider');
+  });
+  it('surfaces the provider error code for HTTP 429 so quota and rate limits are distinguishable', async () => {
+    const quota = Response.json(
+      { error: { code: 'credit_balance_exhausted', type: 'insufficient_quota', message: 'You have no credits remaining.' } },
+      { status: 429 },
+    );
+    const failures: { provider: string; reason: string }[] = [];
+    try {
+      await generateText({ OPENAI_API_KEY: 'sk-test' }, request, vi.fn<typeof fetch>().mockResolvedValue(quota));
+    } catch (error) {
+      if (!(error instanceof TextAiError)) throw error;
+      failures.push(...error.failures);
+    }
+    expect(failures).toEqual([{ provider: 'openai', reason: 'Provider HTTP 429 credit_balance_exhausted' }]);
+    const bare = Response.json({ unexpected: true }, { status: 429 });
+    const bareFailures: { provider: string; reason: string }[] = [];
+    try {
+      await generateText({ OPENAI_API_KEY: 'sk-test' }, request, vi.fn<typeof fetch>().mockResolvedValue(bare));
+    } catch (error) {
+      if (!(error instanceof TextAiError)) throw error;
+      bareFailures.push(...error.failures);
+    }
+    expect(bareFailures).toEqual([{ provider: 'openai', reason: 'Provider HTTP 429' }]);
   });
   it('falls back to OpenRouter and never forwards the primary credential', async () => {
     const f = vi

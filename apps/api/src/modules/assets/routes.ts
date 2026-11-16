@@ -17,6 +17,7 @@ import {
   createAssetMetadataSchema,
   resubmitAssetSchema,
   type AssetListQuery,
+  type AuthPrincipal,
 } from '@void-space/types';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -40,6 +41,24 @@ export async function assetRoutes(app: FastifyInstance, options: AssetRoutesOpti
   const { env, producer } = options;
   const storage = new StagingStorage({ stagingDir: env.STAGING_DIR });
   const assets: AssetService = createAssetService({ storage, producer });
+
+  /**
+   * Loads an asset only when this caller may read it.
+   *
+   * A caller cannot learn about an unpublished asset by opening its detail page.
+   */
+  async function visibleAsset(principal: AuthPrincipal, id: string) {
+    const asset = await assets.detail(principal, id);
+    const mayReview = principal.permissions.includes('review:decide');
+    const owns = asset.creator?.id === principal.userId;
+    const isPublished = asset.status === 'published';
+    const mayManageOwn = principal.permissions.includes('asset:upload-own');
+    const mayView = isPublished || mayReview || owns || mayManageOwn;
+
+    if (!mayView) throw new NotFoundError('Asset');
+    if (principal.readOnly && !isPublished) throw new NotFoundError('Asset');
+    return asset;
+  }
 
   /**
    * Streams one upload: text fields first, then the file part. Returns the staged file
@@ -168,20 +187,7 @@ export async function assetRoutes(app: FastifyInstance, options: AssetRoutesOpti
       if (!principal) throw new ForbiddenError('Authentication required', 'UNAUTHENTICATED');
 
       const { id } = parseParams(idParams, request.params);
-      const asset = await assets.detail(principal, id);
-
-      // Read scope: unpublished work is visible to its creator, to reviewers,
-      // and to creators within the same tenant workspace with upload permissions.
-      const mayReview = principal.permissions.includes('review:decide');
-      const owns = asset.creator?.id === principal.userId;
-      const isPublished = asset.status === 'published';
-      const mayManageOwn = principal.permissions.includes('asset:upload-own');
-      const mayView = isPublished || mayReview || owns || mayManageOwn;
-
-      if (!mayView) throw new NotFoundError('Asset');
-      if (principal.readOnly && !isPublished) throw new NotFoundError('Asset');
-
-      return reply.status(200).send({ asset });
+      return reply.status(200).send({ asset: await visibleAsset(principal, id) });
     },
   );
 

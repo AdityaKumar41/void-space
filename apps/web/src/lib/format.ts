@@ -19,10 +19,19 @@ export function formatDateTime(iso: string | null | undefined): string {
   return date.toISOString().replace('T', ' ').slice(0, 19);
 }
 
-export function formatRelative(iso: string | null | undefined): string {
+export function formatRelative(iso: string | null | undefined, locale = 'en-US'): string {
   if (!iso) return '—';
   const deltaMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(deltaMs / 60_000);
+  if (locale !== 'en-US') {
+    const relative = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+    if (minutes < 1) return relative.format(0, 'minute');
+    if (minutes < 60) return relative.format(-minutes, 'minute');
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return relative.format(-hours, 'hour');
+    const days = Math.round(hours / 24);
+    return days < 30 ? relative.format(-days, 'day') : formatDateTime(iso).slice(0, 10);
+  }
   if (minutes < 1) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.round(minutes / 60);

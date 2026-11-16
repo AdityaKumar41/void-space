@@ -8,6 +8,7 @@ let viewer: string;
 let other: string;
 let assetId: string;
 let lessonId: string;
+let deletableLessonId: string;
 let roomId: string;
 let courseId: string;
 const content = {
@@ -59,11 +60,12 @@ afterAll(async () => {
     if (roomId) await db.spatialRoom.deleteMany({ where: { id: roomId } });
     if (courseId) await db.course.deleteMany({ where: { id: courseId } });
     if (lessonId) await db.lesson.deleteMany({ where: { id: lessonId } });
+    if (deletableLessonId) await db.lesson.deleteMany({ where: { id: deletableLessonId } });
   });
   await ctx?.close();
 });
 const call = (
-  method: 'GET' | 'POST' | 'PATCH',
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   payload?: Record<string, unknown>,
   cookie = author,
@@ -76,6 +78,21 @@ const call = (
   });
 
 describe('Reviewed spatial lesson delivery', () => {
+  it('does not expose the removed instructor or mentor API routes', async () => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    const routes = [
+      ['GET', `/lessons/${id}/mentor`],
+      ['POST', `/lessons/${id}/mentor`],
+      ['POST', '/instructor/speak'],
+      ['POST', '/instructor/transcribe'],
+      ['POST', `/assets/${id}/instructor`],
+    ] as const;
+
+    for (const [method, path] of routes) {
+      expect((await call(method, path)).statusCode).toBe(404);
+    }
+  });
+
   it('keeps a generated draft recoverable for authors and private from learners', async () => {
     const created = await call('POST', '/lessons', { assetId });
     expect(created.statusCode).toBe(201);
@@ -201,5 +218,39 @@ describe('Reviewed spatial lesson delivery', () => {
         .json()
         .courses.some((c: { id: string }) => c.id === courseId),
     ).toBe(false);
+  });
+  it('deletes lessons for managers, keeps course-linked lessons and records the deletion', async () => {
+    expect((await call('DELETE', `/lessons/${lessonId}`)).statusCode).toBe(409);
+    expect(
+      await withTenant(DEMO_TENANT_IDS.aurora, (db) =>
+        db.lesson.findUnique({ where: { id: lessonId }, select: { id: true } }),
+      ),
+    ).toEqual({ id: lessonId });
+
+    const created = await call('POST', '/lessons', { assetId });
+    expect(created.statusCode).toBe(201);
+    deletableLessonId = created.json().lesson.id;
+    expect((await call('PATCH', `/lessons/${deletableLessonId}`, content)).statusCode).toBe(200);
+    expect((await call('POST', `/lessons/${deletableLessonId}/publish`)).statusCode).toBe(200);
+    expect(
+      (await call('DELETE', `/lessons/${deletableLessonId}`, undefined, viewer)).statusCode,
+    ).toBe(403);
+    expect(
+      (await call('DELETE', `/lessons/${deletableLessonId}`, undefined, other)).statusCode,
+    ).toBe(404);
+    expect((await call('DELETE', `/lessons/${deletableLessonId}`)).statusCode).toBe(204);
+
+    const result = await withTenant(DEMO_TENANT_IDS.aurora, async (db) => ({
+      lesson: await db.lesson.findUnique({ where: { id: deletableLessonId } }),
+      audit: await db.auditLog.findFirst({
+        where: { action: 'learning.lesson_deleted', entityId: deletableLessonId },
+        select: { action: true, beforeState: true },
+      }),
+    }));
+    expect(result.lesson).toBeNull();
+    expect(result.audit).toMatchObject({
+      action: 'learning.lesson_deleted',
+      beforeState: { title: content.title, isPublished: true },
+    });
   });
 });

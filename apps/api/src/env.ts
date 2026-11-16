@@ -124,6 +124,12 @@ export const envSchema = z.object({
     .int()
     .positive()
     .default(5 * 1024 * 1024 * 1024),
+  /**
+   * Private document store for Documents & Notes. Kept outside Postgres and
+   * outside the public web root; files are streamed only through an authenticated
+   * tenant-scoped API route.
+   */
+  DOCUMENTS_DIR: z.string().default('.documents'),
 
   // --- AI enrichment (FR-7.x, optional) ------------------------------------
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5-20250929'),

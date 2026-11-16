@@ -15,6 +15,40 @@ export const emailSchema = z.string().email().max(254).toLowerCase();
 export const roleSchema = z.enum(ROLES);
 export const roleListSchema = z.array(roleSchema).min(1);
 
+export const LANGUAGE_CODES = ['en', 'te', 'hi'] as const;
+export const languageCodeSchema = z.enum(LANGUAGE_CODES);
+export type LanguageCode = z.infer<typeof languageCodeSchema>;
+
+export const SUPPORTED_LANGUAGES: readonly {
+  code: LanguageCode;
+  englishName: string;
+  label: string;
+  locale: string;
+}[] = [
+  { code: 'en', englishName: 'English', label: 'English', locale: 'en-US' },
+  { code: 'te', englishName: 'Telugu', label: 'తెలుగు', locale: 'te-IN' },
+  { code: 'hi', englishName: 'Hindi', label: 'हिन्दी', locale: 'hi-IN' },
+];
+
+/**
+ * The multi-language preference is a platform-level setting owned by the Aurora
+ * admin and creator accounts. Everyone else sees the app in the language those two
+ * set — they are not authorized to switch it themselves.
+ *
+ * This is enforced server-side on every `PATCH /auth/language` call and mirrored in
+ * the UI (which only hides the control; the API remains the authority).
+ */
+export const LANGUAGE_ADMIN_EMAILS = ['creator@aurora.dev', 'admin@aurora.dev'] as const;
+
+/** Lower-cased, trimmed comparison so casing/spacing can never bypass the check. */
+export function canChangeLanguage(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const normalised = email.trim().toLowerCase();
+  return (LANGUAGE_ADMIN_EMAILS as readonly string[]).includes(normalised);
+}
+
+export const languagePreferenceSchema = z.object({ preferredLanguage: languageCodeSchema });
+
 /** FR-1.1 / UC-01: create a tenant and become its first TenantAdmin. */
 export const registerSchema = z.object({
   organizationName: z.string().min(2).max(120),
@@ -103,6 +137,7 @@ export interface SessionUser {
   readonly email: string;
   readonly fullName: string;
   readonly activeTenantId: string;
+  readonly preferredLanguage: LanguageCode;
   readonly tenants: readonly { id: string; name: string; slug: string; roles: string[] }[];
   readonly roles: string[];
   readonly permissions: readonly string[];

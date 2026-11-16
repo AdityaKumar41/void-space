@@ -65,6 +65,7 @@
     "studio:fork:paths": "pnpm --dir apps/studio-web gen:paths",
     "ai:check": "pnpm --filter @void-space/worker exec tsx ../../scripts/check-text-ai.mts",
     "ai:check:learning": "pnpm --filter @void-space/api exec tsx ../../scripts/check-learning-ai.mts",
+    "ai:check:insights": "pnpm --filter @void-space/api exec tsx ../../scripts/check-learning-insights.mts",
     "experience:demo": "pnpm --filter @void-space/api exec tsx ../../scripts/create-spatial-demo.mts"
   },
   "devDependencies": {

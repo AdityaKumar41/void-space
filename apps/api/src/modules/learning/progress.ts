@@ -13,6 +13,7 @@ const inputSchema = z
     answers: z.record(z.number().int().min(0).max(20)),
   })
   .strict();
+const timeHeartbeatSchema = z.object({ assetVersionId: z.string().uuid().nullable() }).strict();
 export async function lessonProgressRoutes(app: FastifyInstance) {
   app.get('/lessons/:id/progress', { preHandler: app.authenticate }, async (request) => {
     const { id } = params.parse(request.params);
@@ -76,6 +77,54 @@ export async function lessonProgressRoutes(app: FastifyInstance) {
         update: data,
       });
       return { progress };
+    });
+  });
+
+  app.post('/lessons/:id/time', { preHandler: app.authenticate }, async (request) => {
+    const { id } = params.parse(request.params);
+    const input = parseBody(timeHeartbeatSchema, request.body);
+    const p = request.principal!;
+    return withTenant(p.tenantId, async (db) => {
+      await db.$queryRaw`SELECT id FROM users WHERE id=${p.userId}::uuid FOR UPDATE`;
+      const lesson = await db.lesson.findFirst({
+        where: { id, tenantId: p.tenantId, isPublished: true },
+        select: { assetVersionId: true },
+      });
+      if (!lesson) throw new NotFoundError('Lesson');
+      if ((input.assetVersionId ?? null) !== (lesson.assetVersionId ?? null))
+        throw new ConflictError(
+          'This lesson uses a different reviewed version. Reopen the lesson.',
+        );
+
+      const where = {
+        tenantId_lessonId_learnerId: { tenantId: p.tenantId, lessonId: id, learnerId: p.userId },
+      };
+      const current = await db.lessonProgress.findUnique({ where });
+      const now = new Date();
+      const gapSeconds = current?.lastActivityAt
+        ? Math.floor((now.getTime() - current.lastActivityAt.getTime()) / 1000)
+        : 0;
+      const creditedSeconds = gapSeconds > 0 && gapSeconds <= 45 ? gapSeconds : 0;
+      const data = {
+        assetVersionId: input.assetVersionId,
+        lastActivityAt: now,
+        learningTimeSeconds: { increment: creditedSeconds },
+      };
+      const progress = await db.lessonProgress.upsert({
+        where,
+        create: {
+          tenantId: p.tenantId,
+          lessonId: id,
+          learnerId: p.userId,
+          assetVersionId: input.assetVersionId,
+          answers: {},
+          revision: 0,
+          lastActivityAt: now,
+        },
+        update: data,
+        select: { learningTimeSeconds: true },
+      });
+      return { learningTimeSeconds: progress.learningTimeSeconds };
     });
   });
 }

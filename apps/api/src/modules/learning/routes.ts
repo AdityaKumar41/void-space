@@ -1,4 +1,5 @@
 import { lessonProgressRoutes } from './progress';
+import { learningAnalyticsRoutes } from './analytics';
 /**
  * DAM-native learning loop: approved asset -> authored lesson -> assessment ->
  * portable verified completion.  It intentionally reuses the existing asset
@@ -6,14 +7,13 @@ import { lessonProgressRoutes } from './progress';
  */
 import { createHash } from 'node:crypto';
 
-import { recordAudit, withTenant } from '@void-space/db';
+import { recordAudit, withPlatform, withTenant } from '@void-space/db';
 import {
   createLessonSchema,
   generateQuestionsSchema,
   idParamsSchema,
   lessonQuestionSchema,
   lessonContentSchema,
-  mentorQuestionSchema,
   submitLessonAttemptSchema,
 } from '@void-space/types';
 import type { FastifyInstance } from 'fastify';
@@ -21,13 +21,8 @@ import { z } from 'zod';
 
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors';
 import { parseBody } from '../../lib/http';
-import { answerLessonQuestion } from './mentor';
 import type { ApiEnv } from '../../env';
-import {
-  generateLessonDraft,
-  generateQuestionsFromNotes,
-  questionsFromNotes,
-} from './generator';
+import { generateLessonDraft, generateQuestionsFromNotes, questionsFromNotes } from './generator';
 import { TextAiError } from '@void-space/studio-ai/text';
 
 const lessonParamsSchema = z.object({ id: z.string().uuid() });
@@ -108,7 +103,9 @@ function subjectDraft(title: string, source: string) {
     .split(/(?<=[.!?])\s+|\n+/)
     .map((line) => line.trim())
     .filter((line) => line.length >= 12);
-  const outline = (sentences.length > 0 ? sentences : [notes]).slice(0, 6).map((line) => line.slice(0, 1000));
+  const outline = (sentences.length > 0 ? sentences : [notes])
+    .slice(0, 6)
+    .map((line) => line.slice(0, 1000));
   const recalled = (outline[0] ?? notes).slice(0, 280);
   return {
     title: title.slice(0, 200),
@@ -176,6 +173,8 @@ export async function learningRoutes(
   options: { env: ApiEnv },
 ): Promise<void> {
   await lessonProgressRoutes(app);
+  await learningAnalyticsRoutes(app, options.env);
+
   app.post(
     '/lessons',
     { preHandler: app.requirePermission('learning:manage') },
@@ -221,11 +220,25 @@ export async function learningRoutes(
       };
       if (input.generateWithAi) {
         try {
-          const result = await generateLessonDraft(subject, input.sourceText, options.env);
+          const preferredLanguage = await withPlatform(async (db) => {
+            const user = await db.user.findUnique({
+              where: { id: principal.userId },
+              select: { preferredLanguage: true },
+            });
+            return user?.preferredLanguage ?? 'en';
+          });
+          const result = await generateLessonDraft(
+            subject,
+            input.sourceText,
+            options.env,
+            fetch,
+            preferredLanguage,
+          );
           generated = result.content;
           generation = result.generation;
         } catch {
-          if (input.sourceText && input.title) generated = subjectDraft(input.title, input.sourceText);
+          if (input.sourceText && input.title)
+            generated = subjectDraft(input.title, input.sourceText);
           generation = {
             mode: 'template',
             reason:
@@ -399,6 +412,46 @@ export async function learningRoutes(
           questions: z.array(lessonQuestionSchema).parse(lesson.questions),
         },
       };
+    },
+  );
+
+  app.delete(
+    '/lessons/:id',
+    { preHandler: app.requirePermission('learning:manage') },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const { id } = lessonParamsSchema.parse(request.params);
+      await withTenant(principal.tenantId, async (db) => {
+        const lesson = await db.lesson.findFirst({
+          where: { id, tenantId: principal.tenantId },
+          select: {
+            id: true,
+            title: true,
+            isPublished: true,
+            courseLinks: { select: { id: true } },
+          },
+        });
+        if (!lesson) throw new NotFoundError('Lesson');
+        if (lesson.courseLinks.length > 0)
+          throw new ConflictError('Remove this lesson from its courses before deleting it.');
+
+        await recordAudit(
+          {
+            action: 'learning.lesson_deleted',
+            entityType: 'lesson',
+            entityId: id,
+            actorId: principal.userId,
+            actorLabel: principal.fullName,
+            beforeState: { title: lesson.title, isPublished: lesson.isPublished },
+          },
+          db,
+        );
+        const deleted = await db.lesson.deleteMany({
+          where: { id, tenantId: principal.tenantId },
+        });
+        if (!deleted.count) throw new NotFoundError('Lesson');
+      });
+      return reply.status(204).send();
     },
   );
 
@@ -655,26 +708,6 @@ export async function learningRoutes(
         : null,
       completedCourseIds: result.completedCourses,
     });
-  });
-
-  app.post('/lessons/:id/mentor', { preHandler: app.authenticate }, async (request) => {
-    const principal = request.principal!;
-    const { id } = lessonParamsSchema.parse(request.params);
-    const { question } = parseBody(mentorQuestionSchema, request.body);
-    const lesson = await withTenant(principal.tenantId, (db) =>
-      db.lesson.findFirst({ where: { id, tenantId: principal.tenantId, isPublished: true } }),
-    );
-    if (!lesson) throw new NotFoundError('Lesson not found');
-    return answerLessonQuestion(
-      {
-        title: lesson.title,
-        summary: lesson.summary,
-        narration: lesson.narration,
-        outline: z.array(z.string()).parse(lesson.outline),
-      },
-      question,
-      options.env,
-    );
   });
 
   app.get('/credentials/:id', { preHandler: app.authenticate }, async (request) => {

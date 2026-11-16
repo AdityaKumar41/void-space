@@ -10,4 +10,5 @@ export * from './notifications';
 export * from './developer';
 export * from './jobs';
 export * from './learning';
+export * from './documents';
 export * from './experience';

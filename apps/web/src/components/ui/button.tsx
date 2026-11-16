@@ -2,6 +2,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
 
 import { cn } from '../../lib/cn';
+import { useOptionalLanguage } from '../../lib/language';
 
 /**
  * The button, as a variant table rather than a stylesheet rule.
@@ -62,14 +63,19 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {}
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, selected, type = 'button', ...props }, ref) => (
-    <button
-      ref={ref}
-      type={type}
-      className={cn(buttonVariants({ variant, size, selected }), className)}
-      {...props}
-    />
-  ),
+  ({ className, variant, size, selected, type = 'button', children, ...props }, ref) => {
+    const { t } = useOptionalLanguage();
+    return (
+      <button
+        ref={ref}
+        type={type}
+        className={cn(buttonVariants({ variant, size, selected }), className)}
+        {...props}
+      >
+        {typeof children === 'string' ? t(children) : children}
+      </button>
+    );
+  },
 );
 Button.displayName = 'Button';
 
@@ -85,11 +91,12 @@ export function IconButton({
   children,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string; children: React.ReactNode }) {
+  const { t } = useOptionalLanguage();
   return (
     <button
       type="button"
-      aria-label={label}
-      title={label}
+      aria-label={t(label)}
+      title={t(label)}
       className={cn(
         'relative inline-flex h-9 w-9 items-center justify-center rounded-control border border-hairline bg-surface text-ink-dim transition-all duration-200 ease-standard hover:border-hairline-strong hover:bg-surface-raised hover:text-ink',
         className,

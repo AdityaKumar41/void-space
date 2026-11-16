@@ -122,7 +122,10 @@ DECLARE
     'experience_events',
     'field_guides',
     'field_guide_runs',
-    'venture_plans'
+    'venture_plans',
+    'documents',
+    'lesson_conversations',
+    'lesson_chat_messages'
   ];
 BEGIN
   FOREACH target_table IN ARRAY tenant_tables LOOP

@@ -293,6 +293,12 @@ function getMatcapTexture(): THREE.Texture {
 /** The materials owned by one prepared scene: mesh → its private clone(s). */
 type MaterialMap = Map<THREE.Mesh, THREE.Material | THREE.Material[]>;
 
+type PreparedPart = {
+  key: string;
+  position: THREE.Vector3;
+  offset: THREE.Vector3;
+};
+
 /** Builds the substitute material for an inspection mode. */
 function makeOverride(source: THREE.Material, mode: ShadeMode): THREE.Material {
   switch (mode) {
@@ -413,7 +419,7 @@ export interface ClipHandle {
  * ========================================================================================== */
 
 export interface SceneInteraction {
-  hotspots: readonly {
+  hotspots?: readonly {
     id: string;
     label: string;
     position: readonly [number, number, number];
@@ -474,10 +480,7 @@ function ModelScene({
     const center = bounds.getCenter(new THREE.Vector3());
     const size = bounds.getSize(new THREE.Vector3());
     const span = Math.max(size.x, size.y, size.z, 0.00001);
-    const parts = new Map<
-      THREE.Mesh,
-      { key: string; position: THREE.Vector3; offset: THREE.Vector3 }
-    >();
+    const parts = new Map<THREE.Mesh, PreparedPart>();
     let partIndex = 0;
     root.updateMatrixWorld(true);
     root.traverse((object) => {
@@ -494,7 +497,12 @@ function ModelScene({
             .worldToLocal(at.clone().add(direction))
             .sub(mesh.parent.worldToLocal(at.clone()))
         : direction;
-      parts.set(mesh, { key: `mesh-${partIndex++}`, position: mesh.position.clone(), offset });
+
+      parts.set(mesh, {
+        key: `mesh-${partIndex++}`,
+        position: mesh.position.clone(),
+        offset,
+      });
     });
     return { root, originals, center, span, parts };
   }, [scene, legacyDemoFaces]);
@@ -546,10 +554,11 @@ function ModelScene({
     onClips({ names: animations.map((clip) => clip.name), durations, actions: byName, mixer });
   }, [animations, actions, mixer, onClips]);
 
-  const surfaceGroup = useRef<THREE.Group>(null);
   const invalidate = useThree((state) => state.invalidate);
   useEffect(() => {
-    const isolated = interaction?.hotspots.find((h) => h.id === interaction.isolatedId)?.meshKey;
+    const isolated = interaction?.hotspots?.find(
+      (h) => h.id === interaction.isolatedId,
+    )?.meshKey;
     for (const [mesh, part] of prepared.parts) {
       mesh.position.copy(part.position);
       if (interaction?.exploded) mesh.position.add(part.offset);
@@ -558,6 +567,7 @@ function ModelScene({
     prepared.root.updateMatrixWorld(true);
     invalidate();
   }, [prepared, interaction?.exploded, interaction?.isolatedId, interaction?.hotspots, invalidate]);
+  const surfaceGroup = useRef<THREE.Group>(null);
   function pick(event: ThreeEvent<MouseEvent>) {
     if (
       !interaction?.onSurfacePick ||
@@ -579,7 +589,7 @@ function ModelScene({
   return (
     <group ref={surfaceGroup}>
       <primitive object={prepared.root} onClick={pick} />
-      {interaction?.hotspots.map((hotspot, index) => {
+      {interaction?.hotspots?.map((hotspot, index) => {
         if (interaction.isolatedId && hotspot.id !== interaction.isolatedId) return null;
         const position = prepared.center
           .clone()

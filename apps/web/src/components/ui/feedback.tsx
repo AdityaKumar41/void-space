@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { cn } from '../../lib/cn';
+import { useOptionalLanguage } from '../../lib/language';
 import { CubeIcon } from './icons';
 
 /**
@@ -25,9 +26,10 @@ export function Skeleton({ className }: { className?: string }) {
 
 /** The first frame of a screen: a label and three lines the shape of the content that is loading. */
 export function LoadingBlock({ label = 'Loading' }: { label?: string }) {
+  const { t } = useOptionalLanguage();
   return (
     <div className="rounded-card border border-hairline bg-surface px-5 py-6" role="status">
-      <div className="mb-4 text-[12px] font-semibold text-ink-faint">{label}</div>
+      <div className="mb-4 text-[12px] font-semibold text-ink-faint">{t(label)}</div>
       <div className="space-y-2.5">
         <Skeleton className="h-4 w-2/3" />
         <Skeleton className="h-4 w-1/2" />
@@ -55,6 +57,7 @@ export function ErrorNote({
   hint?: string;
   className?: string;
 }) {
+  const { t } = useOptionalLanguage();
   return (
     <div
       role="alert"
@@ -68,7 +71,7 @@ export function ErrorNote({
       <div className="flex flex-wrap items-center gap-3">
         <span className="inline-flex items-center gap-2 text-[13.5px] font-semibold text-state-rejected">
           <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />
-          Failed
+          {t('Failed')}
         </span>
         {code === undefined ? null : (
           <span className="font-mono text-[12px] text-ink-faint">{code}</span>
@@ -99,11 +102,12 @@ export function EmptyState({
   action?: React.ReactNode;
   className?: string;
 }) {
+  const { t } = useOptionalLanguage();
   return (
     <div className={cn('flex flex-col items-center px-6 py-16 text-center', className)}>
       <CubeIcon className="text-ink-faint opacity-40" width={30} height={30} />
-      <div className="mt-4 text-[17px] font-semibold tracking-[-0.015em] text-ink">{title}</div>
-      <p className="mt-2 max-w-[46ch] text-[13.5px] leading-relaxed text-ink-faint">{hint}</p>
+      <div className="mt-4 text-[17px] font-semibold tracking-[-0.015em] text-ink">{t(title)}</div>
+      <p className="mt-2 max-w-[46ch] text-[13.5px] leading-relaxed text-ink-faint">{t(hint)}</p>
       {action === undefined ? null : (
         <div className="mt-6 flex flex-wrap justify-center gap-2">{action}</div>
       )}

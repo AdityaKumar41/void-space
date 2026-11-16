@@ -389,7 +389,7 @@ export default function AssetConsolePage() {
           </div>
         </section>
 
-        <div className="flex min-w-0 flex-col">
+        <div className="flex min-w-0 flex-col gap-5">
           <AssetIntegrityPanel
             asset={asset}
             version={version}

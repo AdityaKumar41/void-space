@@ -47,31 +47,10 @@ try {
   tenantId = demoId('tenant:aurora');
   if (body.generation.mode !== 'ai')
     throw new Error('Provider did not return a valid lesson; a labelled template was created');
-  const published = await app.inject({
-    method: 'POST',
-    url: `/api/v1/lessons/${lessonId}/publish`,
-    headers: { cookie },
-  });
-  if (published.statusCode !== 200)
-    throw new Error(`Publishing returned HTTP ${published.statusCode}`);
-  const mentor = await app.inject({
-    method: 'POST',
-    url: `/api/v1/lessons/${lessonId}/mentor`,
-    headers: { cookie },
-    payload: { question: 'Which component supplies power?' },
-  });
-  const answer = mentor.json();
-  if (
-    mentor.statusCode !== 200 ||
-    answer.mode !== 'ai' ||
-    !answer.answer.toLowerCase().includes('battery')
-  )
-    throw new Error('Mentor did not produce a grounded AI answer');
   console.log(
     JSON.stringify({
       ok: true,
       generation: body.generation,
-      mentor: { mode: answer.mode, model: answer.model },
       questions: body.lesson.questions.length,
     }),
   );

@@ -8,7 +8,7 @@
  */
 import type { ApiError } from '@void-space/types';
 
-export const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
+export const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:4000';
 export const API_PUBLIC_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api/v1';
 
 /** An API failure carrying the stable `code` the UI branches on. */
@@ -37,6 +37,8 @@ interface RequestOptions {
   readonly suppressErrorLog?: boolean;
   /** Internal: prevents an infinite refresh→retry→refresh loop. */
   readonly skipRefresh?: boolean;
+  /** Expected response type. JSON by default; binary endpoints pass their media type. */
+  readonly accept?: string;
 }
 
 async function parse<T>(response: Response, path: string): Promise<T> {
@@ -137,6 +139,50 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   return parse<T>(response, path);
 }
 
+/**
+ * Fetches a binary response (OpenAI speech audio).
+ *
+ * Kept separate from `apiFetch` because `parse` always decodes JSON. The error path still
+ * parses the API's JSON envelope, so a missing OpenAI key reaches the UI as a typed
+ * `ApiRequestError` rather than as an unreadable blob.
+ */
+export async function apiFetchBlob(
+  path: string,
+  options: RequestOptions = {},
+): Promise<Blob> {
+  let response = await send(path, { ...options, accept: options.accept ?? 'audio/mpeg' });
+
+  const canRefresh =
+    response.status === 401 &&
+    !options.skipRefresh &&
+    !options.cookieHeader &&
+    typeof window !== 'undefined' &&
+    !NO_REFRESH_PATHS.some((prefix) => path.startsWith(prefix));
+
+  if (canRefresh && (await refreshSession())) {
+    response = await send(path, { ...options, accept: options.accept ?? 'audio/mpeg' });
+  }
+
+  if (!response.ok) {
+    const text = await response.text();
+    let body: Partial<ApiError> = {};
+    if (text.length > 0) {
+      try {
+        body = JSON.parse(text) as Partial<ApiError>;
+      } catch {
+        // A binary endpoint can still fail outside the JSON envelope; the status is the useful part.
+      }
+    }
+    throw new ApiRequestError(
+      response.status,
+      body,
+      `${response.status} ${response.statusText} for ${path}`,
+    );
+  }
+
+  return response.blob();
+}
+
 /** Issues one request; kept separate so `apiFetch` can retry it verbatim after a refresh. */
 async function send(path: string, options: RequestOptions): Promise<Response> {
   const base = options.baseUrl ?? API_PUBLIC_BASE;
@@ -145,7 +191,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
   return fetch(url, {
     method: options.method ?? 'GET',
     headers: {
-      accept: 'application/json',
+      accept: options.accept ?? 'application/json',
       ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),
       ...(options.cookieHeader ? { cookie: options.cookieHeader } : {}),
     },

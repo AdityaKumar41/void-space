@@ -141,6 +141,14 @@ function LibraryView({
   const assets = useQuery<Paginated<AssetSummaryView>>({
     queryKey: ['assets', query.toString()],
     queryFn: () => apiFetch<Paginated<AssetSummaryView>>(`/assets?${query.toString()}`),
+    refetchInterval: (queryState) =>
+      queryState.state.data?.items.some(
+        (asset) =>
+          asset.currentVersion?.pinStatus === 'pending' ||
+          asset.currentVersion?.pinStatus === 'pinning',
+      )
+        ? 2_000
+        : false,
   });
 
   const tenant = useQuery<TenantView>({
@@ -321,6 +329,8 @@ function LibraryView({
                           asset.creator ? ` · ${asset.creator.fullName}` : ''
                         }`}
                         cid={version?.ipfsCid ?? null}
+                        format={version?.format ?? null}
+                        pinStatus={version?.pinStatus ?? null}
                         polycount={version?.polycount ?? null}
                         sizeBytes={version?.sizeBytes ?? null}
                         badge={`v${version?.versionNumber ?? '—'}`}

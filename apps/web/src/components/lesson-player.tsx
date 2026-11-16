@@ -7,6 +7,8 @@ import { Card } from './ui/card';
 import { ErrorNote } from './ui/feedback';
 import { useLessonProgress } from '../lib/use-lesson-progress';
 import { apiFetch } from '../lib/api';
+import { LANGUAGES, useLanguage } from '../lib/language';
+import type { LanguageCode } from '@void-space/types';
 
 export interface DeliveryLesson {
   id: string;
@@ -35,6 +37,10 @@ interface Result {
   review?: ReviewItem[];
   credential: { id: string; verificationCode: string } | null;
 }
+type LessonTranslation = Pick<
+  DeliveryLesson,
+  'title' | 'summary' | 'narration' | 'outline' | 'questions'
+>;
 
 export function LessonPlayer({
   lesson,
@@ -47,20 +53,27 @@ export function LessonPlayer({
   sharedStep?: number;
   onSharedStep?: (step: number) => void;
 }) {
-  const [modelReady, setModelReady] = useState(false);
+  const { language, t } = useLanguage();
   const progress = useLessonProgress(lesson.id, lesson.media?.versionId ?? null);
   const { step, assessment, answers } = progress.state;
   const setStep = (step: number) => progress.update({ step });
   const setAssessment = (assessment: boolean) => progress.update({ assessment });
   const setAnswers = (answers: Record<string, number>) => progress.update({ answers });
-  const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
-  const [mentorMode, setMentorMode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [speaking, setSpeaking] = useState(false);
+  const [translation, setTranslation] = useState<{
+    language: LanguageCode;
+    content: LessonTranslation;
+  } | null>(null);
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const isTranslationVisible = showTranslation && translation?.language === language;
+  const displayedLesson = isTranslationVisible && translation
+    ? { ...lesson, ...translation.content }
+    : lesson;
+
   useEffect(() => {
     if (
       progress.loaded &&
@@ -91,30 +104,11 @@ export function LessonPlayer({
       setSpeaking(false);
       return;
     }
-    const utterance = new SpeechSynthesisUtterance(lesson.narration);
+    const utterance = new SpeechSynthesisUtterance(displayedLesson.narration);
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
     setSpeaking(true);
     window.speechSynthesis.speak(utterance);
-  }
-  async function ask(text = question) {
-    const prompt = text.trim();
-    if (prompt.length < 2) return;
-    setQuestion(prompt);
-    setAsking(true);
-    setError(null);
-    try {
-      const response = await apiFetch<{ answer: string; mode: string }>(
-        `/lessons/${lesson.id}/mentor`,
-        { method: 'POST', body: { question: prompt } },
-      );
-      setAnswer(response.answer);
-      setMentorMode(response.mode);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setAsking(false);
-    }
   }
   async function submit() {
     setBusy(true);
@@ -132,28 +126,79 @@ export function LessonPlayer({
       setBusy(false);
     }
   }
+  async function translateLesson() {
+    if (translation?.language === language) {
+      setShowTranslation((visible) => !visible);
+      return;
+    }
+
+    setTranslating(true);
+    setError(null);
+    try {
+      const result = await apiFetch<{ translation: LessonTranslation }>(
+        `/translations/lessons/${lesson.id}`,
+        { method: 'POST', body: { targetLanguage: language } },
+      );
+      setTranslation({ language, content: result.translation });
+      setShowTranslation(true);
+    } catch (caught) {
+      const code = (caught as { code?: string }).code;
+      setError(
+        code === 'AI_TRANSLATION_UNAVAILABLE'
+          ? t('AI translation is unavailable. Configure a text AI provider and try again.')
+          : t('Could not translate this content. Try again.'),
+      );
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   return (
     <div className="space-y-5 lesson-workspace">
       {close ? (
         <button type="button" onClick={close} className="text-sm text-ink-dim hover:text-ink">
-          ← All lessons
+          ← {t('All lessons')}
         </button>
       ) : null}
       <div>
-        <p className="eyebrow">{assessment ? 'Quiz' : 'Lesson'}</p>
-        <h1 className="mt-2 text-ink">{lesson.title}</h1>
-        <p className="mt-3 max-w-[65ch] text-ink-dim">{lesson.summary}</p>
+        <p className="eyebrow">{assessment ? t('Quiz') : t('Lesson')}</p>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-ink">{displayedLesson.title}</h1>
+          {language === 'en' ? null : (
+            <Button variant="ghost" disabled={translating} onClick={() => void translateLesson()}>
+              {translating
+                ? t('Translating…')
+                : isTranslationVisible
+                  ? t('Show original')
+                  : t('Translate to {language}', {
+                      language:
+                        LANGUAGES.find((option) => option.code === language)?.label ?? language,
+                    })}
+            </Button>
+          )}
+        </div>
+        {isTranslationVisible ? (
+          <p className="mt-2 text-xs text-ink-faint">
+            {t('Translation is shown temporarily and does not change the original.')}
+          </p>
+        ) : null}
+        <p className="mt-3 max-w-[65ch] text-ink-dim">{displayedLesson.summary}</p>
         <div className="mt-4 max-w-md">
           <div className="learn-progress" aria-hidden>
             <span
               style={{
-                width: `${assessment ? 100 : Math.round(((step + 1) / lesson.outline.length) * 100)}%`,
+                width: `${assessment ? 100 : Math.round(((step + 1) / displayedLesson.outline.length) * 100)}%`,
               }}
             />
           </div>
           <p role="status" className="mt-2 text-xs text-ink-faint">
             {progress.status}
-            {assessment ? ' · Assessment' : ` · Step ${step + 1} of ${lesson.outline.length}`}
+            {assessment
+              ? ` · ${t('Assessment')}`
+              : ` · ${t('Step {current} of {total}', {
+                  current: step + 1,
+                  total: displayedLesson.outline.length,
+                })}`}
           </p>
         </div>
       </div>
@@ -212,21 +257,21 @@ export function LessonPlayer({
         </Card>
       ) : (
         <>
-          <fieldset
-            disabled={!progress.loaded}
+          <div
             className={
               lesson.media?.cid
-                ? 'grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,0.85fr)]'
+                ? 'grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,0.95fr)]'
                 : 'min-w-0'
             }
           >
+            <fieldset disabled={!progress.loaded} className="min-w-0 border-0 p-0">
             <Card className="space-y-4 p-5">
               <p className="eyebrow">
-                Study · {step + 1} of {lesson.outline.length}
+                {t('Study')} · {step + 1} / {displayedLesson.outline.length}
               </p>
-              <h2 className="text-xl text-ink">{lesson.outline[step]}</h2>
-              <nav aria-label="Lesson steps" className="space-y-2">
-                {lesson.outline.map((item, i) => (
+              <h2 className="text-xl text-ink">{displayedLesson.outline[step]}</h2>
+              <nav aria-label={t('Lesson steps')} className="space-y-2">
+                {displayedLesson.outline.map((item, i) => (
                   <button
                     key={i}
                     type="button"
@@ -241,43 +286,35 @@ export function LessonPlayer({
               </nav>
               <div className="flex gap-2">
                 <Button variant="ghost" disabled={step === 0} onClick={() => move(step - 1)}>
-                  Previous
+                  {t('Previous')}
                 </Button>
                 <Button
-                  disabled={step === lesson.outline.length - 1}
+                  disabled={step === displayedLesson.outline.length - 1}
                   onClick={() => move(step + 1)}
                 >
-                  Next step
+                  {t('Next step')}
                 </Button>
               </div>
             </Card>
+            </fieldset>
             {lesson.media?.cid ? (
-              <div>
-                <ModelStage
-                  key={lesson.media.versionId}
-                  onReady={() => setModelReady(true)}
-                  cid={lesson.media.cid}
-                  format={lesson.media.format}
-                  name={lesson.title}
-                  polycount={lesson.media.polycount}
-                  presentation
-                />
-                <p className="mt-2 text-xs text-ink-dim" role="status">
-                  {modelReady ? 'Model ready. ' : 'Loading the model… '}
-                  Drag to turn it. Scroll to zoom.
-                </p>
-              </div>
+              <ModelStage
+                cid={lesson.media.cid}
+                format={lesson.media.format}
+                name={displayedLesson.title}
+                polycount={lesson.media.polycount}
+              />
             ) : null}
-          </fieldset>
+          </div>
           <Card className="space-y-3 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="font-semibold text-ink">Reading</h2>
+              <h2 className="font-semibold text-ink">{t('Reading')}</h2>
               <Button variant="ghost" onClick={narrate}>
-                {speaking ? 'Stop narration' : 'Read aloud'}
+                {speaking ? t('Stop narration') : t('Read aloud')}
               </Button>
             </div>
             <p className="max-w-[65ch] whitespace-pre-wrap leading-relaxed text-ink-dim">
-              {lesson.narration}
+              {displayedLesson.narration}
             </p>
           </Card>
           {!assessment ? (
@@ -286,12 +323,12 @@ export function LessonPlayer({
               variant="primary"
               onClick={() => setAssessment(true)}
             >
-              Start quiz · {lesson.questions.length} questions
+              {t('Start quiz · {count} questions', { count: displayedLesson.questions.length })}
             </Button>
           ) : (
             <Card className="space-y-6 p-5">
-              <h2 className="text-xl text-ink">Quiz</h2>
-              {lesson.questions.map((q, i) => (
+              <h2 className="text-xl text-ink">{t('Quiz')}</h2>
+              {displayedLesson.questions.map((q, i) => (
                 <fieldset key={q.id} className="space-y-2">
                   <legend className="mb-3 text-ink">
                     {i + 1}. {q.prompt}
@@ -316,57 +353,14 @@ export function LessonPlayer({
                 disabled={
                   !progress.loaded ||
                   busy ||
-                  lesson.questions.some((q) => answers[q.id] === undefined)
+                  displayedLesson.questions.some((q) => answers[q.id] === undefined)
                 }
                 onClick={submit}
               >
-                {busy ? 'Scoring…' : 'Submit quiz'}
+                {busy ? t('Scoring…') : t('Submit quiz')}
               </Button>
             </Card>
           )}
-          <Card className="space-y-3 p-5">
-            <h2 className="font-semibold text-ink">Ask about this lesson</h2>
-            <p className="max-w-[65ch] text-sm leading-relaxed text-ink-dim">
-              Type a question about the reading. The reply uses this lesson. It does not give away
-              the quiz answers.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {lesson.outline.slice(0, 3).map((step) => (
-                <button
-                  key={step}
-                  type="button"
-                  className="learn-step"
-                  disabled={asking}
-                  onClick={() => void ask(`What should I know about this: ${step}`)}
-                >
-                  {step}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                aria-label="Question about this lesson"
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void ask();
-                }}
-                placeholder="Example: What does the right atrium do?"
-                className="min-w-0 flex-1 rounded-control border border-hairline bg-surface p-3 text-sm text-ink"
-              />
-              <Button disabled={asking || question.trim().length < 2} onClick={() => void ask()}>
-                {asking ? 'Looking…' : 'Ask'}
-              </Button>
-            </div>
-            {answer ? (
-              <div className="learn-note" role="status">
-                <p className="mb-2 text-xs font-semibold text-brand">
-                  {mentorMode === 'ai' ? 'Answer from the lesson model' : 'Answer from this lesson'}
-                </p>
-                <p className="whitespace-pre-wrap leading-relaxed">{answer}</p>
-              </div>
-            ) : null}
-          </Card>
         </>
       )}
     </div>

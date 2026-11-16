@@ -12,9 +12,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '../../../lib/api';
 import { formatNumber, formatRelative } from '../../../lib/format';
-import { EmptyBlock, EventChip, PageHead } from '../../../components/console-kit';
+import { EmptyBlock, EventChip, eventLabel, PageHead } from '../../../components/console-kit';
 import { Panel } from '../../../components/ui/card';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
+import { useLanguage } from '../../../lib/language';
 
 interface NotificationItem {
   readonly id: string;
@@ -37,6 +38,7 @@ function body(item: NotificationItem): string | null {
 }
 
 export default function NotificationsPage() {
+  const { language, t } = useLanguage();
   const queryClient = useQueryClient();
 
   const notifications = useQuery<{
@@ -59,11 +61,14 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-7">
       <PageHead
-        title="Alerts"
+        title={t('Alerts')}
         meta={
           notifications.data
-            ? `${formatNumber(unread)} unread · ${formatNumber(notifications.data.total)} total · the newest 50 are shown`
-            : 'Querying'
+            ? t('{unread} unread · {total} total · the newest 50 are shown', {
+                unread: formatNumber(unread),
+                total: formatNumber(notifications.data.total),
+              })
+            : t('Querying')
         }
         actions={
           <button
@@ -72,19 +77,19 @@ export default function NotificationsPage() {
             disabled={unread === 0}
             onClick={() => void markAllRead()}
           >
-            Mark all read
+            {t('Mark all read')}
           </button>
         }
       />
 
-      <Panel title="Event feed" right={unread > 0 ? `${unread} unread` : 'all read'}>
-        {notifications.isLoading ? <LoadingBlock label="Loading alerts" /> : null}
+      <Panel title={t('Event feed')} right={unread > 0 ? t('{count} unread notifications', { count: unread }) : t('all read')}>
+        {notifications.isLoading ? <LoadingBlock label={t('Loading alerts')} /> : null}
         {notifications.error ? <ErrorNote message={(notifications.error as Error).message} /> : null}
 
         {notifications.data && notifications.data.items.length === 0 ? (
           <EmptyBlock
-            title="No alerts"
-            hint="Review decisions, publishes, failed mints and invitations all land here, so an empty feed means the workspace has been quiet."
+            title={t('No alerts')}
+            hint={t('Review decisions, publishes, failed mints and invitations all land here, so an empty feed means the workspace has been quiet.')}
           />
         ) : null}
 
@@ -104,7 +109,7 @@ export default function NotificationsPage() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-3">
                     <EventChip action={item.type} />
-                    {item.readAt ? null : <span className="font-mono text-[11px] text-brand">Unread</span>}
+                    {item.readAt ? null : <span className="font-mono text-[11px] text-brand">{t('Unread')}</span>}
                   </div>
                   <div className="mt-1.5 text-[14px] font-medium">{label(item)}</div>
                   {body(item) ? (
@@ -115,9 +120,11 @@ export default function NotificationsPage() {
                       {body(item)}
                     </div>
                   ) : null}
-                  <div className="font-mono text-[11.5px] tracking-[0.01em] tabular-nums text-ink-faint mt-2">{item.type}</div>
+                  <div className="font-mono text-[11.5px] tracking-[0.01em] tabular-nums text-ink-faint mt-2">{t(eventLabel(item.type))}</div>
                 </div>
-                <span className="font-mono text-[12px] text-ink-dim whitespace-nowrap">{formatRelative(item.createdAt)}</span>
+                  <span className="font-mono text-[12px] text-ink-dim whitespace-nowrap">
+                    {formatRelative(item.createdAt, language === 'te' ? 'te-IN' : language === 'hi' ? 'hi-IN' : 'en-US')}
+                  </span>
               </li>
             ))}
           </ul>

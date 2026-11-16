@@ -9,7 +9,9 @@
  *   TC-AUTH-005  API key exchange scoped to the Developer role        (FR-2.5)
  *   TC-AUTH-007  refresh rotation and reuse detection                 (§3.7)
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { Prisma, platformPrisma, prisma, withPlatform } from '@void-space/db';
+import { authenticationDatabaseError } from '../src/modules/auth/routes';
 
 import { DEMO, cookieHeader, createTestApp, login, type TestApp } from './helpers';
 
@@ -32,6 +34,16 @@ function decodeJwtPayload(token: string): Record<string, unknown> {
 }
 
 describe('FR-2.1 email/password authentication', () => {
+  it('connects through both application and platform database roles', async () => {
+    const [applicationRows, platformRows] = await Promise.all([
+      prisma.$queryRaw<{ connected: number }[]>`SELECT 1 AS connected`,
+      withPlatform((db) => db.$queryRaw<{ connected: number }[]>`SELECT 1 AS connected`),
+    ]);
+
+    expect(applicationRows).toEqual([{ connected: 1 }]);
+    expect(platformRows).toEqual([{ connected: 1 }]);
+  });
+
   it('TC-AUTH-001 signs in a seeded user and returns the workspace shell', async () => {
     const result = await login(context.app, DEMO.users.auroraAdmin);
 
@@ -42,6 +54,99 @@ describe('FR-2.1 email/password authentication', () => {
     expect(user['permissions']).toContain('tenant:manage-users');
     expect(result.accessToken).not.toBe('');
     expect(result.refreshToken).not.toBe('');
+  });
+
+  it('persists language preference across every workspace membership', async () => {
+    const email = DEMO.users.multiTenant;
+    const originalRows = await withPlatform((db) =>
+      db.user.findMany({
+        where: { email },
+        select: { id: true, tenantId: true, preferredLanguage: true },
+      }),
+    );
+    const membership = originalRows[0];
+    expect(membership).toBeDefined();
+    if (!membership) return;
+
+    try {
+      const signedIn = await login(context.app, email, DEMO.password, membership.tenantId);
+      expect(signedIn.statusCode).toBe(200);
+      const headers = { cookie: cookieHeader(signedIn.cookies, 'vs_access') };
+      const update = await context.app.inject({
+        method: 'PATCH',
+        url: '/api/v1/auth/language',
+        headers,
+        payload: { preferredLanguage: 'te' },
+      });
+      expect(update.statusCode).toBe(200);
+      expect(update.json()).toEqual({ preferredLanguage: 'te' });
+
+      const session = await context.app.inject({
+        method: 'GET',
+        url: '/api/v1/auth/me',
+        headers,
+      });
+      expect(session.statusCode).toBe(200);
+      expect(session.json().user.preferredLanguage).toBe('te');
+
+      const updatedRows = await withPlatform((db) =>
+        db.user.findMany({ where: { email }, select: { preferredLanguage: true } }),
+      );
+      expect(updatedRows.every((row) => row.preferredLanguage === 'te')).toBe(true);
+    } finally {
+      await withPlatform(async (db) => {
+        for (const row of originalRows) {
+          await db.user.update({
+            where: { id: row.id },
+            data: { preferredLanguage: row.preferredLanguage },
+          });
+        }
+      });
+    }
+  });
+
+  it.each([
+    [DEMO.users.superAdmin, 'SuperAdmin'],
+    [DEMO.users.auroraCreator, 'Creator'],
+    [DEMO.users.auroraAssessor, 'Assessor'],
+    [DEMO.users.auroraAdmin, 'TenantAdmin'],
+    [DEMO.users.auroraDeveloper, 'Developer'],
+    [DEMO.users.auroraViewer, 'Viewer'],
+    [DEMO.users.northwindAdmin, 'TenantAdmin'],
+  ] as const)('authenticates the demo account for role %s', async (email, role) => {
+    const result = await login(context.app, email);
+
+    expect(result.statusCode).toBe(200);
+    expect((result.body['user'] as Record<string, unknown>)['roles']).toEqual([role]);
+    expect(result.accessToken).not.toBe('');
+    expect(result.refreshToken).not.toBe('');
+  });
+
+  it('authenticates Priya into either of her tenant memberships', async () => {
+    const selection = await login(context.app, DEMO.users.multiTenant);
+    expect(selection.statusCode).toBe(200);
+    expect(selection.body['requiresTenantSelection']).toBe(true);
+
+    const tenants = selection.body['tenants'] as { id: string; slug: string; roles: string[] }[];
+    expect(tenants).toHaveLength(2);
+    expect(tenants.find((tenant) => tenant.slug === DEMO.tenants.auroraSlug)?.roles).toEqual([
+      'Creator',
+    ]);
+    expect(tenants.find((tenant) => tenant.slug === DEMO.tenants.northwindSlug)?.roles).toEqual([
+      'Assessor',
+    ]);
+
+    for (const [slug, role] of [
+      [DEMO.tenants.auroraSlug, 'Creator'],
+      [DEMO.tenants.northwindSlug, 'Assessor'],
+    ] as const) {
+      const tenant = tenants.find((choice) => choice.slug === slug);
+      expect(tenant).toBeDefined();
+      const result = await login(context.app, DEMO.users.multiTenant, DEMO.password, tenant?.id);
+
+      expect(result.statusCode).toBe(200);
+      expect((result.body['user'] as Record<string, unknown>)['roles']).toEqual([role]);
+    }
   });
 
   it('rejects a wrong password with 401 INVALID_CREDENTIALS', async () => {
@@ -62,6 +167,28 @@ describe('FR-2.1 email/password authentication', () => {
 
     expect(response.statusCode).toBe(400);
     expect((response.json() as { code: string }).code).toBe('VALIDATION_ERROR');
+  });
+
+  it('reports database connectivity failures as 503 without leaking database details', async () => {
+    const databaseError = new Prisma.PrismaClientInitializationError(
+      'database endpoint unavailable',
+      'test',
+    );
+    const mapped = authenticationDatabaseError(databaseError);
+
+    expect(mapped?.statusCode).toBe(503);
+    expect(mapped?.code).toBe('AUTHENTICATION_UNAVAILABLE');
+    expect(mapped?.message).toBe('Authentication is temporarily unavailable. Please try again.');
+    expect(mapped?.message).not.toContain('database endpoint unavailable');
+    const poolTimeout = new Error('database connection pool timed out');
+    poolTimeout.name = 'PrismaClientKnownRequestError';
+    Object.assign(poolTimeout, { code: 'P2024' });
+    expect(authenticationDatabaseError(poolTimeout)?.statusCode).toBe(503);
+    const schemaMismatch = new Error('column does not exist');
+    schemaMismatch.name = 'PrismaClientKnownRequestError';
+    Object.assign(schemaMismatch, { code: 'P2022' });
+    expect(authenticationDatabaseError(schemaMismatch)?.statusCode).toBe(503);
+    expect(authenticationDatabaseError(new Error('unrelated failure'))).toBeNull();
   });
 });
 
@@ -103,9 +230,7 @@ describe('FR-2.3 token delivery', () => {
       headers: { cookie: cookieHeader(result.cookies, 'vs_access') },
     });
     expect(good.statusCode).toBe(200);
-    expect((good.json() as { tenant: { slug: string } }).tenant.slug).toBe(
-      DEMO.tenants.auroraSlug,
-    );
+    expect((good.json() as { tenant: { slug: string } }).tenant.slug).toBe(DEMO.tenants.auroraSlug);
 
     const tampered = await context.app.inject({
       method: 'GET',
@@ -124,10 +249,16 @@ describe('FR-1.4 multi-workspace membership', () => {
     expect(result.statusCode).toBe(200);
     expect(result.body['requiresTenantSelection']).toBe(true);
 
-    const tenants = result.body['tenants'] as { slug: string }[];
+    const tenants = result.body['tenants'] as { slug: string; roles: string[] }[];
     expect(tenants.map((tenant) => tenant.slug).sort()).toEqual(
       [DEMO.tenants.auroraSlug, DEMO.tenants.northwindSlug].sort(),
     );
+    expect(tenants.find((tenant) => tenant.slug === DEMO.tenants.auroraSlug)?.roles).toEqual([
+      'Creator',
+    ]);
+    expect(tenants.find((tenant) => tenant.slug === DEMO.tenants.northwindSlug)?.roles).toEqual([
+      'Assessor',
+    ]);
     // No session is created before the choice is made.
     expect(result.accessToken).toBe('');
     expect(result.refreshToken).toBe('');
@@ -325,3 +456,30 @@ describe('FR-2.7 session invalidation', () => {
   });
 });
 
+describe('login database error responses', () => {
+  it('returns a JSON error envelope without exposing database details', async () => {
+    const databaseError = new Prisma.PrismaClientInitializationError(
+      'database endpoint unavailable',
+      'test',
+    );
+    const findMany = vi.spyOn(platformPrisma.user, 'findMany').mockRejectedValue(databaseError);
+
+    try {
+      const response = await context.app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email: DEMO.users.auroraCreator, password: DEMO.password },
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.headers['content-type']).toContain('application/json');
+      expect(response.json()).toMatchObject({
+        code: 'AUTHENTICATION_UNAVAILABLE',
+        message: 'Internal server error',
+      });
+      expect(response.body).not.toContain('database endpoint unavailable');
+    } finally {
+      findMany.mockRestore();
+    }
+  });
+});

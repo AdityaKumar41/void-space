@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { cn } from '../../lib/cn';
+import { useOptionalLanguage } from '../../lib/language';
 import { SearchIcon } from './icons';
 
 /**
@@ -71,9 +72,10 @@ export function Field({
   className?: string;
   children: React.ReactNode;
 }) {
+  const { t } = useOptionalLanguage();
   return (
     <label className={cn('block', className)}>
-      <span className="mb-1.5 block text-[12px] font-semibold text-ink-faint">{label}</span>
+      <span className="mb-1.5 block text-[12px] font-semibold text-ink-faint">{t(label)}</span>
       {children}
       {hint === undefined ? null : (
         <span className="mt-1.5 block text-[12px] leading-relaxed text-ink-faint">{hint}</span>
@@ -93,13 +95,14 @@ export function SearchField({
   className,
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  const { t } = useOptionalLanguage();
   return (
     <div className={cn('relative flex items-center', className)}>
       <SearchIcon className="pointer-events-none absolute left-3.5 text-ink-faint" />
       <input
         type="search"
-        aria-label={label}
-        placeholder={label}
+        aria-label={t(label)}
+        placeholder={t(label)}
         className={cn(CONTROL, 'w-full pl-10 pr-3.5 text-[14px]')}
         {...props}
       />

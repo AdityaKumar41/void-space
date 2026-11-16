@@ -62,6 +62,10 @@ export async function createTestApp(): Promise<TestApp> {
     AI_TEXT_BASE_URL: undefined,
     AI_BASE_URL: undefined,
     OPENROUTER_API_KEY: undefined,
+    // Keep the suite deterministic and offline: a developer's real OpenAI/Gemini keys
+    // must not turn the "AI not configured" assertions into live paid API calls.
+    OPENAI_API_KEY: undefined,
+    GEMINI_API_KEY: undefined,
     CHAIN_RPC_URL: process.env.CHAIN_RPC_URL || 'http://localhost:8545',
     ...(localChain ? { CHAIN_ID: '31337' } : {}),
   });

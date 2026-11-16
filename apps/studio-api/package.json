@@ -6,8 +6,8 @@
   "description": "VOID·STUDIO's control-plane API behind /studio/api/v1 (VS2-SRS-1.0 §6.4): federated sessions, the project index, the VOID·SPACE bridge and the publish handoff (§3.5.2, FR-14.x).",
   "main": "./src/server.ts",
   "scripts": {
-    "dev": "NODE_EXTRA_CA_CERTS=../../docker/certs/void-space.crt tsx watch src/server.ts",
-    "start": "NODE_EXTRA_CA_CERTS=../../docker/certs/void-space.crt tsx src/server.ts",
+    "dev": "cross-env NODE_EXTRA_CA_CERTS=../../docker/certs/void-space.crt tsx watch src/server.ts",
+    "start": "cross-env NODE_EXTRA_CA_CERTS=../../docker/certs/void-space.crt tsx src/server.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.17.10",
+    "cross-env": "7.0.3",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"

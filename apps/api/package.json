@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Fastify REST API for VOID\u00b7SPACE \u2014 the single source of truth for authorization, tenancy enforcement and business rules (SRS \u00a73.1, \u00a76.4).",
+  "description": "Fastify REST API for VOID·SPACE — the single source of truth for authorization, tenancy enforcement and business rules (SRS §3.1, §6.4).",
   "main": "./src/server.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -22,16 +22,18 @@
     "@fastify/swagger": "^8.15.0",
     "@fastify/swagger-ui": "^4.2.0",
     "@void-space/db": "workspace:*",
+    "@void-space/studio-ai": "workspace:*",
     "@void-space/types": "workspace:*",
     "bullmq": "^5.34.10",
     "fastify": "^4.29.0",
     "fastify-plugin": "^4.5.1",
     "ioredis": "^5.4.2",
+    "mammoth": "1.13.0",
+    "pdfjs-dist": "4.10.38",
     "pino": "^9.5.0",
     "pino-pretty": "^13.0.0",
     "viem": "^2.56.8",
-    "zod": "^3.24.1",
-    "@void-space/studio-ai": "workspace:*"
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^20.17.10",

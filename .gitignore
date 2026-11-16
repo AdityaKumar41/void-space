@@ -47,6 +47,9 @@ packages/types/src/contracts/*.abi.json
 # Upload staging area (FR-3.1): transient binaries awaiting the ipfs-pin worker.
 .staging/
 
+# Private Documents & Notes store: uploaded reading material, never committed.
+.documents/
+
 # agents skills
 .agents/*
 

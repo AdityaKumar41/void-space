@@ -16,7 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect } from 'react';
 
-import type { Permission, Role } from '@void-space/types';
+import type { LanguageCode, Permission, Role } from '@void-space/types';
 
 import { apiFetch, refreshSession } from './api';
 import type { Membership, SessionTenant, SessionView } from './session-types';
@@ -42,6 +42,7 @@ interface SessionContextValue {
   hasRole(role: Role): boolean;
   signOut(): Promise<void>;
   switchTenant(tenantId: string): Promise<void>;
+  setPreferredLanguage(language: LanguageCode): Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -115,6 +116,13 @@ export function SessionProvider({
       if (result.user?.tenants) optimisticMemberships = result.user.tenants;
       await query.refetch();
       optimisticMemberships = null;
+    },
+    async setPreferredLanguage(language) {
+      await apiFetch('/auth/language', {
+        method: 'PATCH',
+        body: { preferredLanguage: language },
+      });
+      await query.refetch();
     },
   };
 

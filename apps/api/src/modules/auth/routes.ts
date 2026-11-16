@@ -19,14 +19,17 @@
 import {
   acceptInviteSchema,
   apiKeyExchangeSchema,
+  canChangeLanguage,
   changePasswordSchema,
   loginSchema,
+  languagePreferenceSchema,
   registerSchema,
   switchTenantSchema,
   type AuthResponse,
   type SessionUser,
 } from '@void-space/types';
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { withPlatform } from '@void-space/db';
 
 import type { ApiEnv } from '../../env';
 import {
@@ -38,6 +41,7 @@ import {
   setRefreshCookie,
 } from '../../lib/cookies';
 import { parseDurationSeconds } from '../../lib/duration';
+import { ServiceUnavailableError } from '../../lib/errors';
 import { parseBody, requestContext } from '../../lib/http';
 import {
   buildAuthService,
@@ -64,6 +68,32 @@ const TEST_LIMITS = {
   register: { max: 1000, timeWindow: '1 hour' },
   refresh: { max: 1000, timeWindow: '1 minute' },
 } as const;
+
+const DATABASE_UNAVAILABLE_ERROR_CODES = new Set([
+  'P1000',
+  'P1001',
+  'P1002',
+  'P1008',
+  'P1017',
+  'P2022',
+  'P2024',
+]);
+
+export function authenticationDatabaseError(error: unknown): ServiceUnavailableError | null {
+  if (!(error instanceof Error)) return null;
+  const isInitializationError = error.name === 'PrismaClientInitializationError';
+  const isUnavailableRequestError =
+    error.name === 'PrismaClientKnownRequestError' &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    DATABASE_UNAVAILABLE_ERROR_CODES.has(error.code);
+  if (!isInitializationError && !isUnavailableRequestError) return null;
+
+  return new ServiceUnavailableError(
+    'Authentication is temporarily unavailable. Please try again.',
+    'AUTHENTICATION_UNAVAILABLE',
+  );
+}
 
 export interface AuthRoutesOptions {
   readonly env: ApiEnv;
@@ -123,7 +153,15 @@ export async function authRoutes(
   // ---------------------------------------------------------------------- login
   app.post('/login', { config: { rateLimit: limits.login } }, async (request, reply) => {
     const input = parseBody(loginSchema, request.body);
-    const result = await auth.login(input, requestContext(request));
+    let result: AuthenticatedResult | TenantSelectionRequired;
+    try {
+      result = await auth.login(input, requestContext(request));
+    } catch (error) {
+      const unavailable = authenticationDatabaseError(error);
+      if (!unavailable) throw error;
+      request.log.error({ err: error }, 'authentication database unavailable');
+      throw unavailable;
+    }
 
     if (isTenantChoice(result)) {
       // FR-1.4/FR-2.2: the client re-posts the same credentials with a tenantId.
@@ -197,6 +235,7 @@ export async function authRoutes(
       email: principal.email,
       fullName: principal.fullName,
       activeTenantId: principal.tenantId,
+      preferredLanguage: memberships[0]?.preferredLanguage ?? 'en',
       tenants: memberships.map((membership) => ({
         id: membership.tenantId,
         name: membership.tenantName,
@@ -213,6 +252,39 @@ export async function authRoutes(
       authMethod: principal.authMethod,
       readOnly: principal.readOnly,
     });
+  });
+
+  app.patch('/language', async (request, reply) => {
+    await app.authenticate(request);
+    const principal = request.principal;
+    if (!principal) return reply.status(401).send({ code: 'UNAUTHENTICATED' });
+
+    // Only the Aurora admin and creator own the multi-language setting. This is a
+    // server-side check, not a UI hide: everyone else gets a 403, no matter how the
+    // request is made.
+    if (!canChangeLanguage(principal.email)) {
+      return reply.status(403).send({
+        statusCode: 403,
+        error: 'Forbidden',
+        code: 'LANGUAGE_CHANGE_FORBIDDEN',
+        message: 'Only the platform admin and creator can change the display language.',
+        requestId: request.id,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const input = parseBody(languagePreferenceSchema, request.body);
+    const result = await withPlatform((db) =>
+      db.user.updateMany({
+        where: { email: principal.email },
+        data: { preferredLanguage: input.preferredLanguage },
+      }),
+    );
+    if (result.count === 0) {
+      return reply.status(404).send({ code: 'ACCOUNT_NOT_FOUND' });
+    }
+
+    return reply.status(200).send({ preferredLanguage: input.preferredLanguage });
   });
 
   // ----------------------------------------------------------- password change

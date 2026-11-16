@@ -18,6 +18,30 @@ info() { printf '\033[1;36m[dev:up]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[dev:up]\033[0m %s\n' "$*"; }
 fail() { printf '\033[1;31m[dev:up]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# Docker Desktop may be installed on Windows without its WSL integration enabled.
+DOCKER_COMMAND="$(command -v docker || true)"
+if [ -z "${DOCKER_COMMAND}" ] || [ -x "${DOCKER_COMMAND}.exe" ]; then
+  WINDOWS_DOCKER_PATH="$(where.exe docker.exe 2>/dev/null | tr -d '\r' | head -n 1)"
+  if [ -z "${WINDOWS_DOCKER_PATH}" ] || ! command -v wslpath >/dev/null 2>&1; then
+    fail "Docker is unavailable in WSL. Install Docker in this distro or enable Docker Desktop WSL integration."
+  fi
+
+  DOCKER_CLI_PATH="$(wslpath -u "${WINDOWS_DOCKER_PATH}")"
+  if [ ! -x "${DOCKER_CLI_PATH}" ]; then
+    fail "Windows Docker CLI is not accessible from WSL: ${WINDOWS_DOCKER_PATH}"
+  fi
+  docker() { "${DOCKER_CLI_PATH}" "$@"; }
+fi
+
+# Use the Windows pnpm launcher when this WSL distro has no Node.js runtime.
+if ! command -v node >/dev/null 2>&1; then
+  WINDOWS_PNPM_PATH="$(where.exe pnpm.cmd 2>/dev/null | tr -d '\r' | head -n 1)"
+  if [ -z "${WINDOWS_PNPM_PATH}" ]; then
+    fail "Node.js is unavailable in WSL and the Windows pnpm launcher could not be found."
+  fi
+  pnpm() { cmd.exe /c "${WINDOWS_PNPM_PATH}" "$@"; }
+fi
+
 # --- 1. environment file ----------------------------------------------------
 if [ ! -f .env ]; then
   info "creating .env from .env.example"
@@ -27,7 +51,7 @@ fi
 # Make the chain settings available to the explicit Fuji validation below as well as to Compose.
 set -a
 # shellcheck disable=SC1091
-. ./.env
+. <(sed 's/\r$//' .env)
 set +a
 
 if [ ! -f docker/certs/void-space.crt ]; then

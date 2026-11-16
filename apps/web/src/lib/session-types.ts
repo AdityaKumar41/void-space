@@ -5,7 +5,7 @@
  * is a server component. A plain types module can be imported by both without dragging a client
  * boundary across the gate.
  */
-import type { Permission, Role } from '@void-space/types';
+import type { LanguageCode, Permission, Role } from '@void-space/types';
 
 export interface SessionTenant {
   readonly id: string;
@@ -20,6 +20,7 @@ export interface SessionView {
     readonly email: string;
     readonly fullName: string;
     readonly activeTenantId: string;
+    readonly preferredLanguage: LanguageCode;
     readonly roles: readonly Role[];
     readonly permissions: readonly Permission[];
     /** Every workspace this person can switch to (FR-1.4). */

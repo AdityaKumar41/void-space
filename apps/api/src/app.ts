@@ -49,8 +49,10 @@ import { iotRoutes } from './modules/iot/routes';
 import { simulatorRoutes } from './modules/simulator/routes';
 import { experienceRoutes } from './modules/experiences/routes';
 import { fieldGuideRoutes } from './modules/field-guides/routes';
+import { documentRoutes } from './modules/documents/routes';
 import { careerRoutes } from './modules/career/routes';
 import { ventureRoutes } from './modules/ventures/routes';
+import { translationRoutes } from './modules/translations/routes';
 
 const API_VERSION = '2.0.0';
 
@@ -88,6 +90,14 @@ async function checkChain(rpcUrl: string): Promise<DependencyCheck> {
 
 export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   const app = Fastify({
+    // Correlation ids per request (observability, NFR-MAINT.1): honour an inbound
+    // x-request-id, otherwise mint a UUID. This must be a top-level Fastify option —
+    // nested under `logger` it is silently ignored and every request keeps Fastify's
+    // default `req-*` id, which defeats client-side correlation.
+    genReqId: (request) => {
+      const header = request.headers['x-request-id'];
+      return typeof header === 'string' && header.length > 0 ? header : crypto.randomUUID();
+    },
     // Tests assert on responses, not logs; keeping the transport silent keeps the
     // vitest output readable.
     logger:
@@ -95,11 +105,6 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
         ? false
         : {
             level: env.LOG_LEVEL,
-            // Correlation ids per request (§3.2 observability, NFR-MAINT.1).
-            genReqId: (request) => {
-              const header = request.headers['x-request-id'];
-              return typeof header === 'string' && header.length > 0 ? header : crypto.randomUUID();
-            },
             transport:
               env.NODE_ENV === 'development'
                 ? {
@@ -320,6 +325,9 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   await app.register(simulatorRoutes, { prefix: '/api/v1' });
   await app.register(experienceRoutes, { prefix: '/api/v1' });
   await app.register(fieldGuideRoutes, { prefix: '/api/v1' });
+  // Documents & Notes — private files and authored notes filed beside programs and lessons.
+  await app.register(documentRoutes, { prefix: '/api/v1', env });
+  await app.register(translationRoutes, { prefix: '/api/v1', env });
   await app.register(careerRoutes, { prefix: '/api/v1' });
   await app.register(ventureRoutes, { prefix: '/api/v1' });
   // §6.1 Public Catalog — the only unauthenticated surface, and the only one reading the
