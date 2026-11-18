@@ -101,6 +101,7 @@ export const createSpatialRoomSchema = z
 export type CreateSpatialRoomInput = z.infer<typeof createSpatialRoomSchema>;
 
 export const spatialHeartbeatSchema = z.object({ pose: poseSchema.optional() });
+export type SpatialHeartbeatInput = z.infer<typeof spatialHeartbeatSchema>;
 export const spatialWorldStateSchema = z.object({ worldState: z.record(z.unknown()) });
 
 export const registerIoTDeviceSchema = z.object({

@@ -231,6 +231,9 @@ export interface PublicCatalogItem {
   readonly sourceAttribution: string | null;
   readonly sourceUrl: string | null;
   readonly publishedAt: string;
+  /** Smallest currency unit; 0 means free download. */
+  readonly priceCents: number;
+  readonly currency: string;
 }
 
 export interface PublicCatalogPage {

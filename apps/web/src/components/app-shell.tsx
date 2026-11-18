@@ -105,6 +105,12 @@ const GROUPS: readonly { label: string; items: NavItem[] }[] = [
         permission: 'catalog:view',
         icon: History,
       },
+      {
+        href: '/console/analytics',
+        label: 'Analytics',
+        permission: 'audit:view',
+        icon: History,
+      },
       { href: '/console/career', label: 'Career', permission: 'catalog:view', icon: Compass },
       { href: '/console/ventures', label: 'Ventures', permission: 'catalog:view', icon: Sparkles },
       { href: '/console/audit', label: 'Audit', permission: 'audit:view', icon: History },
@@ -404,7 +410,7 @@ function Header({ openNavigation }: { openNavigation: () => void }) {
           {current?.label ?? 'Details'}
         </span>
       </div>
-      <div className="ml-auto hidden w-full max-w-[330px] lg:block">
+      <div className="ml-auto hidden w-full max-w-[330px] sm:block">
         <WorkspaceSearch />
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -565,8 +571,10 @@ export function AppShell({
   /** Validated on the server by the console layout, so the first paint is already complete. */
   initialSession?: SessionView | null;
 }) {
+  // Root Providers already mounts an optional SessionProvider for public pages. Console needs
+  // requireAuth so an expired refresh cookie sends the operator back to sign-in.
   return (
-    <SessionProvider initialSession={initialSession}>
+    <SessionProvider initialSession={initialSession} requireAuth>
       <Shell>{children}</Shell>
     </SessionProvider>
   );

@@ -50,8 +50,20 @@ export async function main(): Promise<void> {
     export: createExportProcessor(logger),
     autosave: createAutosaveProcessor(logger),
     copilot: async (job) => {
-      logger.info({ jobId: job.id }, 'executing copilot offload task');
-      return { status: 'completed' };
+      // Copilot turns run on studio-api today; this queue records long-running
+      // offload bookkeeping (session/message ids) so the worker is not a silent no-op.
+      const sessionId = job.data?.sessionId ?? null;
+      const messageId = job.data?.messageId ?? null;
+      logger.info(
+        { jobId: job.id, sessionId, messageId },
+        'copilot offload acknowledged — chat execution remains on studio-api',
+      );
+      return {
+        status: 'completed',
+        sessionId,
+        messageId,
+        handledAt: new Date().toISOString(),
+      };
     },
   };
 

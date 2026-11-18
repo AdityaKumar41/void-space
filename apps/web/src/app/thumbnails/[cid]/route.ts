@@ -36,9 +36,9 @@ const CID_PATTERN = /^[a-zA-Z0-9]{32,128}$/;
 
 export async function GET(
   _request: Request,
-  { params }: { params: { cid: string } },
+  { params }: { params: Promise<{ cid: string }> },
 ): Promise<Response> {
-  const { cid } = params;
+  const { cid } = await params;
 
   if (!CID_PATTERN.test(cid)) {
     return new Response('Not found', { status: 404 });
@@ -54,8 +54,15 @@ export async function GET(
         'cache-control': 'public, max-age=31536000, immutable',
       },
     });
-  } catch {
-    // No render yet — the card falls back to its placeholder. Not an error worth logging per request.
-    return new Response('Not found', { status: 404 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    // A valid asset can await rendering. Keep the preview explicit and briefly
+    // cached so a newly generated image replaces it without a server restart.
+    return new Response(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#111216"/><path d="m200 65 62 36v72l-62 36-62-36v-72zM138 101l62 36 62-36M200 137v72" fill="none" stroke="#535963" stroke-width="2"/><text x="200" y="253" text-anchor="middle" fill="#9d9daa" font-family="system-ui,sans-serif" font-size="14">Preview pending</text></svg>',
+      {
+        headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=15' },
+      },
+    );
   }
 }

@@ -265,7 +265,7 @@ export function MarketFooter() {
             <ul className="mt-5 flex flex-col gap-3 text-[13.5px] text-ink-faint">
               <li>ERC-721 licence registry</li>
               <li>IPFS content addressing</li>
-              <li>EIP-4361 wallet sign-in</li>
+              <li>Password, Google, and wallet sign-in</li>
               <li>Row-level tenant isolation</li>
               <li>Append-only audit ledger</li>
             </ul>

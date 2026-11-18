@@ -172,6 +172,31 @@ function warnOnce(key: string, message: string): void {
   console.warn(`[webgpu] ${key}: ${message}`)
 }
 
+/** Last WebGPU init failure, if any — surfaced to the VOID·SPACE panel / boot UI. */
+let lastWebGpuInitError: string | null = null
+const failedCanvases = new WeakSet<HTMLCanvasElement | OffscreenCanvas>()
+
+export function getWebGpuInitError(): string | null {
+  return lastWebGpuInitError
+}
+
+export function didWebGpuInitFail(canvas?: HTMLCanvasElement | OffscreenCanvas): boolean {
+  if (canvas) return failedCanvases.has(canvas)
+  return lastWebGpuInitError !== null
+}
+
+function announceWebGpuFailure(err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err)
+  lastWebGpuInitError = message
+  try {
+    const w = window as unknown as {__voidStudioWebGpuError?: string; dispatchEvent: Window['dispatchEvent']}
+    w.__voidStudioWebGpuError = message
+    w.dispatchEvent(new CustomEvent('voidstudio:webgpu-failed', {detail: {message}}))
+  } catch {
+    // Non-DOM / test environments.
+  }
+}
+
 // Kick (or look up) the per-canvas WebGPU init. Returns the viewport
 // once GpuContext.create has resolved, undefined while still pending.
 // Used by `view3d.viewportDraw_intern` to drive the renderengine without
@@ -179,6 +204,7 @@ function warnOnce(key: string, message: string): void {
 export function primeWebGpuViewport(canvas: HTMLCanvasElement | OffscreenCanvas): WebGpuViewport | undefined {
   const existing = viewports.get(canvas)
   if (existing) return existing
+  if (failedCanvases.has(canvas)) return undefined
   let pending = inflightInits.get(canvas)
   if (!pending) {
     const initSize: [number, number] = [Math.max(1, canvas.width | 0), Math.max(1, canvas.height | 0)]
@@ -196,8 +222,10 @@ export function primeWebGpuViewport(canvas: HTMLCanvasElement | OffscreenCanvas)
         w.redraw_viewport?.()
       })
       .catch((err) => {
+        failedCanvases.add(canvas)
+        announceWebGpuFailure(err)
         // eslint-disable-next-line no-console
-        console.error('[webgpu] init failed — falling back to WebGL on next frame', err)
+        console.error('[webgpu] init failed — WebGL fallback may also be unavailable in WebGPU-only builds', err)
       })
   }
   return undefined

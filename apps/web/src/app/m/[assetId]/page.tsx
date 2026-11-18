@@ -28,15 +28,17 @@ import {
 import { CheckIcon } from '../../../components/ui/icons';
 import { VoidStudioLaunchButton } from '../../../components/studio-launch';
 import { MarketplaceEngagement } from '../../../components/marketplace-engagement';
+import { CheckoutButton } from '../../../components/checkout-button';
+import { WebArButton } from '../../../components/web-ar-button';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
-  readonly params: { assetId: string };
+  readonly params: Promise<{ assetId: string }>;
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const item = await marketplaceItem(params.assetId);
+  const item = await marketplaceItem((await params).assetId);
   if (!item) return { title: 'Model not found — VOID·SPACE' };
 
   return {
@@ -93,38 +95,9 @@ function Verified({ children }: { children: React.ReactNode }) {
 }
 
 export default async function ModelPage({ params }: PageProps) {
-  const item = await marketplaceItem(params.assetId);
-  if (!item) {
-    return (
-      <div className="relative z-10 flex min-h-[100dvh] flex-col">
-        <MarketHeader current="model" />
-        <main className="mx-auto w-full max-w-[720px] px-5 flex-1 py-20 flex flex-col items-center justify-center text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-500 border border-amber-500/20 mb-4">
-            Pending Assessor Review
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink mb-2">Asset Not Yet Public</h1>
-          <p className="text-ink-dim max-w-md mb-8 text-[14px] leading-relaxed">
-            This model has been submitted to VOID·SPACE and is currently awaiting review and on-chain licensing. Once approved, its verified public listing will appear here.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href={`/console/assets/${params.assetId}`}
-              className="inline-flex items-center justify-center gap-2 rounded-control px-4 py-2 text-[13.5px] font-semibold bg-brand text-white hover:bg-brand-warm transition-all"
-            >
-              Manage in Console ↗
-            </Link>
-            <Link
-              href="/catalog"
-              className="inline-flex items-center justify-center gap-2 rounded-control px-4 py-2 text-[13.5px] font-semibold border border-hairline bg-surface text-ink hover:bg-veil-4 transition-all"
-            >
-              Browse Public Catalog
-            </Link>
-          </div>
-        </main>
-        <MarketFooter />
-      </div>
-    );
-  }
+  const item = await marketplaceItem((await params).assetId);
+  // Unknown and delisted assets share the same 404 — the catalogue cannot be probed for takedowns.
+  if (!item) notFound();
 
   // "More like this": the same category, minus the model being viewed.
   const related = await browseMarketplace({ category: item.category, limit: 5 });
@@ -144,7 +117,10 @@ export default async function ModelPage({ params }: PageProps) {
           <span aria-hidden style={{ color: 'var(--vs-fg-faint)' }}>
             /
           </span>
-          <Link href={`/catalog?category=${encodeURIComponent(item.category)}`} className="link-underline">
+          <Link
+            href={`/catalog?category=${encodeURIComponent(item.category)}`}
+            className="link-underline"
+          >
             {item.category}
           </Link>
         </nav>
@@ -159,7 +135,9 @@ export default async function ModelPage({ params }: PageProps) {
               polycount={item.polycount}
             />
 
-            <h1 className="text-balance text-[clamp(1.5rem,3vw,2.1rem)] font-semibold leading-[1.08] tracking-[-0.02em] text-ink mt-8">{item.name}</h1>
+            <h1 className="text-balance text-[clamp(1.5rem,3vw,2.1rem)] font-semibold leading-[1.08] tracking-[-0.02em] text-ink mt-8">
+              {item.name}
+            </h1>
 
             <div
               className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px]"
@@ -173,9 +151,14 @@ export default async function ModelPage({ params }: PageProps) {
             </div>
 
             {item.description ? (
-              <p className="max-w-[62ch] text-pretty text-[clamp(0.95rem,1.4vw,1.08rem)] leading-[1.62] text-ink-dim mt-6">{item.description}</p>
+              <p className="max-w-[62ch] text-pretty text-[clamp(0.95rem,1.4vw,1.08rem)] leading-[1.62] text-ink-dim mt-6">
+                {item.description}
+              </p>
             ) : (
-              <p className="max-w-[62ch] text-pretty text-[clamp(0.95rem,1.4vw,1.08rem)] leading-[1.62] text-ink-dim mt-6" style={{ fontStyle: 'italic', opacity: 0.7 }}>
+              <p
+                className="max-w-[62ch] text-pretty text-[clamp(0.95rem,1.4vw,1.08rem)] leading-[1.62] text-ink-dim mt-6"
+                style={{ fontStyle: 'italic', opacity: 0.7 }}
+              >
                 No summary was published for this asset.
               </p>
             )}
@@ -183,7 +166,11 @@ export default async function ModelPage({ params }: PageProps) {
             {item.tags.length > 0 ? (
               <div className="flex flex-wrap gap-1.5 mt-6">
                 {item.tags.map((value) => (
-                  <Link key={value} href={`/catalog?tag=${encodeURIComponent(value)}`} className="tag-interactive">
+                  <Link
+                    key={value}
+                    href={`/catalog?tag=${encodeURIComponent(value)}`}
+                    className="tag-interactive"
+                  >
                     {value}
                   </Link>
                 ))}
@@ -192,7 +179,9 @@ export default async function ModelPage({ params }: PageProps) {
 
             {/* ------------------------------------------------------------ specification */}
             <div className="overflow-hidden rounded-card border border-hairline bg-surface shadow-panel mt-10">
-              <div className="flex items-center justify-between gap-2.5 border-b border-hairline px-4 py-3 text-[12.5px] font-semibold tracking-[0.02em] text-ink">The file</div>
+              <div className="flex items-center justify-between gap-2.5 border-b border-hairline px-4 py-3 text-[12.5px] font-semibold tracking-[0.02em] text-ink">
+                The file
+              </div>
               <div className="px-4 py-4">
                 <SpecRow label="Format">{item.format.replace(/^\./, '').toUpperCase()}</SpecRow>
                 <SpecRow label="Triangles">{formatNumber(item.polycount)}</SpecRow>
@@ -213,7 +202,9 @@ export default async function ModelPage({ params }: PageProps) {
                     rel="noreferrer"
                     title={item.ipfsCid}
                   >
-                    <span className="font-mono text-[12px] text-ink-dim">{shortCid(item.ipfsCid)}</span>
+                    <span className="font-mono text-[12px] text-ink-dim">
+                      {shortCid(item.ipfsCid)}
+                    </span>
                   </a>{' '}
                   <span style={{ color: 'var(--vs-fg-faint)' }}>· open the raw file</span>
                 </SpecRow>
@@ -243,7 +234,9 @@ export default async function ModelPage({ params }: PageProps) {
                         {item.contractAddress}
                       </a>
                     ) : (
-                      <span className="font-mono text-[12px] text-ink-dim">{item.contractAddress}</span>
+                      <span className="font-mono text-[12px] text-ink-dim">
+                        {item.contractAddress}
+                      </span>
                     )
                   ) : (
                     '—'
@@ -291,7 +284,12 @@ export default async function ModelPage({ params }: PageProps) {
                 {item.sourceLicense || item.sourceUrl ? (
                   <SpecRow label="Upstream source">
                     {item.sourceUrl ? (
-                      <a className="link-underline" href={item.sourceUrl} target="_blank" rel="noreferrer">
+                      <a
+                        className="link-underline"
+                        href={item.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
                         {item.sourceAttribution ?? item.sourceUrl}
                       </a>
                     ) : (
@@ -307,9 +305,13 @@ export default async function ModelPage({ params }: PageProps) {
 
             {/* ------------------------------------------------------------------ terms */}
             <div className="overflow-hidden rounded-card border border-hairline bg-surface shadow-panel mt-6">
-              <div className="flex items-center justify-between gap-2.5 border-b border-hairline px-4 py-3 text-[12.5px] font-semibold tracking-[0.02em] text-ink">Licence terms</div>
+              <div className="flex items-center justify-between gap-2.5 border-b border-hairline px-4 py-3 text-[12.5px] font-semibold tracking-[0.02em] text-ink">
+                Licence terms
+              </div>
               <div className="px-4 py-4">
-                <p className="text-pretty border-l-2 border-l-[rgba(139,108,246,0.5)] pl-3.5 text-[13.5px] leading-[1.65] text-ink-dim">{item.licenseTerms ?? 'No additional terms were recorded.'}</p>
+                <p className="text-pretty border-l-2 border-l-[rgba(139,108,246,0.5)] pl-3.5 text-[13.5px] leading-[1.65] text-ink-dim">
+                  {item.licenseTerms ?? 'No additional terms were recorded.'}
+                </p>
               </div>
             </div>
 
@@ -321,24 +323,31 @@ export default async function ModelPage({ params }: PageProps) {
             <div className="rounded-card border border-hairline bg-surface p-5">
               <div className="flex items-center justify-between gap-3">
                 <span className="chip chip-live">
-                  <span className="h-[7px] w-[7px] rounded-full bg-state-published animate-dot-pulse mr-1.5" aria-hidden />
+                  <span
+                    className="h-[7px] w-[7px] rounded-full bg-state-published animate-dot-pulse mr-1.5"
+                    aria-hidden
+                  />
                   {item.licenseType ?? 'listed'}
                 </span>
-                <span className="font-mono text-[11.5px] tracking-[0.01em] tabular-nums text-ink-faint">token #{item.tokenId ?? '—'}</span>
+                <span className="font-mono text-[11.5px] tracking-[0.01em] tabular-nums text-ink-faint">
+                  token #{item.tokenId ?? '—'}
+                </span>
               </div>
 
-              <div className="mt-4 text-[13.5px] leading-relaxed" style={{ color: 'var(--vs-fg-dim)' }}>
+              <div
+                className="mt-4 text-[13.5px] leading-relaxed"
+                style={{ color: 'var(--vs-fg-dim)' }}
+              >
                 The registry entry travels with the file, so these terms remain checkable after this
                 page changes.
               </div>
 
-              <a
-                className="h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm mt-5 flex w-full justify-center"
-                href={gatewayUrl(item.ipfsCid)}
-                download
-              >
-                Download the model
-              </a>
+              <CheckoutButton
+                assetId={item.assetId}
+                priceCents={item.priceCents ?? 0}
+                currency={item.currency ?? 'USD'}
+                downloadHref={gatewayUrl(item.ipfsCid)}
+              />
 
               <div className="mt-2 flex gap-2">
                 <a
@@ -349,7 +358,13 @@ export default async function ModelPage({ params }: PageProps) {
                 >
                   Preview raw
                 </a>
-                <Link className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 flex-1 justify-center" href={`/console/assets/${item.assetId}`}>
+                <WebArButton modelUrl={gatewayUrl(item.ipfsCid)} name={item.name} />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <Link
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 flex-1 justify-center"
+                  href={`/console/assets/${item.assetId}`}
+                >
                   Console
                 </Link>
               </div>
@@ -367,9 +382,12 @@ export default async function ModelPage({ params }: PageProps) {
                 Remix in Void Studio
               </VoidStudioLaunchButton>
 
-              <p className="mt-4 text-[12px] leading-relaxed" style={{ color: 'var(--vs-fg-faint)' }}>
-                Downloading fetches the exact bytes the content address commits to. Nothing is served
-                from a mutable store.
+              <p
+                className="mt-4 text-[12px] leading-relaxed"
+                style={{ color: 'var(--vs-fg-faint)' }}
+              >
+                Downloading fetches the exact bytes the content address commits to. Nothing is
+                served from a mutable store.
               </p>
             </div>
 
@@ -385,11 +403,14 @@ export default async function ModelPage({ params }: PageProps) {
               <div className="mt-4 flex flex-col gap-3.5 text-[13px] text-state-published">
                 <Verified>
                   <b>Pinned, not stored.</b> The file resolves from content address{' '}
-                  <span className="font-mono text-[12px] text-ink-dim">{shortCid(item.ipfsCid)}</span>.
+                  <span className="font-mono text-[12px] text-ink-dim">
+                    {shortCid(item.ipfsCid)}
+                  </span>
+                  .
                 </Verified>
                 <Verified>
-                  <b>Measured in the viewer.</b> The studio counts the geometry it actually decoded, so
-                  the record above can be checked against the file rather than trusted.
+                  <b>Measured in the viewer.</b> The studio counts the geometry it actually decoded,
+                  so the record above can be checked against the file rather than trusted.
                 </Verified>
                 <Verified>
                   <b>Licence on chain.</b>{' '}
@@ -405,11 +426,23 @@ export default async function ModelPage({ params }: PageProps) {
 
             {relatedItems.length > 0 ? (
               <div className="rounded-card border border-hairline bg-surface p-5">
-                <div className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-brand-warm">More in {item.category}</div>
+                <div className="text-[11.5px] font-semibold uppercase tracking-[0.14em] text-brand-warm">
+                  More in {item.category}
+                </div>
                 <div className="mt-4 flex flex-col gap-2.5">
                   {relatedItems.map((entry) => (
-                    <Link key={entry.assetId} href={`/m/${entry.assetId}`} className="flex min-w-0 items-center gap-2.5 rounded-control border border-hairline bg-deeper p-2 transition-colors duration-150 ease-standard hover:border-hairline-strong">
-                      <img src={thumbnailUrl(entry.ipfsCid)} alt="" width={52} height={52} loading="lazy" />
+                    <Link
+                      key={entry.assetId}
+                      href={`/m/${entry.assetId}`}
+                      className="flex min-w-0 items-center gap-2.5 rounded-control border border-hairline bg-deeper p-2 transition-colors duration-150 ease-standard hover:border-hairline-strong"
+                    >
+                      <img
+                        src={thumbnailUrl(entry.ipfsCid)}
+                        alt=""
+                        width={52}
+                        height={52}
+                        loading="lazy"
+                      />
                       <span className="min-w-0">
                         <span className="text-[13px] text-ink block truncate">{entry.name}</span>
                         <span className="font-mono text-[11px] text-ink-faint block">

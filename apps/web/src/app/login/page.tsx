@@ -22,10 +22,11 @@ export const metadata = {
 };
 
 export default async function LoginPage({
-  searchParams,
+  searchParams: pendingSearchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const searchParams = await pendingSearchParams;
   const next = safeNextPath(searchParams.next);
   const error = typeof searchParams.error === 'string' ? searchParams.error : undefined;
   const { session } = await getServerSession();
@@ -33,14 +34,17 @@ export default async function LoginPage({
   if (session) redirect(next);
 
   let google = false;
+  let wallet = false;
   try {
-    const providers = await apiFetch<{ google: boolean }>('/auth/providers', {
+    const providers = await apiFetch<{ google: boolean; wallet: boolean }>('/auth/providers', {
       baseUrl: `${API_INTERNAL_URL}/api/v1`,
     });
     google = providers.google;
+    wallet = providers.wallet;
   } catch {
     google = false;
+    wallet = false;
   }
 
-  return <LoginForm next={next} google={google} error={error} />;
+  return <LoginForm next={next} google={google} wallet={wallet} error={error} />;
 }

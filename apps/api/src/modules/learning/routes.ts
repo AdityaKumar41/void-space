@@ -4,7 +4,7 @@ import { lessonProgressRoutes } from './progress';
  * portable verified completion.  It intentionally reuses the existing asset
  * approval gate rather than permitting unreviewed material into training.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { recordAudit, withTenant } from '@void-space/db';
 import {
@@ -173,9 +173,10 @@ function safeLesson(lesson: {
 
 export async function learningRoutes(
   app: FastifyInstance,
-  options: { env: ApiEnv },
+  options: { env: ApiEnv; producer?: import('../../lib/jobs').JobProducer },
 ): Promise<void> {
   await lessonProgressRoutes(app);
+  const producer = options.producer;
   app.post(
     '/lessons',
     { preHandler: app.requirePermission('learning:manage') },
@@ -585,6 +586,38 @@ export async function learningRoutes(
           },
           db,
         );
+        if (producer) {
+          const jobId = randomUUID();
+          await db.job.create({
+            data: {
+              id: jobId,
+              tenantId: principal.tenantId,
+              queue: 'skill_credential',
+              status: 'queued',
+              entityType: 'skill_credential',
+              entityId: credential.id,
+              payload: {
+                tenantId: principal.tenantId,
+                credentialId: credential.id,
+                lessonId: id,
+              },
+              maxAttempts: 3,
+            },
+          });
+          await producer.enqueue({
+            id: jobId,
+            queue: 'skill-credential',
+            tenantId: principal.tenantId,
+            entityType: 'skill_credential',
+            entityId: credential.id,
+            payload: {
+              tenantId: principal.tenantId,
+              credentialId: credential.id,
+              lessonId: id,
+            },
+            maxAttempts: 3,
+          });
+        }
       }
       // A course completion is evidence-derived: completing one lesson may
       // unlock it, but only when this learner has a passing attempt for every

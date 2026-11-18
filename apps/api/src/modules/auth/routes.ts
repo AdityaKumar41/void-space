@@ -69,10 +69,7 @@ export interface AuthRoutesOptions {
   readonly env: ApiEnv;
 }
 
-export async function authRoutes(
-  app: FastifyInstance,
-  options: AuthRoutesOptions,
-): Promise<void> {
+export async function authRoutes(app: FastifyInstance, options: AuthRoutesOptions): Promise<void> {
   const { env } = options;
   const secure = cookieSecurity(env);
   const accessMaxAgeSeconds = parseDurationSeconds(env.JWT_ACCESS_TTL, 900);
@@ -110,15 +107,11 @@ export async function authRoutes(
   }
 
   // ------------------------------------------------------------------- register
-  app.post(
-    '/register',
-    { config: { rateLimit: limits.register } },
-    async (request, reply) => {
-      const input = parseBody(registerSchema, request.body);
-      const result = await auth.register(input, requestContext(request));
-      return completeAuth(reply, result, 201);
-    },
-  );
+  app.post('/register', { config: { rateLimit: limits.register } }, async (request, reply) => {
+    const input = parseBody(registerSchema, request.body);
+    const result = await auth.register(input, requestContext(request));
+    return completeAuth(reply, result, 201);
+  });
 
   // ---------------------------------------------------------------------- login
   app.post('/login', { config: { rateLimit: limits.login } }, async (request, reply) => {
@@ -184,7 +177,12 @@ export async function authRoutes(
 
   // ------------------------------------------------------------------------ /me
   app.get('/me', async (request, reply) => {
-    await app.authenticate(request);
+    if ((request.query as { optional?: string }).optional === 'true') {
+      await app.optionalAuth(request);
+      if (!request.principal) return reply.status(200).send(null);
+    } else {
+      await app.authenticate(request);
+    }
     const principal = request.principal;
     if (!principal) return reply.status(401).send({ code: 'UNAUTHENTICATED' });
 
@@ -270,9 +268,7 @@ export async function authRoutes(
     });
 
     const studioUrl =
-      process.env.VOID_STUDIO_URL ||
-      process.env.STUDIO_URL ||
-      'http://localhost:5007';
+      process.env.VOID_STUDIO_URL || process.env.STUDIO_URL || 'http://localhost:5007';
 
     return reply.status(200).send({
       accessToken,

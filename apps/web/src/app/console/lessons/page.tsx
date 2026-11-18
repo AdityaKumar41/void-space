@@ -139,14 +139,54 @@ export default function LessonsPage() {
               />
             </label>
             <label className="block space-y-2 text-sm text-ink">
-              <span>Lesson notes</span>
+              <span>Lesson notes / SOP source</span>
               <textarea
                 maxLength={20000}
                 className={`${field} min-h-36`}
                 value={sourceText}
                 onChange={(e) => setSourceText(e.target.value)}
-                placeholder="Write what a learner should know. For a heart lesson, name the chambers, the great vessels, and what each one does."
+                placeholder="Paste an SOP, curriculum excerpt, or write what a learner should know. Cite source facts only — AI will not invent procedures."
               />
+            </label>
+            <label className="block space-y-2 text-sm text-ink">
+              <span>Import from document (.txt, .md, .csv)</span>
+              <input
+                type="file"
+                accept=".txt,.md,.markdown,.csv,text/plain,text/markdown,text/csv"
+                className={`${field} mt-2 file:mr-3 file:rounded-control file:border-0 file:bg-veil-8 file:px-3 file:py-1 file:text-ink`}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 200_000) {
+                    setError('Source documents must be under 200 KB. Paste a shorter excerpt.');
+                    return;
+                  }
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const text = String(reader.result ?? '')
+                      .replace(/\u0000/g, '')
+                      .trim()
+                      .slice(0, 20_000);
+                    if (text.length < 20) {
+                      setError('That file did not contain enough readable text to build a lesson.');
+                      return;
+                    }
+                    setSourceText(text);
+                    setGenerateWithAi(true);
+                    if (!title.trim()) {
+                      setTitle(file.name.replace(/\.[^.]+$/, '').slice(0, 100));
+                    }
+                    setError(null);
+                  };
+                  reader.onerror = () => setError('The browser could not read that file.');
+                  reader.readAsText(file);
+                }}
+              />
+              <span className="block text-xs text-ink-dim">
+                Imported text fills the notes field and enables AI drafting. You must review every
+                answer before publishing. PDF binary import is not supported here — paste extracted
+                text instead.
+              </span>
             </label>
             <label className="block text-sm text-ink">
               3D model

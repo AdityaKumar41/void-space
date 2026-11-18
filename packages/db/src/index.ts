@@ -68,6 +68,7 @@ export {
   removePublicCatalogEntry,
   listPublicCatalog,
   getPublicCatalogEntry,
+  getPublicCatalogListing,
   publicCatalogFacets,
   toPublicCatalogItem,
   PUBLIC_CATALOG_SORTS,

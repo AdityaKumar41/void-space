@@ -22,6 +22,7 @@ import { assertRlsEnforced, prisma } from '@void-space/db';
 
 import type { ApiEnv } from './env';
 import { isAppError } from './lib/errors';
+import { assertJsonBudget } from './lib/json-budget';
 import { rateLimitKey } from './lib/rate-limit-key';
 import { createJobProducer } from './lib/producer';
 import { authPlugin } from './plugins/auth';
@@ -45,12 +46,15 @@ import { userRoutes } from './modules/users/routes';
 import { learningRoutes } from './modules/learning/routes';
 import { campusRoutes } from './modules/campus/routes';
 import { spatialRoutes } from './modules/spatial/routes';
+import { spatialWebsocketPlugin } from './modules/spatial/ws';
 import { iotRoutes } from './modules/iot/routes';
 import { simulatorRoutes } from './modules/simulator/routes';
 import { experienceRoutes } from './modules/experiences/routes';
 import { fieldGuideRoutes } from './modules/field-guides/routes';
 import { careerRoutes } from './modules/career/routes';
 import { ventureRoutes } from './modules/ventures/routes';
+import { commerceRoutes } from './modules/commerce/routes';
+import { analyticsRoutes } from './modules/analytics/routes';
 
 const API_VERSION = '2.0.0';
 
@@ -109,7 +113,16 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
                 : undefined,
           },
     trustProxy: true,
-    disableRequestLogging: false,
+  });
+
+  app.addHook('preValidation', async (request) => {
+    // Multipart uploads and signed raw webhook bytes use their own limits/parsers.
+    if (
+      request.headers['content-type']?.split(';')[0]?.trim() === 'application/json' &&
+      !Buffer.isBuffer(request.body)
+    ) {
+      assertJsonBudget(request.body);
+    }
   });
 
   await app.register(sensible);
@@ -134,7 +147,8 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
 
   await app.register(jwt, {
     secret: env.JWT_ACCESS_SECRET,
-    sign: { expiresIn: env.JWT_ACCESS_TTL },
+    sign: { expiresIn: env.JWT_ACCESS_TTL, algorithm: 'HS256' },
+    verify: { algorithms: ['HS256'] },
   });
 
   await app.register(authPlugin, { accessTtl: env.JWT_ACCESS_TTL });
@@ -194,7 +208,11 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
           } as const),
       contract: env.CONTRACT_ADDRESS
         ? ({ status: 'up', detail: env.CONTRACT_ADDRESS } as const)
-        : ({ status: 'disabled', detail: 'run pnpm dev:up to deploy' } as const),
+        : ({
+            status: 'disabled',
+            detail:
+              'Configure CONTRACT_ADDRESS with a deployed AssetLicenseRegistry for the selected chain',
+          } as const),
     };
 
     const degraded = Object.values(dependencies).some((dependency) => dependency.status === 'down');
@@ -267,12 +285,16 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
     }
 
     // Fastify's own errors (body parse failures, rate limit, validation plugin).
-    const statusCode = error.statusCode ?? 500;
+    const failure = error instanceof Error ? error : new Error('Unknown request failure');
+    const statusCode =
+      'statusCode' in failure && typeof failure.statusCode === 'number' ? failure.statusCode : 500;
     const code =
       statusCode === 429
         ? 'RATE_LIMITED'
         : statusCode < 500
-          ? (error.code ?? 'BAD_REQUEST')
+          ? 'code' in failure && typeof failure.code === 'string'
+            ? failure.code
+            : 'BAD_REQUEST'
           : 'INTERNAL_ERROR';
 
     if (statusCode >= 500) {
@@ -286,7 +308,7 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
           request,
           statusCode,
           code,
-          statusCode >= 500 ? 'Internal server error' : error.message,
+          statusCode >= 500 ? 'Internal server error' : failure.message,
           undefined,
         ),
       );
@@ -313,15 +335,18 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   // FR-6.5 — polling for any long-running operation, and FR-12.3 — API key management.
   await app.register(jobRoutes, { prefix: '/api/v1' });
   await app.register(developerRoutes, { prefix: '/api/v1' });
-  await app.register(learningRoutes, { prefix: '/api/v1', env });
+  await app.register(learningRoutes, { prefix: '/api/v1', env, producer });
   await app.register(campusRoutes, { prefix: '/api/v1' });
   await app.register(spatialRoutes, { prefix: '/api/v1' });
+  await app.register(spatialWebsocketPlugin, { prefix: '/api/v1' });
   await app.register(iotRoutes, { prefix: '/api/v1' });
   await app.register(simulatorRoutes, { prefix: '/api/v1' });
   await app.register(experienceRoutes, { prefix: '/api/v1' });
   await app.register(fieldGuideRoutes, { prefix: '/api/v1' });
   await app.register(careerRoutes, { prefix: '/api/v1' });
   await app.register(ventureRoutes, { prefix: '/api/v1' });
+  await app.register(commerceRoutes, { prefix: '/api/v1', env });
+  await app.register(analyticsRoutes, { prefix: '/api/v1' });
   // §6.1 Public Catalog — the only unauthenticated surface, and the only one reading the
   // cross-tenant projection rather than tenant-scoped tables.
   await app.register(publicRoutes, { prefix: '/api/v1' });

@@ -29,9 +29,8 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
   const { session, hasSessionCookie } = await getServerSession();
 
   if (!hasSessionCookie) {
-    redirect(`/login?next=${encodeURIComponent(intendedPath())}`);
+    redirect(`/login?next=${encodeURIComponent(await intendedPath())}`);
   }
 
   return <AppShell initialSession={session}>{children}</AppShell>;
 }
-

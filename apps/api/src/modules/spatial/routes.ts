@@ -16,6 +16,7 @@ import { z } from 'zod';
 
 import { ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors';
 import { parseBody } from '../../lib/http';
+import { notifySpatialRoom } from './ws';
 
 const paramsSchema = z.object({ id: z.string().uuid() });
 const PRESENCE_TTL_MS = 90_000;
@@ -262,6 +263,11 @@ export async function spatialRoutes(app: FastifyInstance): Promise<void> {
           update: { pose: input.pose, lastSeenAt: new Date() },
         });
       });
+      notifySpatialRoom(principal.tenantId, id, {
+        kind: 'heartbeat',
+        userId: principal.userId,
+        lastSeenAt: participant.lastSeenAt.toISOString(),
+      });
       return {
         participant: { id: participant.id, lastSeenAt: participant.lastSeenAt.toISOString() },
       };
@@ -294,6 +300,7 @@ export async function spatialRoutes(app: FastifyInstance): Promise<void> {
           db,
         );
       });
+      notifySpatialRoom(principal.tenantId, id, { kind: 'archived' });
       return { archived: true };
     },
   );
@@ -314,6 +321,7 @@ export async function spatialRoutes(app: FastifyInstance): Promise<void> {
           where: { roomId: id, userId: principal.userId, tenantId: principal.tenantId },
         });
       });
+      notifySpatialRoom(principal.tenantId, id, { kind: 'leave', userId: principal.userId });
       return { left: true };
     },
   );
@@ -354,6 +362,7 @@ export async function spatialRoutes(app: FastifyInstance): Promise<void> {
         );
         return db.spatialRoom.findUniqueOrThrow({ where: { id } });
       });
+      notifySpatialRoom(principal.tenantId, id, { kind: 'world', worldState: room.worldState });
       return { room: roomView(room) };
     },
   );

@@ -37,41 +37,47 @@ function addTriangle(mesh: MutableMesh, a: number, b: number, c: number): void {
   mesh.indices.push(a, b, c);
 }
 
+/** Indexed reads under `noUncheckedIndexedAccess` — mesh builders only index filled slots. */
+function num(arr: ArrayLike<number>, i: number): number {
+  const value = arr[i];
+  return value === undefined ? 0 : value;
+}
+
 function finalize(mesh: MutableMesh): MeshBuffers {
   const count = mesh.positions.length / 3;
   const normals = new Float32Array(mesh.positions.length);
   for (let i = 0; i < mesh.indices.length; i += 3) {
-    const ia = mesh.indices[i] * 3;
-    const ib = mesh.indices[i + 1] * 3;
-    const ic = mesh.indices[i + 2] * 3;
-    const ax = mesh.positions[ia];
-    const ay = mesh.positions[ia + 1];
-    const az = mesh.positions[ia + 2];
-    const abx = mesh.positions[ib] - ax;
-    const aby = mesh.positions[ib + 1] - ay;
-    const abz = mesh.positions[ib + 2] - az;
-    const acx = mesh.positions[ic] - ax;
-    const acy = mesh.positions[ic + 1] - ay;
-    const acz = mesh.positions[ic + 2] - az;
+    const ia = num(mesh.indices, i) * 3;
+    const ib = num(mesh.indices, i + 1) * 3;
+    const ic = num(mesh.indices, i + 2) * 3;
+    const ax = num(mesh.positions, ia);
+    const ay = num(mesh.positions, ia + 1);
+    const az = num(mesh.positions, ia + 2);
+    const abx = num(mesh.positions, ib) - ax;
+    const aby = num(mesh.positions, ib + 1) - ay;
+    const abz = num(mesh.positions, ib + 2) - az;
+    const acx = num(mesh.positions, ic) - ax;
+    const acy = num(mesh.positions, ic + 1) - ay;
+    const acz = num(mesh.positions, ic + 2) - az;
     const nx = aby * acz - abz * acy;
     const ny = abz * acx - abx * acz;
     const nz = abx * acy - aby * acx;
-    normals[ia] += nx;
-    normals[ia + 1] += ny;
-    normals[ia + 2] += nz;
-    normals[ib] += nx;
-    normals[ib + 1] += ny;
-    normals[ib + 2] += nz;
-    normals[ic] += nx;
-    normals[ic + 1] += ny;
-    normals[ic + 2] += nz;
+    normals[ia] = num(normals, ia) + nx;
+    normals[ia + 1] = num(normals, ia + 1) + ny;
+    normals[ia + 2] = num(normals, ia + 2) + nz;
+    normals[ib] = num(normals, ib) + nx;
+    normals[ib + 1] = num(normals, ib + 1) + ny;
+    normals[ib + 2] = num(normals, ib + 2) + nz;
+    normals[ic] = num(normals, ic) + nx;
+    normals[ic + 1] = num(normals, ic + 1) + ny;
+    normals[ic + 2] = num(normals, ic + 2) + nz;
   }
   for (let i = 0; i < count; i++) {
     const o = i * 3;
-    const len = Math.hypot(normals[o], normals[o + 1], normals[o + 2]) || 1;
-    normals[o] /= len;
-    normals[o + 1] /= len;
-    normals[o + 2] /= len;
+    const len = Math.hypot(num(normals, o), num(normals, o + 1), num(normals, o + 2)) || 1;
+    normals[o] = num(normals, o) / len;
+    normals[o + 1] = num(normals, o + 1) / len;
+    normals[o + 2] = num(normals, o + 2) / len;
   }
   return {
     positions: Float32Array.from(mesh.positions),
@@ -104,8 +110,8 @@ function buildCube(): MeshBuffers {
     [0, 3, 7, 4],
   ];
   for (const [a, b, c, d] of quads) {
-    addTriangle(mesh, ids[a], ids[c], ids[b]);
-    addTriangle(mesh, ids[a], ids[d], ids[c]);
+    addTriangle(mesh, num(ids, a), num(ids, c), num(ids, b));
+    addTriangle(mesh, num(ids, a), num(ids, d), num(ids, c));
   }
   return finalize(mesh);
 }
@@ -170,10 +176,10 @@ function buildLathe(kind: 'cylinder' | 'cone', segments = 20): MeshBuffers {
   const topCenter = addVertex(mesh, 0, 0.5, 0, 0.5, 0.5);
   const bottomCenter = addVertex(mesh, 0, -0.5, 0, 0.5, 0.5);
   for (let i = 0; i < segments; i++) {
-    addTriangle(mesh, top[i], bottom[i], bottom[i + 1]);
-    addTriangle(mesh, top[i], bottom[i + 1], top[i + 1]);
-    addTriangle(mesh, topCenter, top[i + 1], top[i]);
-    addTriangle(mesh, bottomCenter, bottom[i], bottom[i + 1]);
+    addTriangle(mesh, num(top, i), num(bottom, i), num(bottom, i + 1));
+    addTriangle(mesh, num(top, i), num(bottom, i + 1), num(top, i + 1));
+    addTriangle(mesh, topCenter, num(top, i + 1), num(top, i));
+    addTriangle(mesh, bottomCenter, num(bottom, i), num(bottom, i + 1));
   }
   return finalize(mesh);
 }
@@ -209,10 +215,12 @@ function buildTorus(major = 0.35, minor = 0.15, majorSeg = 20, minorSeg = 10): M
   }
   for (let i = 0; i < majorSeg; i++) {
     for (let j = 0; j < minorSeg; j++) {
-      const a = rings[i][j];
-      const b = rings[i + 1][j];
-      const c = rings[i + 1][j + 1];
-      const d = rings[i][j + 1];
+      const ringA = rings[i] ?? [];
+      const ringB = rings[i + 1] ?? [];
+      const a = num(ringA, j);
+      const b = num(ringB, j);
+      const c = num(ringB, j + 1);
+      const d = num(ringA, j + 1);
       addTriangle(mesh, a, b, c);
       addTriangle(mesh, a, c, d);
     }
@@ -266,7 +274,7 @@ export function heightfieldFromLuminance(
       ids.push(addVertex(mesh, px, py, pz, x / (width - 1), 1 - y / (height - 1)));
     }
   }
-  const at = (x: number, y: number) => ids[y * width + x];
+  const at = (x: number, y: number) => num(ids, y * width + x);
   for (let y = 0; y < height - 1; y++) {
     for (let x = 0; x < width - 1; x++) {
       addTriangle(mesh, at(x, y), at(x + 1, y), at(x + 1, y + 1));

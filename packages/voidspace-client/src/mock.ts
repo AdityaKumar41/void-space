@@ -496,6 +496,8 @@ function toCatalogItem(detail: AssetDetail): PublicCatalogItem {
     sourceAttribution: version?.sourceAttribution ?? null,
     sourceUrl: null,
     publishedAt: detail.updatedAt,
+    priceCents: 0,
+    currency: 'USD',
   };
 }
 

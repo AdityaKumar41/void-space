@@ -13,7 +13,12 @@
 import { randomBytes } from 'node:crypto';
 
 import { recordAudit, withPlatform, withTenant } from '@void-space/db';
-import type { AuthPrincipal, TenantSettingsInput, TenantSummary } from '@void-space/types';
+import type {
+  AiFeatureFlags,
+  AuthPrincipal,
+  TenantSettingsInput,
+  TenantSummary,
+} from '@void-space/types';
 
 import { ForbiddenError, NotFoundError } from '../../lib/errors';
 import { revokeTenantSessions } from '../auth/sessions';
@@ -31,6 +36,7 @@ export interface TenantDetail {
     allowedCategories: string[];
     webhookUrl: string | null;
     webhookEvents: string[];
+    aiFeatureFlags: AiFeatureFlags;
   };
   readonly counts: { users: number; assets: number; licenses: number; pendingReview: number };
 }
@@ -41,6 +47,8 @@ export interface TenantsService {
     principal: AuthPrincipal,
     input: TenantSettingsInput,
   ): Promise<TenantDetail['settings']>;
+  getAiFlags(principal: AuthPrincipal): Promise<AiFeatureFlags>;
+  updateAiFlags(principal: AuthPrincipal, flags: AiFeatureFlags): Promise<AiFeatureFlags>;
   list(principal: AuthPrincipal): Promise<TenantSummary[]>;
   setStatus(
     principal: AuthPrincipal,
@@ -48,6 +56,11 @@ export interface TenantsService {
     status: 'active' | 'suspended',
     reason?: string | undefined,
   ): Promise<{ tenant: TenantSummary; sessionsRevoked: number }>;
+}
+
+function asAiFlags(value: unknown): AiFeatureFlags {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as AiFeatureFlags;
 }
 
 function assertSuperAdmin(principal: AuthPrincipal): void {
@@ -109,6 +122,7 @@ export function createTenantsService(): TenantsService {
           allowedCategories: settings?.allowedCategories ?? [],
           webhookUrl: webhook?.url ?? null,
           webhookEvents: webhook?.events ?? [],
+          aiFeatureFlags: asAiFlags(settings?.aiFeatureFlags),
         },
         counts: { users, assets, licenses, pendingReview },
       };
@@ -205,6 +219,53 @@ export function createTenantsService(): TenantsService {
     });
 
     return (await loadDetail(principal)).settings;
+  }
+
+  /** FR-18.1 — read Studio AI feature gates for the caller's workspace. */
+  async function getAiFlags(principal: AuthPrincipal): Promise<AiFeatureFlags> {
+    return withTenant(principal.tenantId, async (db) => {
+      const settings = await db.tenantSettings.findUnique({
+        where: { tenantId: principal.tenantId },
+        select: { aiFeatureFlags: true },
+      });
+      return asAiFlags(settings?.aiFeatureFlags);
+    });
+  }
+
+  /**
+   * FR-18.1 — persist Studio AI feature gates.
+   * TenantAdmin (`tenant:manage-users`) may change these; SuperAdmin may as well.
+   */
+  async function updateAiFlags(
+    principal: AuthPrincipal,
+    flags: AiFeatureFlags,
+  ): Promise<AiFeatureFlags> {
+    const actorLabel = `${principal.fullName} <${principal.email}>`;
+    return withTenant(principal.tenantId, async (db) => {
+      const before = await db.tenantSettings.findUnique({
+        where: { tenantId: principal.tenantId },
+        select: { aiFeatureFlags: true },
+      });
+      const merged = { ...asAiFlags(before?.aiFeatureFlags), ...flags };
+      await db.tenantSettings.upsert({
+        where: { tenantId: principal.tenantId },
+        create: { tenantId: principal.tenantId, aiFeatureFlags: merged },
+        update: { aiFeatureFlags: merged },
+      });
+      await recordAudit(
+        {
+          action: 'tenant.ai_flags_updated',
+          entityType: 'tenant',
+          entityId: principal.tenantId,
+          actorId: principal.userId,
+          actorLabel,
+          beforeState: asAiFlags(before?.aiFeatureFlags),
+          afterState: merged,
+        },
+        db,
+      );
+      return merged;
+    });
   }
 
   /** FR-14.1 — platform tenant list (SuperAdmin only). */
@@ -336,5 +397,5 @@ export function createTenantsService(): TenantsService {
     };
   }
 
-  return { detail, updateSettings, list, setStatus };
+  return { detail, updateSettings, getAiFlags, updateAiFlags, list, setStatus };
 }

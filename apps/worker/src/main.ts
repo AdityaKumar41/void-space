@@ -26,6 +26,7 @@ import { createChainLicenseProcessor } from './processors/chain-license';
 import { createIpfsPinProcessor } from './processors/ipfs-pin';
 import { createNotifyProcessor } from './processors/notify';
 import { createXrPublishProcessor } from './processors/xr-publish';
+import { createSkillCredentialProcessor } from './processors/skill-credential';
 import { createWorkerProducer } from './lib/producer';
 import { concurrencyFor, createQueueRegistry, jobOptionsFor } from './queues';
 
@@ -119,6 +120,14 @@ export async function main(): Promise<void> {
     logger,
     runnerUrl: process.env.BLENDER_RUNNER_URL,
     jobDir: process.env.BLENDER_JOB_DIR ?? '/var/lib/void-space/blender-jobs',
+  }) as Processor;
+
+  PROCESSORS['skill-credential'] = createSkillCredentialProcessor({
+    logger,
+    rpcUrl: chainRpcUrl,
+    chainId,
+    contractAddress: process.env.CREDENTIAL_CONTRACT_ADDRESS?.trim(),
+    privateKey: process.env.PLATFORM_SIGNER_SEED?.trim(),
   }) as Processor;
 
   const workers: Worker[] = [];

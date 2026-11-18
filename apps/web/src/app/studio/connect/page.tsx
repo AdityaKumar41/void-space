@@ -39,7 +39,7 @@ export default async function StudioConnectPage() {
     const minted = await apiFetch<StudioTokenResponse>('/auth/studio-token', {
       method: 'POST',
       baseUrl: `${API_INTERNAL_URL}/api/v1`,
-      cookieHeader: cookies().toString(),
+      cookieHeader: (await cookies()).toString(),
     });
     token = minted.token ?? minted.accessToken ?? null;
     studioUrl = minted.studioUrl;
@@ -59,7 +59,9 @@ export default async function StudioConnectPage() {
           </Link>
         </div>
         <div className="rounded-card border border-hairline bg-surface px-6 py-6 shadow-panel">
-          <h1 className="text-2xl font-medium leading-[1.1] tracking-[-0.021em] text-ink">Studio did not open</h1>
+          <h1 className="text-2xl font-medium leading-[1.1] tracking-[-0.021em] text-ink">
+            Studio did not open
+          </h1>
           <p className="mt-2 text-[13px] leading-relaxed text-ink-dim">{failure}</p>
           <Link
             href="/login?next=/studio/connect"

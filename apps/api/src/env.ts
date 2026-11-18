@@ -128,6 +128,14 @@ export const envSchema = z.object({
   // --- AI enrichment (FR-7.x, optional) ------------------------------------
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5-20250929'),
   ANTHROPIC_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+
+  // --- commerce (optional Stripe; absent => labelled demo only outside production) -
+  STRIPE_SECRET_KEY: optionalString,
+  STRIPE_WEBHOOK_SECRET: optionalString,
+  /** Public web origin used to build Stripe success/cancel URLs. */
+  PUBLIC_WEB_ORIGIN: z.string().default('https://localhost'),
+  /** Platform cut in basis points (1000 = 10%). */
+  PLATFORM_FEE_BPS: z.coerce.number().int().min(0).max(5_000).default(1_000),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;

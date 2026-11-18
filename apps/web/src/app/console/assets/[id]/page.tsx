@@ -28,14 +28,13 @@ import {
 import { ModelViewer } from '../../../../components/model-viewer';
 import { AssetIntegrityPanel } from '../../../../components/asset-integrity-panel';
 import { type DecodedGeometry, type SceneSummary } from '../../../../lib/geometry';
-import { CopyButton } from '../../../../components/copy-button';
 import { useToast } from '../../../../components/toast';
 import { Panel } from '../../../../components/ui/card';
 import { StatusChip, Tag } from '../../../../components/ui/chip';
 import { ErrorNote, LoadingBlock } from '../../../../components/ui/feedback';
 import { BackLink } from '../../../../components/ui/layout';
 import { Button } from '../../../../components/ui/button';
-import { StatCell, StatRow, PersonCell } from '../../../../components/console-kit';
+import { PersonCell } from '../../../../components/console-kit';
 import { VoidStudioLaunchButton } from '../../../../components/studio-launch';
 
 interface AssetDetailView {
@@ -170,7 +169,8 @@ export default function AssetConsolePage() {
 
   const query = useQuery<AssetDetailView>({
     queryKey: ['asset', assetId],
-    queryFn: () => apiFetch<{ asset: AssetDetailView }>(`/assets/${assetId}`).then((result) => result.asset),
+    queryFn: () =>
+      apiFetch<{ asset: AssetDetailView }>(`/assets/${assetId}`).then((result) => result.asset),
     // In-flight work (pin, enrich, mint, publish) updates server-side while the operator watches.
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -246,7 +246,9 @@ export default function AssetConsolePage() {
       <div className="animate-rise flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <BackLink href="/console/library">Library</BackLink>
-          <h1 className="mt-3 truncate text-[clamp(1.5rem,2.6vw,2rem)] font-semibold tracking-[-0.028em] text-ink">{asset.name}</h1>
+          <h1 className="mt-3 truncate text-[clamp(1.5rem,2.6vw,2rem)] font-semibold tracking-[-0.028em] text-ink">
+            {asset.name}
+          </h1>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <StatusChip status={asset.status} />
             <span className="chip">{asset.category}</span>
@@ -256,7 +258,9 @@ export default function AssetConsolePage() {
         </div>
         <div className="flex flex-col items-end gap-2 text-right font-mono text-[12.5px] text-ink-faint">
           <div>
-            {version ? `v${version.versionNumber} · ${version.format.replace(/^\./, '').toUpperCase()}` : 'no version'}
+            {version
+              ? `v${version.versionNumber} · ${version.format.replace(/^\./, '').toUpperCase()}`
+              : 'no version'}
             <div className="mt-1">asset {shortId(asset.id, 12)}</div>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
@@ -284,13 +288,21 @@ export default function AssetConsolePage() {
                     setConfirmDelete(true);
                     return;
                   }
-                  void act(async () => {
-                    await apiFetch(`/assets/${assetId}`, { method: 'DELETE' });
-                    router.push('/console/library');
-                  }, 'delete', 'Deleting…');
+                  void act(
+                    async () => {
+                      await apiFetch(`/assets/${assetId}`, { method: 'DELETE' });
+                      router.push('/console/library');
+                    },
+                    'delete',
+                    'Deleting…',
+                  );
                 }}
               >
-                {petition?.key === 'delete' ? petition.label : confirmDelete ? 'Confirm delete' : 'Delete'}
+                {petition?.key === 'delete'
+                  ? petition.label
+                  : confirmDelete
+                    ? 'Confirm delete'
+                    : 'Delete'}
               </Button>
             ) : null}
             <VoidStudioLaunchButton
@@ -314,20 +326,24 @@ export default function AssetConsolePage() {
           className="grid gap-3 rounded-card border border-hairline bg-surface p-5 md:grid-cols-3"
           onSubmit={(event) => {
             event.preventDefault();
-            void act(async () => {
-              await apiFetch(`/assets/${assetId}`, {
-                method: 'PATCH',
-                body: {
-                  name: editName.trim(),
-                  category: editCategory.trim(),
-                  tags: editTags
-                    .split(',')
-                    .map((tag) => tag.trim())
-                    .filter((tag) => tag.length > 0),
-                },
-              });
-              setEditing(false);
-            }, 'edit', 'Saving…');
+            void act(
+              async () => {
+                await apiFetch(`/assets/${assetId}`, {
+                  method: 'PATCH',
+                  body: {
+                    name: editName.trim(),
+                    category: editCategory.trim(),
+                    tags: editTags
+                      .split(',')
+                      .map((tag) => tag.trim())
+                      .filter((tag) => tag.length > 0),
+                  },
+                });
+                setEditing(false);
+              },
+              'edit',
+              'Saving…',
+            );
           }}
         >
           <label className="text-sm text-ink">
@@ -360,7 +376,11 @@ export default function AssetConsolePage() {
             />
           </label>
           <div className="flex gap-2 md:col-span-3">
-            <Button type="submit" size="sm" disabled={petition !== null || editName.trim().length === 0}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={petition !== null || editName.trim().length === 0}
+            >
               {petition?.key === 'edit' ? petition.label : 'Save details'}
             </Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
@@ -401,7 +421,6 @@ export default function AssetConsolePage() {
 
       <div className="grid gap-5 lg:grid-cols-12 mt-2">
         <div className="lg:col-span-6 xl:col-span-7 space-y-5">
-
           <Panel title="Review history" right={`${asset.decisions.length} decisions`}>
             {asset.decisions.length === 0 ? (
               <div className="px-5 py-6 text-[13.5px]" style={{ color: 'var(--vs-fg-faint)' }}>
@@ -420,7 +439,9 @@ export default function AssetConsolePage() {
                 <tbody>
                   {asset.decisions.map((decision) => (
                     <tr key={decision.id}>
-                      <td className="font-mono text-[12px] text-ink-dim uppercase">{decision.decision}</td>
+                      <td className="font-mono text-[12px] text-ink-dim uppercase">
+                        {decision.decision}
+                      </td>
                       <td className="opacity-80">{decision.assessor?.fullName ?? '—'}</td>
                       <td className="opacity-80">{decision.comment ?? '—'}</td>
                       <td className="font-mono text-[12px] text-ink-dim whitespace-nowrap text-right opacity-70">
@@ -484,13 +505,17 @@ export default function AssetConsolePage() {
                     className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-2"
                     disabled={comment.trim().length === 0 || petition !== null}
                     onClick={() =>
-                      void act(async () => {
-                        await apiFetch(`/assets/${assetId}/comments`, {
-                          method: 'POST',
-                          body: { body: comment.trim() },
-                        });
-                        setComment('');
-                      }, 'comment', 'Posting…')
+                      void act(
+                        async () => {
+                          await apiFetch(`/assets/${assetId}/comments`, {
+                            method: 'POST',
+                            body: { body: comment.trim() },
+                          });
+                          setComment('');
+                        },
+                        'comment',
+                        'Posting…',
+                      )
                     }
                   >
                     {petition?.key === 'comment' ? petition.label : 'Post comment'}
@@ -514,7 +539,9 @@ export default function AssetConsolePage() {
               <div className="px-5 py-5">
                 <div className="font-mono text-[12px] text-ink-dim">
                   {asset.aiSuggestion.modelVersion} · prompt {asset.aiSuggestion.promptVersion}
-                  {asset.aiSuggestion.latencyMs !== null ? ` · ${asset.aiSuggestion.latencyMs} ms` : ''}
+                  {asset.aiSuggestion.latencyMs !== null
+                    ? ` · ${asset.aiSuggestion.latencyMs} ms`
+                    : ''}
                 </div>
 
                 <div className="mt-3">
@@ -523,9 +550,7 @@ export default function AssetConsolePage() {
                     {asset.aiSuggestion.suggestedTags.map((tag) => (
                       <Tag
                         key={tag}
-                        tone={
-                          asset.aiSuggestion?.acceptedTags.includes(tag) ? 'brand' : 'neutral'
-                        }
+                        tone={asset.aiSuggestion?.acceptedTags.includes(tag) ? 'brand' : 'neutral'}
                       >
                         {tag}
                       </Tag>
@@ -534,7 +559,9 @@ export default function AssetConsolePage() {
                 </div>
 
                 <div className="mt-3">
-                  <div className="text-[12px] tracking-[0.01em] text-ink-faint">Suggested description</div>
+                  <div className="text-[12px] tracking-[0.01em] text-ink-faint">
+                    Suggested description
+                  </div>
                   <p className="mt-1 text-[12px] leading-relaxed opacity-90">
                     {asset.aiSuggestion.suggestedDescription}
                   </p>
@@ -548,7 +575,9 @@ export default function AssetConsolePage() {
 
                 {asset.aiSuggestion.qualityFlags.length > 0 ? (
                   <div className="mt-3">
-                    <div className="text-[12px] tracking-[0.01em] text-ink-faint">Quality flags</div>
+                    <div className="text-[12px] tracking-[0.01em] text-ink-faint">
+                      Quality flags
+                    </div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {asset.aiSuggestion.qualityFlags.map((flag) => (
                         <Tag key={flag} tone="brand">
@@ -560,10 +589,19 @@ export default function AssetConsolePage() {
                 ) : null}
 
                 {may(PERMISSIONS.decide) && inReview ? (
-                  <div className="mt-4 space-y-2 border-t pt-3" style={{ borderColor: 'var(--vs-line-strong)' }}>
-                    <div className="text-[12px] tracking-[0.01em] text-ink-faint">Adoption on decision</div>
+                  <div
+                    className="mt-4 space-y-2 border-t pt-3"
+                    style={{ borderColor: 'var(--vs-line-strong)' }}
+                  >
+                    <div className="text-[12px] tracking-[0.01em] text-ink-faint">
+                      Adoption on decision
+                    </div>
                     <label className="font-mono text-[12px] text-ink-dim flex items-center gap-2">
-                      <input type="checkbox" checked={acceptTags} onChange={(event) => setAcceptTags(event.target.checked)} />
+                      <input
+                        type="checkbox"
+                        checked={acceptTags}
+                        onChange={(event) => setAcceptTags(event.target.checked)}
+                      />
                       MERGE AI TAGS INTO ASSET
                     </label>
                     <label className="font-mono text-[12px] text-ink-dim flex items-center gap-2">
@@ -578,7 +616,9 @@ export default function AssetConsolePage() {
                 ) : null}
               </div>
             ) : (
-              <div className="animate-dot-pulse font-mono text-[12px] text-ink-dim px-5 py-4">Enrichment pending…</div>
+              <div className="animate-dot-pulse font-mono text-[12px] text-ink-dim px-5 py-4">
+                Enrichment pending…
+              </div>
             )}
           </Panel>
 
@@ -662,12 +702,18 @@ export default function AssetConsolePage() {
               <div className="p-3">
                 <label className="block">
                   <span className="text-[12px] tracking-[0.01em] text-ink-faint">Licence type</span>
-                  <select className="h-10 w-full cursor-pointer appearance-none rounded-control border border-hairline bg-surface px-3 text-[14px] text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong focus:border-brand focus:outline-none mt-1" value={licenseType} onChange={(event) => setLicenseType(event.target.value)}>
-                    {['CC0', 'CC-BY', 'CC-BY-SA', 'Commercial-Use', 'Internal-Only'].map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
+                  <select
+                    className="h-10 w-full cursor-pointer appearance-none rounded-control border border-hairline bg-surface px-3 text-[14px] text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong focus:border-brand focus:outline-none mt-1"
+                    value={licenseType}
+                    onChange={(event) => setLicenseType(event.target.value)}
+                  >
+                    {['CC0', 'CC-BY', 'CC-BY-SA', 'Commercial-Use', 'Internal-Only'].map(
+                      (option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ),
+                    )}
                   </select>
                 </label>
                 <div className="text-[12px] tracking-[0.01em] text-ink-faint mt-3">
@@ -704,7 +750,9 @@ export default function AssetConsolePage() {
           {may(PERMISSIONS.revoke) && asset.canRevoke ? (
             <Panel title="Takedown" right="FR-9.5">
               <div className="p-3">
-                <div className="text-[12px] tracking-[0.01em] text-ink-faint">Flags the licence revoked on chain. History is retained.</div>
+                <div className="text-[12px] tracking-[0.01em] text-ink-faint">
+                  Flags the licence revoked on chain. History is retained.
+                </div>
                 <button
                   type="button"
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 mt-3 w-full justify-center"
@@ -759,7 +807,9 @@ export default function AssetConsolePage() {
                       >
                         {job.status}
                       </td>
-                      <td className="font-mono tracking-[-0.01em] tabular-nums text-right">{job.attempts}</td>
+                      <td className="font-mono tracking-[-0.01em] tabular-nums text-right">
+                        {job.attempts}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -784,11 +834,16 @@ export default function AssetConsolePage() {
                 {asset.versions.map((item) => (
                   <tr key={item.id}>
                     <td className="font-mono text-[12px] text-ink-dim">
-                      v{item.versionNumber} {item.isCurrent ? <span className="text-brand">●</span> : null}
+                      v{item.versionNumber}{' '}
+                      {item.isCurrent ? <span className="text-brand">●</span> : null}
                     </td>
                     <td className="font-mono text-[12px] text-ink-dim">{item.format}</td>
-                    <td className="font-mono tracking-[-0.01em] tabular-nums text-right">{formatNumber(item.polycount)}</td>
-                    <td className="font-mono tracking-[-0.01em] tabular-nums text-right">{formatBytes(item.sizeBytes)}</td>
+                    <td className="font-mono tracking-[-0.01em] tabular-nums text-right">
+                      {formatNumber(item.polycount)}
+                    </td>
+                    <td className="font-mono tracking-[-0.01em] tabular-nums text-right">
+                      {formatBytes(item.sizeBytes)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

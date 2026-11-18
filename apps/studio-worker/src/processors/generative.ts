@@ -19,6 +19,8 @@ export interface GenerativeJobPayload {
   userId?: string;
   kind: 'text-to-3d' | 'image-to-3d' | 'text-to-texture';
   prompt: string;
+  /** Required for image-to-3d — public URL or Meshy data URI. */
+  imageUrl?: string;
   artStyle?: 'realistic' | 'sculpture';
   modelUrl?: string;
 }
@@ -34,7 +36,7 @@ export function createGenerativeProcessor(logger: Logger) {
     model: string;
     resultUrls: Record<string, string>;
   }> {
-    const { tenantId, projectId, prompt, kind, artStyle, modelUrl } = job.data;
+    const { tenantId, projectId, prompt, kind, artStyle, modelUrl, imageUrl, userId } = job.data;
     logger.info({ jobId: job.id, tenantId, kind, prompt }, 'processing generative 3D job');
 
     let resultUrls: Record<string, string> = {};
@@ -47,12 +49,26 @@ export function createGenerativeProcessor(logger: Logger) {
         if (kind === 'text-to-texture') {
           taskId = await meshy.createTextureTask({
             tenantId,
+            ...(userId ? { userId } : {}),
             prompt,
             modelUrl: modelUrl ?? 'https://voidspace.local/models/draft.glb',
+          });
+        } else if (kind === 'image-to-3d') {
+          if (!imageUrl) {
+            throw new Error('image-to-3d jobs require imageUrl (public URL or data URI)');
+          }
+          taskId = await meshy.createMeshTask({
+            tenantId,
+            ...(userId ? { userId } : {}),
+            kind,
+            imageUrl,
+            ...(prompt ? { prompt } : {}),
+            artStyle,
           });
         } else {
           taskId = await meshy.createMeshTask({
             tenantId,
+            ...(userId ? { userId } : {}),
             kind,
             prompt,
             artStyle,

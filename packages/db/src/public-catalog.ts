@@ -51,6 +51,8 @@ export interface PublicCatalogItem {
   readonly sourceAttribution: string | null;
   readonly sourceUrl: string | null;
   readonly publishedAt: string;
+  readonly priceCents: number;
+  readonly currency: string;
 }
 
 type PublicCatalogRow = Prisma.PublicCatalogEntryGetPayload<Record<string, never>>;
@@ -86,6 +88,8 @@ export function toPublicCatalogItem(row: PublicCatalogRow): PublicCatalogItem {
     sourceAttribution: row.sourceAttribution,
     sourceUrl: row.sourceUrl,
     publishedAt: row.publishedAt.toISOString(),
+    priceCents: row.priceCents,
+    currency: row.currency,
   };
 }
 
@@ -262,6 +266,15 @@ export async function listPublicCatalog(params?: {
 export async function getPublicCatalogEntry(assetId: string): Promise<PublicCatalogItem | null> {
   const row = await prisma.publicCatalogEntry.findUnique({ where: { assetId } });
   return row ? toPublicCatalogItem(row) : null;
+}
+
+/** Listing plus seller workspace id — used by commerce settlement. */
+export async function getPublicCatalogListing(
+  assetId: string,
+): Promise<(PublicCatalogItem & { readonly tenantId: string }) | null> {
+  const row = await prisma.publicCatalogEntry.findUnique({ where: { assetId } });
+  if (!row) return null;
+  return { ...toPublicCatalogItem(row), tenantId: row.tenantId };
 }
 
 /**

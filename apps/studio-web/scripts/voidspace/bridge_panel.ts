@@ -404,6 +404,9 @@ function injectStyles(): void {
       text-align: center;
     }
     .vsp__btn:hover { opacity: 0.9; }
+    .vsp__btn:disabled {
+      opacity: 0.45; cursor: not-allowed; filter: grayscale(0.2);
+    }
     .vsp__btn--subtle {
       background: transparent; border-color: ${p.line}; color: ${p.fg};
     }
@@ -1156,6 +1159,14 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     status: 'idle' | 'loading' | 'success' | 'error'
     message?: string
   } = {status: 'idle'}
+  /** Caps the "wait for scene ctx" retry so a missing ctx cannot spin forever. */
+  let modelImportAttempts = 0
+  const MAX_MODEL_IMPORT_ATTEMPTS = 20
+  /**
+   * While true, the 30s status poll must not replace the panel body — that wipe
+   * is what made publish / audit / Meshy / import feel "stuck" mid-flight.
+   */
+  let panelBusy = false
   let activeProjectId: string | null = null
   let activeSession: {displayName: string; roles: string[]; tenantId: string} | null = null
   let latestAudit: {score: number; passed: boolean; threshold: number; issues: any[]} | null = null
@@ -1247,6 +1258,26 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     pollTimer = intervalMs > 0 ? window.setInterval(() => void render(), intervalMs) : undefined
   }
 
+  const beginBusy = (): void => {
+    panelBusy = true
+    armPoll(0)
+  }
+  const endBusy = (): void => {
+    panelBusy = false
+    armPoll(pollMs)
+  }
+  /** Force a panel refresh even while a long operation holds the busy lock. */
+  const renderNow = async (): Promise<void> => {
+    const wasBusy = panelBusy
+    panelBusy = false
+    try {
+      await render()
+    } finally {
+      panelBusy = wasBusy
+      if (wasBusy) armPoll(0)
+    }
+  }
+
   /**
    * Verifies the launch token against the Studio API and nothing else.
    *
@@ -1333,6 +1364,9 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
   }
 
   const render = async (): Promise<void> => {
+    // Never tear down in-flight publish / audit / Meshy / import UI.
+    if (panelBusy) return
+
     let status: BridgeStatus | null = null
     let failure: string | null = null
 
@@ -1596,13 +1630,17 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
             ${status.publish.enabled ? 'enabled' : 'browse only'}
           </span>
         </div>
-        <button type="button" class="vsp__btn" data-action="open-publish">
-          Publish to VOID·SPACE
+        <button type="button" class="vsp__btn" data-action="open-publish"${
+          status.publish.enabled ? '' : ' disabled title="Publishing is not enabled for this workspace"'
+        }>
+          ${status.publish.enabled ? 'Publish to VOID·SPACE' : 'Publish unavailable'}
         </button>
         <div class="vsp__note">${
           status.publish.requirement
             ? esc(status.publish.requirement)
-            : 'Exports are validated and handed to VOID·SPACE by the Studio API — the tenant credential never reaches this page.'
+            : status.publish.enabled
+              ? 'Exports are validated and handed to VOID·SPACE by the Studio API — the tenant credential never reaches this page.'
+              : 'Publishing is browse-only right now. Connect a live VOID·SPACE bridge (or enable publish in Studio API config) before submitting assets.'
         }</div>
       </div>
       <div class="vsp__card">
@@ -1720,7 +1758,10 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
 
     const openPublishBtn = body.querySelector('[data-action="open-publish"]')
     if (openPublishBtn) {
-      openPublishBtn.addEventListener('click', () => renderPublishForm(status))
+      openPublishBtn.addEventListener('click', () => {
+        if (!status.publish.enabled) return
+        renderPublishForm(status)
+      })
     }
 
     wireLocalExports()
@@ -1756,8 +1797,10 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
 
   const triggerModelImport = async (): Promise<void> => {
     if (!importModelUrl) return
+    if (panelBusy && modelImportStatus.status === 'loading') return
+    beginBusy()
     modelImportStatus = {status: 'loading', message: 'Fetching 3D model from VOID·SPACE…'}
-    void render()
+    void renderNow()
 
     try {
       let res: Response | null = null
@@ -1814,9 +1857,22 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
 
       const ctx = getToolContext()
       if (!ctx || !ctx.scene) {
+        modelImportAttempts += 1
+        if (modelImportAttempts >= MAX_MODEL_IMPORT_ATTEMPTS) {
+          modelImportStatus = {
+            status: 'error',
+            message:
+              'The editor scene never became ready for import. Reload VOID·STUDIO and try again.',
+          }
+          endBusy()
+          void render()
+          return
+        }
+        endBusy()
         setTimeout(() => void triggerModelImport(), 600)
         return
       }
+      modelImportAttempts = 0
 
       // 1. Determine format and filename
       const explicitFormat = (urlParams.get('format') || '').toLowerCase().trim()
@@ -2040,6 +2096,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
         message: `Import failed: ${(err as Error)?.message || String(err)}`,
       }
     }
+    endBusy()
     void render()
   }
 
@@ -2049,6 +2106,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       auditBtn.disabled = true
       auditBtn.textContent = 'Auditing Scene…'
     }
+    beginBusy()
 
     try {
       const projId = await ensureActiveProject()
@@ -2061,6 +2119,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
           ...(authToken ? {authorization: `Bearer ${authToken}`} : {}),
         },
         body: JSON.stringify({metrics, persist: false}),
+        signal: AbortSignal.timeout(60_000),
       })
 
       if (!res.ok) {
@@ -2092,6 +2151,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       }
     }
 
+    endBusy()
     void render()
   }
 
@@ -2211,12 +2271,17 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
 
       const projId = await ensureActiveProject()
       const name = String(data.get('name') || '3D Asset')
-      const category = String(data.get('category') || 'Props')
+      const category = String(data.get('category') || 'Prop')
       const tags = String(data.get('tags') || '').split(',').map((t) => t.trim()).filter(Boolean)
       const description = String(data.get('description') || '')
       const shouldRepublish = Boolean(data.get('republish')) && importAssetId
       const chosenFormat = String(data.get('format') || 'glb').toLowerCase()
 
+      if (!status.publish.enabled) {
+        throw new Error('Publishing is not enabled for this Studio workspace.')
+      }
+
+      beginBusy()
       target.innerHTML = `
         <div class="vsp__card" style="margin-top:8px; padding:12px; border-color:${p.accent};">
           <div style="font-weight:600; font-size:12px; color:${p.accent};">Checking readiness…</div>
@@ -2369,6 +2434,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
           ...(authToken ? {authorization: `Bearer ${authToken}`} : {}),
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(120_000),
       })
 
       if (!res.ok) {
@@ -2382,6 +2448,7 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       const consoleUrl = `${status.links.consoleUrl}/console/assets/${publishedAssetId}`
 
       const isPublished = pub.status === 'published'
+      endBusy()
       target.innerHTML = `
         <div class="vsp__success" style="margin-top:8px; padding:12px; border-radius:8px; background:rgba(16, 185, 129, 0.12); border:1px solid #10b981;">
           <div style="font-weight:600; font-size:12px; margin-bottom:6px; color:#10b981; display:flex; align-items:center; gap:6px;">
@@ -2415,7 +2482,13 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
         })
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Publish failed.'
+      endBusy()
+      const message =
+        err instanceof Error && err.name === 'TimeoutError'
+          ? 'Publish timed out after 2 minutes. Check the Studio API / VOID·SPACE bridge and try again.'
+          : err instanceof Error
+            ? err.message
+            : 'Publish failed.'
       target.innerHTML = `
         <div class="vsp__card" style="margin-top:8px;">
           <div class="vsp__err">Publish failed: ${esc(message)}</div>
@@ -2589,12 +2662,23 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
     },
   })
 
+  const meshyProgress = (message: string): void => {
+    if (!copilotPending) return
+    const pending = body.querySelector('.vsp__msg--pending')
+    if (pending) pending.textContent = message
+  }
+
   const prepareMesh = async (input: Record<string, unknown>) => {
     const prompt = typeof input.prompt === 'string' ? input.prompt : ''
     const imageRef = typeof input.imageRef === 'string' ? input.imageRef : ''
     if (imageRef.startsWith('data:image')) {
       if (authToken) {
-        const meshy = await fetchMeshyGlb(base, authToken, {kind: 'image-to-3d', imageUrl: imageRef, ...(prompt ? {prompt} : {})})
+        const meshy = await fetchMeshyGlb(
+          base,
+          authToken,
+          {kind: 'image-to-3d', imageUrl: imageRef, ...(prompt ? {prompt} : {})},
+          {onProgress: meshyProgress},
+        )
         if ('bytes' in meshy) return {glb: meshy.bytes, note: 'Meshy image-to-3D.'}
         const buffers = await reliefFromDataUrl(imageRef)
         const why = 'failed' in meshy ? meshy.failed : 'Meshy is not configured.'
@@ -2604,7 +2688,12 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       return {buffers, note: 'Local relief mesh from the image. Meshy is not configured, so this is a height field, not a reconstructed object.'}
     }
     if (prompt && authToken) {
-      const meshy = await fetchMeshyGlb(base, authToken, {kind: 'text-to-3d', prompt})
+      const meshy = await fetchMeshyGlb(
+        base,
+        authToken,
+        {kind: 'text-to-3d', prompt},
+        {onProgress: meshyProgress},
+      )
       if ('bytes' in meshy) return {glb: meshy.bytes, note: 'Meshy text-to-3D.'}
       if ('failed' in meshy) {
         const kind = primitiveForPrompt(prompt)
@@ -2617,6 +2706,57 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       note: `Local ${kind} stand-in. Meshy is not configured, so the prompt did not become a generated model.`,
     }
   }
+
+  const maybeShowWebGpuBanner = (detail?: string): void => {
+    try {
+      if (document.getElementById('vsp-webgpu-banner')) return
+      const gpu = (navigator as Navigator & {gpu?: unknown}).gpu
+      const stored =
+        detail ||
+        (window as unknown as {__voidStudioWebGpuError?: string}).__voidStudioWebGpuError
+      if (gpu && !stored) return
+      const banner = document.createElement('div')
+      banner.id = 'vsp-webgpu-banner'
+      banner.setAttribute(
+        'style',
+        [
+          'position:fixed',
+          'left:12px',
+          'bottom:12px',
+          'z-index:100000',
+          'max-width:360px',
+          'padding:10px 12px',
+          'border-radius:8px',
+          'background:rgba(20,16,12,0.92)',
+          'border:1px solid rgba(251,191,36,0.45)',
+          'color:#fde68a',
+          'font:12px/1.45 ui-sans-serif,system-ui,sans-serif',
+          'box-shadow:0 8px 24px rgba(0,0,0,0.35)',
+        ].join(';'),
+      )
+      const reason = stored
+        ? `WebGPU init failed: ${stored}`
+        : 'VOID·STUDIO needs WebGPU. Enable it in Chrome/Edge, or the viewport may stay blank.'
+      banner.innerHTML =
+        '<strong style="display:block;margin-bottom:4px">WebGPU unavailable</strong>' +
+        `<span>${esc(reason)}</span>`
+      const dismiss = document.createElement('button')
+      dismiss.type = 'button'
+      dismiss.textContent = 'Dismiss'
+      dismiss.setAttribute(
+        'style',
+        'margin-top:8px;border:1px solid rgba(251,191,36,0.45);background:transparent;color:#fde68a;border-radius:6px;padding:4px 8px;cursor:pointer;font:inherit',
+      )
+      dismiss.addEventListener('click', () => banner.remove())
+      banner.appendChild(dismiss)
+      document.body.appendChild(banner)
+    } catch {
+      // Banner is best-effort; never block the editor.
+    }
+  }
+  window.addEventListener('voidstudio:webgpu-failed', ((ev: CustomEvent<{message?: string}>) => {
+    maybeShowWebGpuBanner(ev.detail?.message)
+  }) as EventListener)
 
   const runSceneCalls = async (
     calls: {name: string; input: Record<string, unknown>}[],
@@ -2643,13 +2783,14 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       <div class="vsp__chat">
         <div class="vsp__gen">
           <div class="vsp__gen-row">
-            <input class="vsp__file" data-role="image-file" type="file" accept="image/png,image/jpeg,image/webp" />
-            <button type="button" class="vsp__btn" data-role="image-go" style="width:auto; padding:5px 10px">Image to 3D</button>
+            <input class="vsp__file" data-role="image-file" type="file" accept="image/png,image/jpeg,image/webp" ${copilotPending ? 'disabled' : ''} />
+            <button type="button" class="vsp__btn" data-role="image-go" style="width:auto; padding:5px 10px" ${copilotPending ? 'disabled' : ''}>${copilotPending ? 'Working…' : 'Image to 3D'}</button>
           </div>
           <form class="vsp__gen-row" data-role="pbr-form">
-            <input class="vsp__input" name="pbr" placeholder="PBR prompt, e.g. brushed chrome" />
-            <button type="submit" class="vsp__btn" style="width:auto; padding:5px 10px">PBR maps</button>
+            <input class="vsp__input" name="pbr" placeholder="PBR prompt, e.g. brushed chrome" ${copilotPending ? 'disabled' : ''} />
+            <button type="submit" class="vsp__btn" style="width:auto; padding:5px 10px" ${copilotPending ? 'disabled' : ''}>PBR maps</button>
           </form>
+          <div class="vsp__note">Image→3D uses Meshy when configured (data URI OK). Without Meshy you get a local height-field draft, not a reconstructed object.</div>
         </div>
         <div class="vsp__chips">
           <span class="vsp__chip" data-prompt="Check topology and polygon budget">Audit budget</span>
@@ -2717,7 +2858,14 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
   }
 
   const sendImageToMesh = async (file: File): Promise<void> => {
+    if (copilotPending) return
+    if (file.size > 18 * 1024 * 1024) {
+      pushAssistant('That image is over 18 MB. Compress it under Meshy’s 20 MB limit and try again.')
+      return
+    }
     copilotMessages.push({role: 'user', text: `Image to 3D: ${file.name}`})
+    copilotPending = true
+    beginBusy()
     renderCopilotView()
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -2732,11 +2880,18 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       pushAssistant(applied.lines.join('\n'))
     } catch (error) {
       pushAssistant(error instanceof Error ? error.message : 'Image-to-3D failed.')
+    } finally {
+      copilotPending = false
+      endBusy()
+      renderCopilotView()
     }
   }
 
   const sendPbrPrompt = async (promptText: string): Promise<void> => {
+    if (copilotPending) return
     copilotMessages.push({role: 'user', text: `PBR: ${promptText}`})
+    copilotPending = true
+    beginBusy()
     renderCopilotView()
     try {
       const scene = summarizeScene(getToolContext())
@@ -2745,12 +2900,18 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       pushAssistant(applied.lines.join('\n'))
     } catch (error) {
       pushAssistant(error instanceof Error ? error.message : 'The PBR maps could not be built.')
+    } finally {
+      copilotPending = false
+      endBusy()
+      renderCopilotView()
     }
   }
 
   const sendCopilotMessage = async (promptText: string): Promise<void> => {
+    if (copilotPending) return
     copilotMessages.push({role: 'user', text: promptText})
     copilotPending = true
+    beginBusy()
     renderCopilotView()
 
     try {
@@ -2874,12 +3035,14 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       }
     } finally {
       copilotPending = false
+      endBusy()
     }
     renderCopilotView()
   }
 
   await checkSession()
   await render()
+  maybeShowWebGpuBanner()
 
   if (importModelUrl) {
     setTimeout(() => void triggerModelImport(), 600)
@@ -2904,7 +3067,14 @@ export async function mountVoidSpacePanel(): Promise<VoidSpacePanelHandle> {
       const c = getToolContext()
       const ob = c?.scene?.objects?.active || [...(c?.scene?.objects || [])].find((o: any) => o?.data)
       if (!ob) {
-        alert('Please select or create a 3D model first before applying a texture.')
+        // No mesh selected → treat the drop as Image→3D instead of a dead-end alert.
+        activeTab = 'copilot'
+        root.dataset.tab = 'copilot'
+        tabBtns.forEach((b) => {
+          b.classList.toggle('active', (b as HTMLElement).dataset.tabTarget === 'copilot')
+        })
+        togglePanel(true)
+        void sendImageToMesh(file)
         return
       }
       const reader = new FileReader()

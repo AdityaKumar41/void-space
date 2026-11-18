@@ -3,6 +3,8 @@ const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://localhost:4000'
 const IPFS_GATEWAY_URL = process.env.IPFS_GATEWAY_URL ?? 'http://localhost:8080';
 
 const nextConfig = {
+  // Isolated verification builds must not overwrite a running dev server's output.
+  distDir: process.env.NEXT_BUILD_DIR || '.next',
   reactStrictMode: true,
   // Workspace packages ship TypeScript source (see README "package strategy"),
   // so Next compiles them alongside the app.

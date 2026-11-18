@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { ToastProvider } from '../components/toast';
+import { SessionProvider } from '../lib/session';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(
@@ -33,8 +34,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
-      {/* Toasts wrap the app: every mutation reports its outcome where the user is looking. */}
-      <ToastProvider>{children}</ToastProvider>
+      {/* Optional session for public pages (likes/comments); console shell requires auth. */}
+      <SessionProvider requireAuth={false}>
+        <ToastProvider>{children}</ToastProvider>
+      </SessionProvider>
     </QueryClientProvider>
   );
 }

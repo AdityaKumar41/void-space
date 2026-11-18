@@ -14,6 +14,7 @@ export const QUEUE_NAMES = [
   'chain-license',
   'xr-publish',
   'notify',
+  'skill-credential',
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -72,6 +73,13 @@ export const QUEUE_POLICIES: Readonly<Record<QueueName, QueuePolicy>> = {
     backoff: { type: 'fixed', delayMs: 1_000 },
     policy: 'Best-effort, 1 retry',
     defaultConcurrency: 4,
+  },
+  'skill-credential': {
+    name: 'skill-credential',
+    attempts: 3,
+    backoff: { type: 'exponential', delayMs: 3_000 },
+    policy: '3 retries; without CREDENTIAL_CONTRACT_ADDRESS the job marks skipped',
+    defaultConcurrency: 2,
   },
 };
 
@@ -178,6 +186,7 @@ export const JOB_QUEUE_DB_TO_NAME: Readonly<Record<string, QueueName>> = {
   chain_license: 'chain-license',
   xr_publish: 'xr-publish',
   notify: 'notify',
+  skill_credential: 'skill-credential',
 };
 
 /**

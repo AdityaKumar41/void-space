@@ -12,13 +12,13 @@
  * server. Seeding the query with it means the first paint is complete: no spinner, no second
  * round-trip, and no window in which the shell knows less than the server did.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { createContext, useContext, useEffect } from 'react';
 
 import type { Permission, Role } from '@void-space/types';
 
-import { apiFetch, refreshSession } from './api';
+import { apiFetch } from './api';
 import type { Membership, SessionTenant, SessionView } from './session-types';
 
 export type { Membership, SessionTenant, SessionView };
@@ -56,47 +56,49 @@ let optimisticMemberships: readonly Membership[] | null = null;
 export function SessionProvider({
   children,
   initialSession,
+  requireAuth = false,
 }: {
   children: React.ReactNode;
   initialSession?: SessionView | null;
+  /**
+   * When true (console shell), expired sessions redirect to login after a failed refresh.
+   * When false (public pages / root), anonymous visitors keep browsing with `session` undefined.
+   */
+  requireAuth?: boolean;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
 
-  const query = useQuery<SessionView>({
+  const query = useQuery<SessionView | null>({
     queryKey: ['session'],
-    queryFn: () => apiFetch<SessionView>('/auth/me'),
+    queryFn: () => apiFetch<SessionView | null>('/auth/me?optional=true'),
     retry: false,
+    // Public surfaces tolerate a missing cookie without treating it as a hard failure.
+    throwOnError: false,
     ...(initialSession ? { initialData: initialSession } : {}),
   });
 
   /**
    * An unauthenticated visitor is sent to the sign-in screen rather than shown a broken shell.
    *
-   * This is the *expired token* path only — a visitor with no cookie never reaches this component,
-   * because the server layout has already redirected them. Retrying once through the refresh cookie
-   * first is what keeps a fifteen-minute access token from ending the session (FR-2.3); if the
-   * refresh also fails, the session really is over.
+   * This is the *expired token* path only, and only when `requireAuth` is set (console). Public
+   * pages mount the same provider so likes/comments can see an optional session without crashing.
+   * Retrying once through the refresh cookie first keeps a fifteen-minute access token from ending
+   * the session (FR-2.3); if the refresh also fails, the session really is over.
    */
   useEffect(() => {
     const status = (query.error as { status?: number } | null)?.status;
-    if (status !== 401) return;
-
-    let cancelled = false;
-    void refreshSession().then((refreshed) => {
-      if (cancelled) return;
-      if (refreshed) void query.refetch();
-      else router.replace('/login?next=%2Fconsole');
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [query, router]);
+    // apiFetch already performs the single-flight refresh. Repeating it here
+    // can rotate the same cookie twice and revoke a valid session family.
+    if (requireAuth && (status === 401 || query.data === null)) {
+      router.replace('/login?next=%2Fconsole');
+    }
+  }, [query.error, query.data, router, requireAuth]);
 
   const memberships = optimisticMemberships ?? query.data?.user.tenants ?? [];
 
   const value: SessionContextValue = {
-    session: query.data,
+    session: query.data ?? undefined,
     memberships,
     isLoading: query.isLoading,
     error: query.error,
@@ -105,7 +107,9 @@ export function SessionProvider({
     async signOut() {
       await apiFetch('/auth/logout', { method: 'POST', skipRefresh: true });
       optimisticMemberships = null;
+      queryClient.clear();
       router.replace('/login');
+      router.refresh();
     },
     async switchTenant(tenantId) {
       const result = await apiFetch<LoginResult>('/auth/tenant', {
@@ -114,6 +118,7 @@ export function SessionProvider({
       });
       if (result.user?.tenants) optimisticMemberships = result.user.tenants;
       await query.refetch();
+      await queryClient.invalidateQueries();
       optimisticMemberships = null;
     },
   };
@@ -131,4 +136,3 @@ export function useSession(): SessionContextValue {
   if (!context) throw new Error('useSession must be used inside <SessionProvider>');
   return context;
 }
-

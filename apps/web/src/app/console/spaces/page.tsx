@@ -2,10 +2,12 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { SpatialHeartbeatInput } from '@void-space/types';
 import { useEffect, useState } from 'react';
 
 import { apiFetch } from '../../../lib/api';
 import { useSession } from '../../../lib/session';
+import { connectSpatialRoom } from '../../../lib/spatial-socket';
 import { Button } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { LessonPlayer, type DeliveryLesson } from '../../../components/lesson-player';
@@ -207,10 +209,14 @@ function RoomSession({ roomId, leave }: { roomId: string; leave: () => void }) {
   const [leaving, setLeaving] = useState(false);
   const [follow, setFollow] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<
+    'connecting' | 'open' | 'closed' | 'unsupported' | 'idle'
+  >('idle');
   const room = useQuery({
     queryKey: ['spatial-room', roomId],
     queryFn: () => apiFetch<{ room: Room }>(`/spatial/rooms/${roomId}`),
-    refetchInterval: 3_000,
+    // Poll slowly when the live socket is open; keep the old 3s cadence as fallback.
+    refetchInterval: liveStatus === 'open' ? 15_000 : 3_000,
     retry: false,
   });
   const lessonId = room.data?.room.lessonId;
@@ -229,7 +235,12 @@ function RoomSession({ roomId, leave }: { roomId: string; leave: () => void }) {
       try {
         await apiFetch(`/spatial/rooms/${roomId}/heartbeat`, {
           method: 'POST',
-          body: { pose: { position: [0, 1.6, 0], device: 'web' } },
+          body: {
+            pose: {
+              position: [0, 1.6, 0],
+              device: 'web',
+            },
+          } satisfies SpatialHeartbeatInput,
         });
         if (!disposed) {
           setJoined(true);
@@ -245,9 +256,21 @@ function RoomSession({ roomId, leave }: { roomId: string; leave: () => void }) {
     };
     void report();
     const timer = window.setInterval(report, 20_000);
+    const disconnect = connectSpatialRoom(roomId, {
+      onStatus: (status) => {
+        if (!disposed) setLiveStatus(status);
+      },
+      onSnapshot: () => {
+        if (!disposed) void cache.invalidateQueries({ queryKey: ['spatial-room', roomId] });
+      },
+      onDelta: () => {
+        if (!disposed) void cache.invalidateQueries({ queryKey: ['spatial-room', roomId] });
+      },
+    });
     return () => {
       disposed = true;
       window.clearInterval(timer);
+      disconnect();
     };
   }, [roomId, cache]);
   async function exit() {

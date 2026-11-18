@@ -24,6 +24,7 @@ import { copilotRoutes } from './modules/copilot';
 import { generativeRoutes } from './modules/generative';
 import { registerJobRoutes } from './modules/jobs';
 import { projectRoutes } from './modules/projects';
+import { tenantFlagRoutes } from './modules/tenant-flags';
 
 export interface StudioApp {
   readonly app: FastifyInstance;
@@ -148,6 +149,7 @@ export async function buildStudioApp(
   // a shared path prefix is how two products end up proxying each other's routes.
   await app.register(bridgeRoutes, { prefix: '/studio/api/v1', bridge });
   await app.register(projectRoutes, { prefix: '/studio/api/v1', bridge });
+  await app.register(tenantFlagRoutes, { prefix: '/studio/api/v1' });
   await app.register(copilotRoutes, { prefix: '/studio/api/v1', ai });
   await app.register(generativeRoutes, {
     prefix: '/studio/api/v1',

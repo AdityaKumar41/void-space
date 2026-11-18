@@ -130,7 +130,7 @@ test('scene authoring and operation-based experience, consequence, resume and re
     await page.getByRole('button', { name: 'Resume', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Respond to the discrepancy' })).toBeVisible();
     await page.getByRole('button', { name: 'Ignore the discrepancy', exact: true }).click();
-    await expect(page.getByText('ATTEMPT FINISHED', { exact: true })).toBeVisible();
+    await expect(page.getByText('Attempt finished', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Review action replay' }).click();
     await expect(page.getByRole('slider', { name: 'Replay position' })).toHaveAttribute('max', '5');
     await page.getByRole('slider', { name: 'Replay position' }).fill('2');

@@ -7,10 +7,12 @@
  * mesh or procedural PBR maps instead of pretending a provider ran.
  */
 import { FetchTransport, MeshyClient, type HttpTransport, type MeshyTaskKind } from '@void-space/studio-ai';
+import { withStudioTenant } from '@void-space/studio-db';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
-import { UnavailableError, UpstreamError } from '../lib/errors';
+import { tenantHasAiFeature } from '../lib/ai';
+import { ForbiddenError, UnavailableError, UpstreamError, ValidationError } from '../lib/errors';
 import { parseBody, parseParams, parseQuery } from '../lib/http';
 import { resolveSession } from '../lib/session';
 import { meshyAssetUrlAllowed } from './meshy-assets';
@@ -44,6 +46,17 @@ async function providerError(error: unknown): Promise<never> {
   throw new UpstreamError('Meshy did not accept the request.');
 }
 
+async function tenantAiFlags(tenantId: string): Promise<unknown> {
+  const row = await withStudioTenant(tenantId, (db) =>
+    db.tenant.findUnique({ where: { id: tenantId }, select: { aiFeatureFlags: true } }),
+  );
+  return row?.aiFeatureFlags ?? {};
+}
+
+function featureForKind(kind: z.infer<typeof kindSchema>): 'generativeMesh' | 'generativeTexture' {
+  return kind === 'text-to-texture' ? 'generativeTexture' : 'generativeMesh';
+}
+
 export async function generativeRoutes(
   app: FastifyInstance,
   options: GenerativeRoutesOptions,
@@ -57,10 +70,13 @@ export async function generativeRoutes(
     : null;
 
   app.get('/generative/status', async (request: FastifyRequest) => {
-    await session(request);
+    const me = await session(request);
+    const flags = await tenantAiFlags(me.tenantId);
     return {
       configured: client !== null,
       provider: client ? 'meshy' : null,
+      generativeMesh: tenantHasAiFeature(flags, 'generativeMesh'),
+      generativeTexture: tenantHasAiFeature(flags, 'generativeTexture'),
     };
   });
 
@@ -73,6 +89,27 @@ export async function generativeRoutes(
       );
     }
     const body = parseBody(createSchema, request.body);
+    const flags = await tenantAiFlags(me.tenantId);
+    const feature = featureForKind(body.kind);
+    if (!tenantHasAiFeature(flags, feature)) {
+      throw new ForbiddenError(
+        `${feature} is disabled for your workspace (FR-18.1). A TenantAdmin can enable it under AI features.`,
+        'AI_FEATURE_DISABLED',
+        { feature },
+      );
+    }
+
+    if (body.kind === 'image-to-3d') {
+      if (!body.imageUrl) {
+        throw new ValidationError('image-to-3d requires imageUrl (public URL or data URI).');
+      }
+      const okData = body.imageUrl.startsWith('data:image/');
+      const okHttp = /^https?:\/\//i.test(body.imageUrl);
+      if (!okData && !okHttp) {
+        throw new ValidationError('imageUrl must be an http(s) URL or a data:image/… URI Meshy can read.');
+      }
+    }
+
     try {
       const taskId =
         body.kind === 'text-to-texture'

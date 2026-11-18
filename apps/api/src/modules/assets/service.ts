@@ -48,6 +48,7 @@ const JOB_QUEUE_ENUM: Record<QueueName, string> = {
   'chain-license': 'chain_license',
   'xr-publish': 'xr_publish',
   notify: 'notify',
+  'skill-credential': 'skill_credential',
 };
 
 /** Statuses in which a Creator may still edit metadata or upload a new version. */

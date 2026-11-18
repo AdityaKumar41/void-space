@@ -100,6 +100,7 @@ enum JobQueue {
   chain_license
   xr_publish
   notify
+  skill_credential
 }
 
 /// A learner's state in a published course. Completion is derived from the
@@ -182,6 +183,9 @@ model Tenant {
   lessonProgress LessonProgress[]
   experienceRuns ExperienceRun[]
   experienceEvents ExperienceEvent[]
+  orders         Order[]
+  entitlements   Entitlement[]
+  royaltyLedgers RoyaltyLedger[]
 }
 
 /// §5.1 Role — fixed, platform-defined role set (§3.6).
@@ -244,6 +248,8 @@ model User {
   @@map("users")
   lessonProgress LessonProgress[]
   experienceRuns ExperienceRun[]
+  orders         Order[]
+  entitlements   Entitlement[]
 }
 
 /// §5.1 UserRole — join table; one active role per user per tenant in this release.
@@ -312,6 +318,8 @@ model TenantSettings {
   defaultPolycountBudget Int?     @map("default_polycount_budget")
   requiredMetadataFields String[] @default([]) @map("required_metadata_fields")
   allowedCategories      String[] @default([]) @map("allowed_categories")
+  /// FR-18.1 — Studio AI feature gates. Explicit `false` disables; missing keys stay enabled.
+  aiFeatureFlags         Json     @default("{}") @map("ai_feature_flags")
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
 
@@ -781,6 +789,13 @@ model LessonAttempt {
 /// A portable, tamper-evident completion record. `verificationHash` is derived
 /// from the immutable attempt and used by the public verifier; it can later be
 /// anchored on-chain without changing learner-facing identifiers.
+enum CredentialMintStatus {
+  pending
+  minted
+  failed
+  skipped
+}
+
 model SkillCredential {
   id               String   @id @default(uuid()) @db.Uuid
   tenantId         String   @map("tenant_id") @db.Uuid
@@ -788,12 +803,20 @@ model SkillCredential {
   learnerId        String   @map("learner_id") @db.Uuid
   verificationHash String   @unique @map("verification_hash") @db.VarChar(64)
   issuedAt         DateTime @default(now()) @map("issued_at")
+  /// On-chain anchoring (optional). DB hash remains the verification authority until minted.
+  mintStatus       CredentialMintStatus @default(pending) @map("mint_status")
+  tokenId          BigInt?  @map("token_id")
+  contractAddress  String?  @map("contract_address") @db.VarChar(42)
+  txHash           String?  @map("tx_hash") @db.VarChar(66)
+  mintError        String?  @map("mint_error") @db.VarChar(500)
+  mintedAt         DateTime? @map("minted_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   attempt LessonAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   learner User @relation(fields: [learnerId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, learnerId, issuedAt])
+  @@index([tenantId, mintStatus])
   @@map("skill_credentials")
 }
 
@@ -1054,6 +1077,10 @@ model PublicCatalogEntry {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
+  /// Commercial listing price in the smallest currency unit. Zero means free download (default).
+  priceCents         Int       @default(0) @map("price_cents")
+  currency           String    @default("USD") @db.VarChar(3)
+
   /// Engagement written by visitors. Relations rather than loose ids on purpose: taking an
   /// entry down deletes its likes and comments with it, so a delisted asset cannot leave an
   /// orphaned thread pointing at nothing (§3.9.2's takedown, FR-9.5).
@@ -1280,4 +1307,86 @@ model LessonProgress {
  @@unique([tenantId,lessonId,learnerId])
  @@index([tenantId,learnerId])
  @@map("lesson_progress")
+}
+
+/// Commercial order — tenant_id is the *buyer's* workspace (RLS isolation).
+enum OrderStatus {
+  pending
+  paid
+  failed
+  refunded
+  cancelled
+}
+
+enum PaymentProvider {
+  dev
+  stripe
+}
+
+model Order {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @map("tenant_id") @db.Uuid
+  buyerUserId     String          @map("buyer_user_id") @db.Uuid
+  sellerTenantId  String          @map("seller_tenant_id") @db.Uuid
+  assetId         String          @map("asset_id") @db.Uuid
+  amountCents     Int             @map("amount_cents")
+  currency        String          @db.VarChar(3)
+  status          OrderStatus     @default(pending)
+  provider        PaymentProvider @default(dev)
+  providerRef     String?         @map("provider_ref") @db.VarChar(200)
+  checkoutUrl     String?         @map("checkout_url") @db.VarChar(1000)
+  paidAt          DateTime?       @map("paid_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  buyer      User          @relation(fields: [buyerUserId], references: [id], onDelete: Restrict)
+  entitlement Entitlement?
+  royalties  RoyaltyLedger[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, buyerUserId])
+  @@index([assetId])
+  @@map("orders")
+}
+
+/// Download/use right for a catalog asset after a paid (or free-granted) order.
+model Entitlement {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  assetId        String    @map("asset_id") @db.Uuid
+  orderId        String?   @unique @map("order_id") @db.Uuid
+  sellerTenantId String    @map("seller_tenant_id") @db.Uuid
+  grantedAt      DateTime  @default(now()) @map("granted_at")
+  revokedAt      DateTime? @map("revoked_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order  Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, userId, assetId])
+  @@index([tenantId, assetId])
+  @@map("entitlements")
+}
+
+/// Seller-side royalty accrual for a paid order (accounting ledger, not a payout rail).
+model RoyaltyLedger {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  orderId        String   @map("order_id") @db.Uuid
+  assetId        String   @map("asset_id") @db.Uuid
+  amountCents    Int      @map("amount_cents")
+  currency       String   @db.VarChar(3)
+  platformBps    Int      @default(1000) @map("platform_bps")
+  sellerCents    Int      @map("seller_cents")
+  platformCents  Int      @map("platform_cents")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([orderId])
+  @@map("royalty_ledgers")
 }

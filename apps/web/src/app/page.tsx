@@ -176,8 +176,8 @@ const AUDIENCES: readonly { readonly title: string; readonly body: string }[] = 
  */
 const LIMITS: readonly { readonly title: string; readonly body: string }[] = [
   {
-    title: 'No payment rail',
-    body: 'Licences are minted and entitlements are issued; money is not moved. Settlement, invoicing and tax belong to the storefront — the API is the surface it integrates against.',
+    title: 'Checkout is entitlement-first',
+    body: 'Purchases create orders, entitlements and a royalty ledger. Local stacks settle via the Dev adapter; Stripe Checkout runs when STRIPE_SECRET_KEY is set. Tax and payout KYC remain outside this console.',
   },
   {
     title: 'A format needs a decoder',

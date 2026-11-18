@@ -4,6 +4,8 @@ Last updated: 2026-10-29 (Asia/Kolkata)
 
 ## Current repair status — read this first
 
+Latest: [18 November Void Space verification](./VOID-SPACE-VERIFICATION-2026-11-18.md). It supersedes the older repair status below where features have advanced and records current test evidence, responsive checks and unresolved production integration/security work.
+
 Read [the 29 October repair audit](./PLATFORM-REPAIR-AUDIT-2026-10-29.md).
 The older “completed slices” inventory below describes persistence and API seams,
 not completed EON-style user experiences. The latest repair adds reviewed lesson

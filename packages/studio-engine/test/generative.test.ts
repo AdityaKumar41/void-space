@@ -53,24 +53,26 @@ describe('local generative meshes', () => {
     expect(cube.indices.length).toBe(36);
     let outward = false;
     for (let i = 0; i < cube.positions.length; i += 3) {
-      if (cube.positions[i] > 0 && cube.positions[i + 1] > 0 && cube.positions[i + 2] > 0) {
-        outward = cube.normals[i] > 0 && cube.normals[i + 1] > 0 && cube.normals[i + 2] > 0;
+      if ((cube.positions[i] ?? 0) > 0 && (cube.positions[i + 1] ?? 0) > 0 && (cube.positions[i + 2] ?? 0) > 0) {
+        outward =
+          (cube.normals[i] ?? 0) > 0 && (cube.normals[i + 1] ?? 0) > 0 && (cube.normals[i + 2] ?? 0) > 0;
       }
     }
     expect(outward).toBe(true);
     const sphere = buildPrimitive('sphere');
     let north = -1;
     for (let i = 1; i < sphere.positions.length; i += 3) {
-      if (sphere.positions[i] > north) north = sphere.positions[i];
+      const y = sphere.positions[i] ?? -Infinity;
+      if (y > north) north = y;
     }
     const northIndex = sphere.positions.findIndex((_, index) => index % 3 === 1 && sphere.positions[index] === north);
-    expect(sphere.normals[northIndex]).toBeGreaterThan(0.5);
+    expect(sphere.normals[northIndex] ?? 0).toBeGreaterThan(0.5);
   });
 
   it('raises the brighter pixel of a relief mesh', () => {
     const mesh = heightfieldFromLuminance(new Float32Array([0, 1, 0, 0]), 2, 2, 2, 1);
-    const heights = [];
-    for (let i = 1; i < mesh.positions.length; i += 3) heights.push(mesh.positions[i]);
+    const heights: number[] = [];
+    for (let i = 1; i < mesh.positions.length; i += 3) heights.push(mesh.positions[i] ?? 0);
     expect(Math.max(...heights)).toBeCloseTo(1);
     expect(Math.min(...heights)).toBeCloseTo(0);
     expect(mesh.indices.length).toBe(6);

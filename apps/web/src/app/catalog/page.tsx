@@ -37,7 +37,7 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  readonly searchParams: { category?: string; tag?: string; q?: string; sort?: string };
+  readonly searchParams: Promise<{ category?: string; tag?: string; q?: string; sort?: string }>;
 }
 
 /** One of the three things that happen to an asset before it is listed. */
@@ -61,7 +61,8 @@ function Step({
   );
 }
 
-export default async function CatalogPage({ searchParams }: PageProps) {
+export default async function CatalogPage({ searchParams: pendingSearchParams }: PageProps) {
+  const searchParams = await pendingSearchParams;
   const category = searchParams.category?.trim() || undefined;
   const tag = searchParams.tag?.trim() || undefined;
   const search = searchParams.q?.trim() || undefined;
@@ -99,9 +100,9 @@ export default async function CatalogPage({ searchParams }: PageProps) {
               </h1>
 
               <p className="mt-6 max-w-[56ch] text-[16px] leading-[1.7] text-ink-dim">
-                Every model here is addressed by its content hash and licensed as an ERC-721 token. The
-                token id, the contract address and the transaction that minted it are printed on the
-                listing, so provenance is something you check rather than something you accept.
+                Every model here is addressed by its content hash and licensed as an ERC-721 token.
+                The token id, the contract address and the transaction that minted it are printed on
+                the listing, so provenance is something you check rather than something you accept.
               </p>
 
               {stats ? (
@@ -150,25 +151,24 @@ export default async function CatalogPage({ searchParams }: PageProps) {
           <div className="mt-14 grid gap-10 md:grid-cols-3">
             <Step index="01" title="A person reviews it">
               An assessor approves the asset, sends it back for revision, or rejects it — and the
-              decision, the comment and the file version are written to an append-only ledger that no
-              role can edit afterwards.
+              decision, the comment and the file version are written to an append-only ledger that
+              no role can edit afterwards.
             </Step>
             <Step index="02" title="It is pinned by hash">
-              The file is stored on IPFS and its content address is printed on the listing. The bytes
-              you preview in the viewer are the bytes that address commits to, and the viewer measures
-              the geometry it decoded so you can see the record and the file agree.
+              The file is stored on IPFS and its content address is printed on the listing. The
+              bytes you preview in the viewer are the bytes that address commits to, and the viewer
+              measures the geometry it decoded so you can see the record and the file agree.
             </Step>
             <Step index="03" title="Its licence is minted">
-              Publishing mints an ERC-721 licence carrying the content hash and the licence terms. The
-              token id, contract and transaction are on the listing, so the terms travel with the asset
-              instead of living in a database you have to trust.
+              Publishing mints an ERC-721 licence carrying the content hash and the licence terms.
+              The token id, contract and transaction are on the listing, so the terms travel with
+              the asset instead of living in a database you have to trust.
             </Step>
           </div>
 
           <p className="mt-12 flex items-center gap-2.5 text-[13.5px] text-ink-faint">
-            <CheckIcon width={15} height={15} className="text-brand" />
-            A delisted asset answers 404, the same as one that never existed — so the catalogue cannot
-            be probed for takedowns.
+            <CheckIcon width={15} height={15} className="text-brand" />A delisted asset answers 404,
+            the same as one that never existed — so the catalogue cannot be probed for takedowns.
           </p>
         </Section>
       </main>
@@ -177,4 +177,3 @@ export default async function CatalogPage({ searchParams }: PageProps) {
     </div>
   );
 }
-

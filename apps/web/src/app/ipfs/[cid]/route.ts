@@ -47,14 +47,14 @@ const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-methods': 'GET, HEAD, OPTIONS',
   'access-control-allow-headers': '*',
   'cross-origin-resource-policy': 'cross-origin',
-  'vary': 'Origin',
+  vary: 'Origin',
 };
 
 export async function GET(
   request: Request,
-  { params }: { params: { cid: string } },
+  { params }: { params: Promise<{ cid: string }> },
 ): Promise<Response> {
-  const { cid } = params;
+  const { cid } = await params;
 
   if (!CID_PATTERN.test(cid)) {
     return new Response('Not found', { status: 404, headers: CORS_HEADERS });
@@ -106,4 +106,3 @@ export async function OPTIONS(): Promise<Response> {
     headers: CORS_HEADERS,
   });
 }
-

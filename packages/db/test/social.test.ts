@@ -15,7 +15,8 @@
  * Fixtures come from `pnpm db:seed`. A throwaway catalogue entry is created for the one case that has
  * to delete what it engages with.
  */
-import { afterAll, describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { platformPrisma, prisma } from '../src/client';
 import {
@@ -70,6 +71,28 @@ const createdCommentIds: string[] = [];
 const createdEntryIds: string[] = [];
 
 describe('marketplace engagement', () => {
+  beforeAll(async () => {
+    const workspace = await loadWorkspace('aurora-industrial');
+    if (!workspace.entry) {
+      const assetId = randomUUID();
+      await prisma.publicCatalogEntry.create({
+        data: {
+          assetId,
+          tenantId: workspace.tenantId,
+          tenantName: workspace.tenantName,
+          name: 'Social database regression fixture',
+          category: 'Prop',
+          tags: [],
+          format: 'glb',
+          sizeBytes: 1n,
+          ipfsCid: `bafysocial${assetId.replaceAll('-', '')}`,
+          licenseType: 'CC-BY',
+          publishedAt: new Date(),
+        },
+      });
+      createdEntryIds.push(assetId);
+    }
+  });
   afterAll(async () => {
     // Comments cascade from their catalogue entry, but these were posted against *seeded* entries, so
     // they are removed explicitly. The throwaway entry takes its own engagement with it.

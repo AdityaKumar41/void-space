@@ -27,12 +27,14 @@ import { chromium } from '@playwright/test';
 const BASE = (process.env.DEMO_WEB_URL ?? 'https://localhost').replace(/\/$/, '');
 const API = (process.env.DEMO_API_URL ?? 'https://localhost/api/v1').replace(/\/$/, '');
 const PASSWORD = 'VoidSpace!2026';
-const VIEWPORT = { width: 1440, height: 960 };
+const MOBILE = process.argv.includes('--mobile');
+const TABLET = process.argv.includes('--tablet');
+const VIEWPORT = { width: MOBILE ? 390 : TABLET ? 768 : 1440, height: MOBILE ? 844 : 960 };
 const NAV_TIMEOUT_MS = 45_000;
 const SETTLE_MS = 1_600;
 
 const here = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = resolve(here, '../.audit/ui');
+const OUT_DIR = resolve(here, '../.audit/ui', MOBILE ? 'mobile' : TABLET ? 'tablet' : 'desktop');
 
 // The edge serves a locally generated certificate; this process only ever talks to localhost.
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -54,6 +56,7 @@ const PUBLIC_ROUTES = [
   ['/', 'Product landing'],
   ['/catalog', 'Catalogue'],
   ['/login', 'Sign in'],
+  ['/login/google', 'Google workspace setup'],
 ];
 
 /** Console routes per role. `expectStatus` documents the intended outcome of the request itself. */
@@ -63,6 +66,16 @@ const CONSOLE_ROUTES = [
   { path: '/console/catalog', label: 'Catalogue (staff view)', roles: ['creator'] },
   { path: '/console/licenses', label: 'Licences', roles: ['creator'] },
   { path: '/console/notifications', label: 'Notifications', roles: ['creator'] },
+  { path: '/console/lessons', label: 'Lessons', roles: ['creator'] },
+  { path: '/console/campus', label: 'Campus', roles: ['creator'] },
+  { path: '/console/spaces', label: 'Spaces', roles: ['creator'] },
+  { path: '/console/simulations', label: 'Practice', roles: ['creator'] },
+  { path: '/console/field-guides', label: 'Field guides', roles: ['creator'] },
+  { path: '/console/twins', label: 'Digital twins', roles: ['creator'] },
+  { path: '/console/career', label: 'Career', roles: ['creator'] },
+  { path: '/console/ventures', label: 'Ventures', roles: ['creator'] },
+  { path: '/console/operations', label: 'Operations', roles: ['creator'] },
+  { path: '/console/analytics', label: 'Analytics', roles: ['assessor'] },
   { path: '/console/review', label: 'Review queue', roles: ['assessor'] },
   { path: '/console/audit', label: 'Audit ledger', roles: ['assessor'] },
   { path: '/console/admin', label: 'Administration', roles: ['admin'] },
@@ -169,7 +182,8 @@ async function visibilityProblems(page) {
         const hidden = style.display === 'none' || style.visibility === 'hidden';
         const collapsed = rect.width === 0 || rect.height === 0;
         // An empty container is not a defect worth reporting; a container with content is.
-        const hasContent = (element.textContent ?? '').trim().length > 0 || element.children.length > 0;
+        const hasContent =
+          (element.textContent ?? '').trim().length > 0 || element.children.length > 0;
         if (hasContent && (hidden || collapsed)) {
           problems.push(
             `${selector} present but not visible (display:${style.display}, ${Math.round(rect.width)}x${Math.round(rect.height)})`,
@@ -193,6 +207,7 @@ async function auditPage(page, entry) {
     failedRequests: [],
     faultText: [],
     invisibleContent: [],
+    layoutProblems: [],
     finalUrl: null,
   };
 
@@ -215,18 +230,39 @@ async function auditPage(page, entry) {
     await page.context().clearCookies();
     if (cookies) await page.context().addCookies(cookies);
 
-    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS });
+    const response = await page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: NAV_TIMEOUT_MS,
+    });
     record.status = response?.status() ?? null;
     await page.waitForTimeout(SETTLE_MS);
     record.finalUrl = page.url().replace(BASE, '');
 
-    const text = (await page.locator('body').innerText().catch(() => '')).toLowerCase();
+    const text = (
+      await page
+        .locator('body')
+        .innerText()
+        .catch(() => '')
+    ).toLowerCase();
     record.faultText = FAULT_MARKERS.filter((marker) => text.includes(marker));
     record.bodyLength = text.length;
     // No `.catch(() => [])` here on purpose. Swallowing this failure is exactly how the check above
     // spent several runs reporting zero problems while doing nothing: a broken detector that reports
     // success is worse than no detector, because its output is believed.
     record.invisibleContent = await visibilityProblems(page);
+    record.layoutProblems = await page.evaluate(() => {
+      const width = window.innerWidth;
+      const overflow = document.documentElement.scrollWidth - width;
+      if (overflow <= 1) return [];
+      const elements = [...document.querySelectorAll('main *, header *, nav *')]
+        .filter((el) => el.getBoundingClientRect().right > width + 1)
+        .slice(0, 5)
+        .map(
+          (el) =>
+            `${el.tagName.toLowerCase()}.${String(el.className).split(' ').slice(0, 2).join('.')}`,
+        );
+      return [`Horizontal page overflow ${overflow}px at ${width}px (${elements.join(', ')})`];
+    });
 
     if (SHOTS) {
       const slug = `${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
@@ -247,12 +283,16 @@ async function auditPage(page, entry) {
 
 function classify(record) {
   const problems = [];
-  if (record.pageErrors.length) problems.push(`${record.pageErrors.length} page error(s)`);
-  if (record.consoleErrors.length) problems.push(`${record.consoleErrors.length} console error(s)`);
-  if (record.faultText.length) problems.push(`fault text: ${record.faultText.join(', ')}`);
-  if (record.invisibleContent.length)
+  if (record.pageErrors?.length) problems.push(`${record.pageErrors.length} page error(s)`);
+  if (record.consoleErrors?.length)
+    problems.push(`${record.consoleErrors.length} console error(s)`);
+  if (record.faultText?.length) problems.push(`fault text: ${record.faultText.join(', ')}`);
+  if (record.invisibleContent?.length)
     problems.push(`${record.invisibleContent.length} invisible block(s)`);
-  if (record.status === null || record.status >= 500) problems.push(`status ${record.status}`);
+  if (record.status == null || record.status >= 400) problems.push(`status ${record.status}`);
+  if (record.failedRequests?.length)
+    problems.push(`${record.failedRequests.length} failed HTTP request(s)`);
+  if (record.layoutProblems?.length) problems.push(...record.layoutProblems);
   return problems;
 }
 
@@ -283,7 +323,8 @@ async function main() {
     record.pass = 'anonymous';
     if (entry.redirectsToLogin) {
       const redirected = record.finalUrl?.startsWith('/login');
-      if (!redirected) record.pageErrors.push(`expected redirect to /login, landed on ${record.finalUrl}`);
+      if (!redirected)
+        record.pageErrors.push(`expected redirect to /login, landed on ${record.finalUrl}`);
     }
     results.push(record);
     await page.close();
@@ -303,15 +344,21 @@ async function main() {
       if (!route.roles.includes(roleName)) continue;
       if (!shouldRun(route.label)) continue;
       const page = await browser.newPage({ viewport: VIEWPORT, ignoreHTTPSErrors: true });
-      const record = await auditPage(page, { url: `${BASE}${route.path}`, label: route.label, cookies });
+      const record = await auditPage(page, {
+        url: `${BASE}${route.path}`,
+        label: route.label,
+        cookies,
+      });
       record.pass = roleName;
       results.push(record);
       await page.close();
     }
 
     // Detail pages with a session, which exercises the authenticated viewer path.
-    if (roleName === 'creator' && assetIds[0] && shouldRun('Console asset detail')) {
-      const response = await fetch(`${API}/assets?limit=1`, { headers: { cookie: cookies.map((c) => `${c.name}=${c.value}`).join('; ') } }).catch(() => null);
+    if (roleName === 'creator' && shouldRun('Console asset detail')) {
+      const response = await fetch(`${API}/assets?limit=1`, {
+        headers: { cookie: cookies.map((c) => `${c.name}=${c.value}`).join('; ') },
+      }).catch(() => null);
       const assetId = response?.ok ? (await response.json()).items?.[0]?.id : null;
       if (assetId) {
         const page = await browser.newPage({ viewport: VIEWPORT, ignoreHTTPSErrors: true });
@@ -363,8 +410,9 @@ async function main() {
     if (problems.length) {
       console.log(`        ! ${problems.join(' | ')}`);
       for (const error of record.pageErrors.slice(0, 3)) console.log(`          page: ${error}`);
-      for (const error of record.consoleErrors.slice(0, 3)) console.log(`          console: ${error}`);
-      const unique = [...new Set(record.failedRequests)];
+      for (const error of record.consoleErrors.slice(0, 3))
+        console.log(`          console: ${error}`);
+      const unique = [...new Set(record.failedRequests ?? [])];
       for (const failure of unique.slice(0, 5)) console.log(`          request: ${failure}`);
     }
   }
@@ -380,9 +428,11 @@ async function main() {
   console.log(`\n${results.length - broken.length}/${results.length} routes clean`);
   if (broken.length) {
     console.log(`\n${broken.length} route(s) with findings:`);
-    for (const record of broken) console.log(`  - [${record.pass}] ${record.label}: ${record.problems.join(', ')}`);
+    for (const record of broken)
+      console.log(`  - [${record.pass}] ${record.label}: ${record.problems.join(', ')}`);
   }
-  console.log(`\nreport: .audit/ui/report.json`);
+  console.log(`\nreport: ${resolve(OUT_DIR, 'report.json')}`);
+  if (broken.length) process.exitCode = 1;
 }
 
 main().catch((error) => {

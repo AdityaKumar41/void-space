@@ -9,6 +9,7 @@ import { useSession } from '../../../lib/session';
 import { Button, buttonVariants } from '../../../components/ui/button';
 import { Card } from '../../../components/ui/card';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
+import { FieldGuideQr } from '../../../components/field-guide-qr';
 interface Step {
   id: string;
   instruction: string;
@@ -299,6 +300,11 @@ export default function FieldGuidesPage() {
             ) : (
               <div className="mb-6" />
             )}
+            {guide.status === 'published' ? (
+              <div className="mb-4">
+                <FieldGuideQr guideId={guide.id} title={guide.title} />
+              </div>
+            ) : null}
             <div className="mt-auto flex flex-wrap items-center gap-2">
               {guide.status === 'published' ? (
                 <>

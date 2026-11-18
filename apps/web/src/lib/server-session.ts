@@ -35,8 +35,9 @@ export interface ServerSession {
 
 /** Reads the caller's session on the server. Never throws. */
 export async function getServerSession(): Promise<ServerSession> {
-  const cookieHeader = cookies().toString();
-  const hasSessionCookie = cookies().get(ACCESS_COOKIE) !== undefined;
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore.toString();
+  const hasSessionCookie = cookieStore.get(ACCESS_COOKIE) !== undefined;
 
   if (!hasSessionCookie) return { session: null, hasSessionCookie: false };
 
@@ -60,8 +61,8 @@ export async function getServerSession(): Promise<ServerSession> {
  * request. In practice `Referer` already carries it for in-app navigation — the console is only
  * ever entered by clicking a link inside the app — so this reads that and falls back to `/console`.
  */
-export function intendedPath(): string {
-  const referer = headers().get('referer');
+export async function intendedPath(): Promise<string> {
+  const referer = (await headers()).get('referer');
   if (referer) {
     try {
       const url = new URL(referer);

@@ -13,7 +13,10 @@ import { cn } from '../../lib/cn';
 export function Card({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) {
   return (
     <section
-      className={cn('overflow-hidden rounded-card border border-hairline bg-surface', className)}
+      className={cn(
+        'min-w-0 overflow-hidden rounded-card border border-hairline bg-surface',
+        className,
+      )}
       {...props}
     >
       {children}
@@ -54,12 +57,24 @@ export function CardHeader({
 }
 
 /** The card's content area. 20px of padding is the documented 24px minus the border's optical weight. */
-export function CardBody({ className, children }: { className?: string; children: React.ReactNode }) {
+export function CardBody({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
   return <div className={cn('px-5 py-5', className)}>{children}</div>;
 }
 
 /** A full-bleed row inside a card, for a table or a list that should meet the card's edges. */
-export function CardSection({ className, children }: { className?: string; children: React.ReactNode }) {
+export function CardSection({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
   return <div className={cn('border-t border-hairline', className)}>{children}</div>;
 }
 

@@ -6,7 +6,11 @@
  *   GET   /api/v1/tenants                    platform tenant list     (SuperAdmin)
  *   PATCH /api/v1/tenants/:id/status         suspend / reinstate      (SuperAdmin)
  */
-import { setTenantStatusSchema, tenantSettingsSchema } from '@void-space/types';
+import {
+  aiFeatureFlagsSchema,
+  setTenantStatusSchema,
+  tenantSettingsSchema,
+} from '@void-space/types';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
@@ -36,6 +40,26 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
       const input = parseBody(tenantSettingsSchema, request.body);
       const settings = await tenants.updateSettings(principalOf(request), input);
       return reply.status(200).send({ settings });
+    },
+  );
+
+  // FR-18.1 — TenantAdmin can gate Studio AI features without SQL.
+  app.get(
+    '/tenant/ai-flags',
+    { preHandler: app.requirePermission('tenant:manage-users') },
+    async (request, reply) => {
+      const flags = await tenants.getAiFlags(principalOf(request));
+      return reply.status(200).send({ flags });
+    },
+  );
+
+  app.patch(
+    '/tenant/ai-flags',
+    { preHandler: app.requirePermission('tenant:manage-users') },
+    async (request, reply) => {
+      const input = parseBody(aiFeatureFlagsSchema, request.body);
+      const flags = await tenants.updateAiFlags(principalOf(request), input);
+      return reply.status(200).send({ flags });
     },
   );
 

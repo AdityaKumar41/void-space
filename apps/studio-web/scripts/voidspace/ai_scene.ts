@@ -267,19 +267,47 @@ export async function fetchMeshyGlb(
   base: string,
   token: string,
   body: {kind: 'text-to-3d' | 'image-to-3d' | 'text-to-texture'; prompt?: string; imageUrl?: string},
+  options?: {signal?: AbortSignal; onProgress?: (message: string) => void},
 ): Promise<{bytes: Uint8Array} | {unavailable: string} | {failed: string}> {
   const headers = {authorization: `Bearer ${token}`, 'content-type': 'application/json'}
-  const status = await fetch(`${base}/studio/api/v1/generative/status`, {headers})
-  if (!status.ok) return {unavailable: 'Meshy status could not be read.'}
-  const info = (await status.json()) as {configured?: boolean}
-  if (!info.configured) return {unavailable: 'Meshy is not configured.'}
+  const signal = options?.signal
+  const note = (message: string): void => {
+    options?.onProgress?.(message)
+  }
 
+  if (body.kind === 'image-to-3d' && body.imageUrl) {
+    if (body.imageUrl.length > 7_500_000) {
+      return {failed: 'Image payload is too large for Meshy (keep under ~18 MB).'}
+    }
+    if (
+      !body.imageUrl.startsWith('data:image/') &&
+      !/^https?:\/\//i.test(body.imageUrl)
+    ) {
+      return {failed: 'Image-to-3D needs a data URI or an http(s) image URL.'}
+    }
+  }
+
+  note('Checking Meshy…')
+  const status = await fetch(`${base}/studio/api/v1/generative/status`, {headers, signal})
+  if (!status.ok) return {unavailable: 'Meshy status could not be read.'}
+  const info = (await status.json()) as {configured?: boolean; generativeMesh?: boolean}
+  if (!info.configured) return {unavailable: 'Meshy is not configured.'}
+  if (info.generativeMesh === false) {
+    return {unavailable: 'Generative mesh is disabled for this workspace.'}
+  }
+
+  note(body.kind === 'image-to-3d' ? 'Submitting image to Meshy…' : 'Submitting prompt to Meshy…')
   const created = await fetch(`${base}/studio/api/v1/generative/tasks`, {
     method : 'POST',
     headers,
     body   : JSON.stringify(body),
+    signal,
   })
   if (created.status === 503) return {unavailable: 'Meshy is not configured.'}
+  if (created.status === 403) {
+    const err = (await created.json().catch(() => ({}))) as {message?: string}
+    return {unavailable: err.message ?? 'Generative mesh is disabled for this workspace.'}
+  }
   if (!created.ok) {
     const err = (await created.json().catch(() => ({}))) as {message?: string}
     return {failed: err.message ?? `Meshy refused the task (HTTP ${created.status}).`}
@@ -287,18 +315,28 @@ export async function fetchMeshyGlb(
   const task = (await created.json()) as {taskId?: string; kind?: string}
   if (!task.taskId || !task.kind) return {failed: 'Meshy did not return a task id.'}
 
-  for (let attempt = 0; attempt < 45; attempt++) {
+  // ~3 minutes: Meshy image-to-3D often needs 1–2 min; fail with a clear retry rather than hang forever.
+  const maxAttempts = 90
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (signal?.aborted) return {failed: 'Meshy wait was cancelled.'}
     await new Promise((resolve) => setTimeout(resolve, 2000))
+    if (attempt === 0 || attempt % 5 === 4) {
+      note(`Meshy generating… ${Math.min(99, Math.round(((attempt + 1) / maxAttempts) * 100))}%`)
+    }
     const poll = await fetch(
       `${base}/studio/api/v1/generative/tasks/${encodeURIComponent(task.taskId)}?kind=${encodeURIComponent(task.kind)}`,
-      {headers},
+      {headers, signal},
     )
     if (!poll.ok) continue
-    const state = (await poll.json()) as {status?: string; error?: string | null}
+    const state = (await poll.json()) as {status?: string; error?: string | null; progress?: number}
+    if (typeof state.progress === 'number' && Number.isFinite(state.progress)) {
+      note(`Meshy generating… ${Math.max(0, Math.min(99, Math.round(state.progress)))}%`)
+    }
     if (state.status === 'SUCCEEDED') {
+      note('Downloading mesh…')
       const model = await fetch(
         `${base}/studio/api/v1/generative/tasks/${encodeURIComponent(task.taskId)}/model?kind=${encodeURIComponent(task.kind)}`,
-        {headers},
+        {headers, signal},
       )
       if (!model.ok) return {failed: 'Meshy finished but the mesh could not be downloaded.'}
       return {bytes: new Uint8Array(await model.arrayBuffer())}
@@ -307,5 +345,5 @@ export async function fetchMeshyGlb(
       return {failed: state.error || `Meshy ${state.status}.`}
     }
   }
-  return {failed: 'Meshy is still generating. Try the same image again in a minute.'}
+  return {failed: 'Meshy is still generating after 3 minutes. Try the same image again shortly.'}
 }

@@ -787,7 +787,7 @@ function CameraRig({
   visibleOnly = false,
   onFramed,
 }: {
-  target: React.RefObject<THREE.Group>;
+  target: React.RefObject<THREE.Group | null>;
   fill: number;
   /** Which measure to fit. See the note above on when each is right. */
   mode: FrameFit;
@@ -938,7 +938,19 @@ function CameraRig({
       cancelled = true;
       cancelAnimationFrame(handle);
     };
-  }, [target, camera, size, fill, mode, request, readyKey, visibleOnly, controls, onFramed, invalidate]);
+  }, [
+    target,
+    camera,
+    size,
+    fill,
+    mode,
+    request,
+    readyKey,
+    visibleOnly,
+    controls,
+    onFramed,
+    invalidate,
+  ]);
 
   return null;
 }

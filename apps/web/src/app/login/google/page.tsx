@@ -15,11 +15,12 @@ export const metadata = {
   title: 'Create your workspace — VOID·SPACE',
 };
 
-export default function GoogleWorkspacePage({
-  searchParams,
+export default async function GoogleWorkspacePage({
+  searchParams: pendingSearchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const searchParams = await pendingSearchParams;
   const next = safeNextPath(searchParams.next);
   return (
     <main className="grid min-h-[100dvh] place-items-center bg-base p-6">
@@ -30,7 +31,9 @@ export default function GoogleWorkspacePage({
           </Link>
         </div>
         <div className="rounded-card border border-hairline bg-surface px-6 py-6 shadow-panel">
-          <h1 className="text-2xl font-medium leading-[1.1] tracking-[-0.021em] text-ink">Create your workspace</h1>
+          <h1 className="text-2xl font-medium leading-[1.1] tracking-[-0.021em] text-ink">
+            Create your workspace
+          </h1>
           <p className="mt-1.5 text-[12px] tracking-[0.01em] text-ink-faint">
             This Google account is new here. Name the workspace you will own.
           </p>

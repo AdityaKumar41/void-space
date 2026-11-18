@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Shared shadcn/ui-based component library used by apps/web (SRS §3.2, §3.4).",
+  "description": "Shared shadcn/ui-based component library used by apps/web (SRS \u00a73.2, \u00a73.4).",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -22,7 +22,6 @@
       }
     }
   },
-
   "dependencies": {
     "@void-space/types": "workspace:*",
     "class-variance-authority": "^0.7.1",
@@ -31,15 +30,15 @@
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3"
   },
   "peerDependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^18.3.1 || ^19.0.0",
+    "react-dom": "^18.3.1 || ^19.0.0"
   }
 }
