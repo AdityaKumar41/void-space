@@ -183,17 +183,9 @@ OutlinerEditor {
     const scene = this.ctx?.scene
     if (!scene?.objects) return
 
-    const active = scene.objects.active
-    if (active && !(active.flag & ObjectFlags.SELECT) && !(active.flag & ObjectFlags.LOCKED)) {
-      scene.objects.setSelect(active, true)
-    }
-
     const targets = [...scene.objects.selected].filter(
       (ob) => !(ob.flag & (ObjectFlags.LOCKED | ObjectFlags.INTERNAL)),
     )
-    if (targets.length === 0 && active && !(active.flag & (ObjectFlags.LOCKED | ObjectFlags.INTERNAL))) {
-      targets.push(active)
-    }
     if (targets.length === 0) {
       this.ctx.warning?.('Nothing to delete — select an object first')
       return

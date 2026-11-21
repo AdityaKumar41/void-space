@@ -269,3 +269,39 @@ test('Delete with an empty selection preserves the unselected active object', as
     })
     .toBe(count)
 })
+
+
+test('viewport shortcuts use the editor under the pointer after panel focus changes', async ({page}) => {
+  const view = page.locator('view3d-editor-x').first()
+  const box = (await view.boundingBox())!
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5)
+  await page.keyboard.press('Tab')
+  await expect.poll(() => page.evaluate(() => (window as any).CTX.toolmode.typeName)).toBe('boxmodel')
+  await page.evaluate(() => {
+    const w = window as any, screen = w._appstate.screen
+    // Reproduce stale panel focus without the random mousemove fallback repairing it.
+    screen.sareas.active = screen.sareas.find((s: any) => s.area?.tagName === 'OUTLINER-EDITOR-X')
+    Math.random = () => 0
+  })
+  await page.mouse.move(box.x + box.width * 0.5 + 1, box.y + box.height * 0.5)
+  await page.keyboard.press('a')
+  await page.evaluate(() => (window as any)._appstate.toolstack.idle())
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).CTX.object.data.gatherMovableVerts().idx.length
+  )).toBeGreaterThan(0)
+  expect(await page.evaluate(() => (window as any)._appstate.screen.sareas.active.area.tagName)).toBe('VIEW3D-EDITOR-X')
+})
+
+
+test('Outliner Delete preserves an unselected active object', async ({page}) => {
+  const view = (await page.locator('view3d-editor-x').first().boundingBox())!
+  const count = await page.evaluate(() => (window as any).CTX.scene.objects.length)
+  await page.mouse.click(view.x + view.width * 0.8, view.y + view.height * 0.75)
+  await page.evaluate(() => (window as any)._appstate.toolstack.idle())
+  await expect.poll(() => page.evaluate(() => [...(window as any).CTX.scene.objects.selected].length)).toBe(0)
+  const outliner = (await page.locator('outliner-editor-x').first().boundingBox())!
+  await page.mouse.move(outliner.x + outliner.width * 0.5, outliner.y + outliner.height * 0.6)
+  await page.keyboard.press('Delete')
+  await page.evaluate(() => (window as any)._appstate.toolstack.idle())
+  expect(await page.evaluate(() => (window as any).CTX.scene.objects.length)).toBe(count)
+})
