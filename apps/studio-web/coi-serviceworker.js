@@ -29,12 +29,13 @@ if (typeof window === 'undefined') {
       return
     }
 
-    const request =
-      coepCredentialless && r.mode === 'no-cors'
-        ? new Request(r, {
-            credentials: 'omit',
-          })
-        : r
+    // Loader, engine and addon entry URLs are stable across releases. Revalidate
+    // them together so a returning visitor cannot mix new editor code with an
+    // older cached WASM engine. The HTTP cache can still reuse validated bytes.
+    const options = {}
+    if (new URL(r.url).origin === self.location.origin) options.cache = 'no-cache'
+    if (coepCredentialless && r.mode === 'no-cors') options.credentials = 'omit'
+    const request = Object.keys(options).length ? new Request(r, options) : r
     event.respondWith(
       fetch(request)
         .then((response) => {

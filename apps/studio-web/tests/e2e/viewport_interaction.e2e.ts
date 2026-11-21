@@ -1,7 +1,8 @@
 import {expect, test} from '@playwright/test'
 test.beforeEach(async ({page}) => {
   await page.goto('./?renderer=webgpu')
-  await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
+  await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport && !!(window as any).CTX?.object)
+  await page.evaluate(() => (window as any)._appstate.toolstack.idle())
 })
 test('viewport middle drag orbits, Shift-middle pans and wheel zooms over the scene', async ({
   page,
@@ -47,6 +48,7 @@ test('viewport clicks deselect empty space and select the visible cube', async (
       [...(window as any).CTX.scene.objects.selected].map((o: any) => o.name)
     )
   await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.75)
+  await page.evaluate(() => (window as any)._appstate.toolstack.idle())
   await expect.poll(selected).toEqual([])
   const center = await page.evaluate(() => {
     const ctx = (window as any).CTX,
@@ -131,7 +133,14 @@ test('Edit Mode move handle edits mesh coordinates instead of moving the object'
       )
     )
     .toBe('boxmodel')
+  // A toggles the current mesh selection. Start from a known empty selection.
+  await page.keyboard.press('Alt+a')
+  await page.evaluate(() => (window as any)._appstate.toolstack.idle())
   await page.keyboard.press('a')
+  await page.evaluate(() => (window as any)._appstate.toolstack.idle())
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).CTX.object.data.gatherMovableVerts().idx.length
+  )).toBeGreaterThan(0)
   await view
     .locator('iconcheck-x[datapath="scene.tool.transformWidget[translate]"]')
     .first()
@@ -246,9 +255,10 @@ test('Delete with an empty selection preserves the unselected active object', as
     () => (window as any).CTX.scene.objects.length
   )
   await page.mouse.click(box.x + box.width * 0.8, box.y + box.height * 0.75)
+  await page.evaluate(() => (window as any)._appstate.toolstack.idle())
   await expect
     .poll(() =>
-      page.evaluate(() => [...(window as any).CTX.selectedObjects].length)
+      page.evaluate(() => [...(window as any).CTX.scene.objects.selected].length)
     )
     .toBe(0)
   await page.keyboard.press('Delete')

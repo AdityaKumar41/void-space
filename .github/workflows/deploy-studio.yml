@@ -48,6 +48,9 @@ jobs:
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify Pages cache policy
+        run: node --test tests/smoke/pages-cache.test.mjs
+
       # ---- sculptcore WASM (cached by submodule SHA) ------------------------
       # esbuild consumes sculptcore/typescript/build/sculptcore-browser.{wasm,js}.
       # Those are gitignored build outputs; we rebuild them only when the

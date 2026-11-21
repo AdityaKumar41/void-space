@@ -39,3 +39,8 @@ All **9 production browser journeys passed**. **All 90 responsive route checks p
 The final production preview runs at `http://localhost:3105` with the local API and worker. The existing service on port 3000 was preserved. This is local verification, not a public deployment. No database reset/reseed, public deployment, real payment or chain transaction was performed.
 
 Use the [18 November verification](./VOID-SPACE-VERIFICATION-2026-11-18.md) for the earlier repair history. This document supersedes its feature integration inventory where updated above.
+
+
+## Release verification checkpoint
+
+The repeat local browser run passes all nine journeys together. The API (160), web (29), worker (64) and shared-types (34) suites pass 287 tests in total. Studio is the public deployment target; the full Void Space application, API and database remain local and are not being deployed in this release. Live payments remain excluded. The first browser run stopped in shared sign-in setup; the isolated five-case group and the subsequent complete nine-case run passed. This records that initial failure rather than claiming every attempt was green.
