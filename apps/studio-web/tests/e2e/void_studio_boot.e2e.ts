@@ -25,8 +25,8 @@ import {expect, test} from '@playwright/test'
  */
 
 /** `surface` / `surface3` from `scripts/voidspace/theme.ts`, as `getComputedStyle` reports them. */
-const VOID_SURFACE = 'rgb(16, 16, 19)' // #101013
-const VOID_FIELD = 'rgb(29, 29, 34)' // #1d1d22
+const VOID_SURFACE = 'rgb(46, 46, 46)' // #2e2e2e
+const VOID_FIELD = 'rgb(61, 61, 61)' // #3d3d3d
 
 test('app boots, loads sculptcore WASM, and applies the VOID·STUDIO theme', async ({page}) => {
   const pageErrors: string[] = []
