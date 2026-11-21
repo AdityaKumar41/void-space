@@ -150,7 +150,7 @@ export class TransformOp<InputSet extends PropertySlots = {}, OutputSet extends 
     //console.log("TRANSFROM INVOKE", args);
 
     if (!('selmask' in args)) {
-      tool.inputs.selmask.setValue(ctx.selectMask)
+      tool.inputs.selmask.setValue(ctx.toolmode?.constructor.toolModeDefine().transformSelectMask ?? ctx.selectMask)
     }
 
     if (!('propEnabled' in args)) {

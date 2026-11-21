@@ -1,3 +1,4 @@
+import {evaluateWorkflow} from '../sceneobject/workflow_runtime'
 import {DataBlock, DataRef, BlockFlags, BlockLoader, BlockLoaderAddUser} from '../core/lib_api'
 import {getAppState, peekAppState} from '../core/app_instance'
 import {registerDataAPI} from '../data_api/api_define_registry.js'
@@ -355,6 +356,8 @@ Scene {
   toolmodes    : array(abstract(ToolMode));
   collection   : DataRef | DataRef.fromBlock(obj.collection);
   fps          : int;
+  timeStart    : float;
+  timeEnd      : float;
   propMode     : int;
 propIslandOnly : bool;
   propRadius   : float;
@@ -412,10 +415,13 @@ propIslandOnly : bool;
 
   flag = 0
   #loading = false
-  time = 0.0
-  fps = 30.0
-  timeStart = 0.0 //in seconds
-  timeEnd = 10.0 //in seconds
+  /** Current playhead frame (Blender Timeline). */
+  time = 1.0
+  fps = 24
+  /** Inclusive start frame (Blender default 1). */
+  timeStart = 1.0
+  /** Inclusive end frame (Blender default 250). */
+  timeEnd = 250.0
 
   constructor(objects: Iterable<SceneObject> = []) {
     super()
@@ -771,10 +777,17 @@ propIslandOnly : bool;
     const sstruct = super.defineAPI(api, struct ?? api.mapStruct(this, true))
 
     sstruct.struct('envlight', 'envlight', 'Ambient Light', EnvLight.defineAPI(api))
-    sstruct.bool('propEnabled', 'propEnabled', 'Magnet Mode').icon(Icons.MAGNET)
-    sstruct.enum('propMode', 'propMode', PropModes, 'Magnet Curve')
-    sstruct.float('propRadius', 'propRadius', 'Magnet Radius').noUnits().range(0.01, 1000000)
+    // Blender Object Mode header: Proportional Editing (O) + falloff + size.
+    sstruct.bool('propEnabled', 'propEnabled', 'Proportional Editing').icon(Icons.MAGNET)
+    sstruct.enum('propMode', 'propMode', PropModes, 'Proportional Falloff')
+    sstruct.float('propRadius', 'propRadius', 'Proportional Size').noUnits().range(0.01, 1000000)
     sstruct.bool('propIslandOnly', 'propIslandOnly', 'Island Only')
+
+    // Timeline / Output — Blender frame range + playhead.
+    sstruct.float('time', 'time', 'Current Frame').noUnits().range(0, 1e6).on('change', function (this: {dataref: Scene}) { this.dataref.changeTime(this.dataref.time) })
+    sstruct.int('fps', 'fps', 'Frame Rate').range(1, 120)
+    sstruct.float('timeStart', 'timeStart', 'Start Frame').noUnits().range(0, 1e6)
+    sstruct.float('timeEnd', 'timeEnd', 'End Frame').noUnits().range(1, 1e6)
 
     const prop = makeToolModeEnum()
 
@@ -808,6 +821,7 @@ propIslandOnly : bool;
   changeTime(newtime: number): void {
     this.time = newtime
     for (const ob of this.objects) {
+      evaluateWorkflow(ob, newtime)
       ob.graphUpdate()
     }
 

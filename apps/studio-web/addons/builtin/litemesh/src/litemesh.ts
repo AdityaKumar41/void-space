@@ -427,6 +427,7 @@ export interface QuadRemeshOptions {
  * `m`/`tree`/`co`/`ray` args are opaque bound handles (Mesh / SpatialTree /
  * float3). `domain` is 0 = vertex, 1 = edge, 2 = face. */
 export interface IMeshLogSelect {
+  deleteSelected(m: unknown, domain: number): number
   selectionBeginStep(): void
   selectionEndStep(): void
   selectOne(m: unknown, domain: number, idx: number, state: boolean): void
@@ -4125,7 +4126,12 @@ export class LiteMesh extends SceneObjectData {
     const drawMask = (toolmode as unknown as {drawMask?: boolean})?.drawMask !== false
     // Per-object draw mode/flags (SceneObject.drawMode/.drawFlag): BOUNDS draws
     // only the AABB box, WIRE only the wireframe, SOLID/TEXTURED the surface.
-    const objDrawMode = _object?.drawMode ?? DrawModes.TEXTURED
+    // Viewport wire/bounds shading applies to every object, including objects
+    // whose individual display mode is Solid or Textured.
+    const objDrawMode =
+      view3d.drawmode === DrawModes.WIRE || view3d.drawmode === DrawModes.BOUNDS
+        ? view3d.drawmode
+        : _object?.drawMode ?? view3d.drawmode
     const objDrawFlag = _object?.drawFlag ?? DrawFlags.NONE
     const drawSurface = (objDrawMode & (DrawModes.SOLID | DrawModes.TEXTURED)) !== 0
     const drawBounds = objDrawMode === DrawModes.BOUNDS
@@ -4506,7 +4512,7 @@ export class LiteMesh extends SceneObjectData {
    * Conformance to ITriangleSource for generic 3D asset export (GLB, OBJ, STL, PLY).
    * Extracts live vertices and triangulates polygon face rings in bulk from sculptcore.
    */
-  extractTriangles(): {positions: Float64Array; indices: Int32Array; normals?: Float64Array} {
+  extractTriangles(): {positions: Float64Array; indices: Int32Array; normals?: Float64Array; uvs?: Float64Array} {
     if (!this.mesh) {
       return {positions: new Float64Array(0), indices: new Int32Array(0)}
     }
@@ -4547,6 +4553,7 @@ export class LiteMesh extends SceneObjectData {
       const cornerVerts = vertsOut.read()
 
       const triIndices: number[] = []
+      const triCorners: number[] = []
       const numFaces = faceIndices.length
 
       for (let fi = 0; fi < numFaces; fi++) {
@@ -4555,11 +4562,13 @@ export class LiteMesh extends SceneObjectData {
         if (end - start < 3) continue
 
         const faceVertIdxs: number[] = []
+        const faceCorners: number[] = []
         for (let c = start; c < end; c++) {
           const rawVi = cornerVerts[c]
           const compIdx = vertMap.get(rawVi)
           if (compIdx !== undefined) {
             faceVertIdxs.push(compIdx)
+            faceCorners.push(c)
           }
         }
 
@@ -4569,6 +4578,7 @@ export class LiteMesh extends SceneObjectData {
         const v0 = faceVertIdxs[0]
         for (let j = 1; j < fCount - 1; j++) {
           triIndices.push(v0, faceVertIdxs[j], faceVertIdxs[j + 1])
+          triCorners.push(faceCorners[0], faceCorners[j], faceCorners[j + 1])
         }
       }
 
@@ -4630,6 +4640,43 @@ export class LiteMesh extends SceneObjectData {
         }
       }
 
+      // Preserve per-corner UV seams by expanding exported vertices. Sharing
+      // one vertex across two UV islands would silently weld those islands.
+      const group = this._domainGroup(AttrDomain.CORNER)
+      const cls = this.wasm.manager.findVectorClass('sculptcore::mesh::AttrRef')
+      if (group?.attrs && cls) {
+        const attrs = this.wasm.getBoundVector(cls.buildFullName(), group.attrs as never) as ArrayLike<{
+          name: string
+          type: number
+        }>
+        let uvIndex = this.activeAttrLayerIndex(AttrUseFlags.UV)
+        if (uvIndex < 0 || attrs[uvIndex]?.type !== AttrType.Float2) {
+          uvIndex = -1
+          for (let i = 0; i < attrs.length; i++) {
+            if (attrs[i].type === AttrType.Float2 && !LiteMesh.isBuiltinAttr(attrs[i].name)) {
+              uvIndex = i
+              break
+            }
+          }
+        }
+        if (uvIndex >= 0) {
+          const uvOut = this._floatVecOut()
+          this.mesh.uvGather(uvIndex, cornersOut.vec as never, uvOut.vec as never)
+          const values = uvOut.read()
+          const expanded = new Float64Array(indices.length * 3)
+          const expandedNormals = new Float64Array(expanded.length)
+          const uvs = new Float64Array(indices.length * 2)
+          const sequential = new Int32Array(indices.length)
+          for (let i = 0; i < indices.length; i++) {
+            expanded.set(positions.subarray(indices[i] * 3, indices[i] * 3 + 3), i * 3)
+            expandedNormals.set(normals.subarray(indices[i] * 3, indices[i] * 3 + 3), i * 3)
+            uvs[i * 2] = values[triCorners[i] * 2]
+            uvs[i * 2 + 1] = values[triCorners[i] * 2 + 1]
+            sequential[i] = i
+          }
+          return {positions: expanded, indices: sequential, normals: expandedNormals, uvs}
+        }
+      }
       return {positions, indices, normals}
     } catch (err) {
       console.warn('LiteMesh.extractTriangles failed:', err)

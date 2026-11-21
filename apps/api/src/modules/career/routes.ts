@@ -27,23 +27,28 @@ export async function careerRoutes(app: FastifyInstance): Promise<void> {
       const skills = [
         ...credentials.map((credential) => ({
           kind: 'lesson',
+          sourceId: credential.attempt.lessonId,
           title: credential.attempt.lesson.title,
           verifiedAt: credential.issuedAt.toISOString(),
+          credentialId: credential.id,
+          mintStatus: credential.mintStatus,
         })),
         ...scenarios.map((attempt) => ({
           kind: 'simulation',
+          sourceId: attempt.scenarioId,
           title: attempt.scenario.title,
           verifiedAt: attempt.completedAt.toISOString(),
         })),
         ...fieldRuns.map((run) => ({
           kind: 'field',
+          sourceId: run.guideId,
           title: run.guide.title,
           verifiedAt: run.completedAt.toISOString(),
         })),
       ].filter((skill) => {
         // A skill profile lists each verified outcome once. Repeat passes stay in the
         // assessment record; the newest one is already first.
-        const key = `${skill.kind}\0${skill.title}`;
+        const key = `${skill.kind}\0${skill.sourceId}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -64,7 +69,11 @@ export async function careerRoutes(app: FastifyInstance): Promise<void> {
             ]
           : []),
       ];
-      return { skills, recommendations, evidenceCount: skills.length };
+      return {
+        skills,
+        recommendations,
+        evidenceCount: credentials.length + scenarios.length + fieldRuns.length,
+      };
     });
   });
 }

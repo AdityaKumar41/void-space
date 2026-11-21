@@ -1,7 +1,8 @@
-import {FindNearest} from '../findnearest.js'
+import {FindNearest, castViewRay} from '../findnearest.js'
 import {ObjectFlags, SceneObject} from '../../../sceneobject/sceneobject.js'
 import {ToolMode} from '../view3d_toolmode.js'
-import {SelMask, SelOneToolModes} from '../../../core/select_types.js'
+import {DrawModes} from '../../../sceneobject/drawmode'
+import {SelMask} from '../../../core/select_types.js'
 import type {SceneObjectData} from '../../../sceneobject/sceneobject_base.js'
 import {Shaders} from '../../../shaders/shaders.js'
 import {Vector2} from '../../../util/vectormath.js'
@@ -58,8 +59,8 @@ view3d.ObjectEditor {
   static toolModeDefine() {
     return {
       name        : 'object',
-      uiname      : 'Object',
-      description : 'Select Scene Objects',
+      uiname      : 'Object Mode',
+      description : 'Select and transform objects',
       icon        : Icons.CURSOR_ARROW,
       flag        : 0,
       selectMode  : SelMask.OBJECT,
@@ -76,6 +77,8 @@ view3d.ObjectEditor {
       new HotKey('S', [], "view3d.scale(selmask='OBJECT')"),
       new HotKey('A', [], "object.toggle_select_all(mode='AUTO')"),
       new HotKey('A', ['alt'], "object.toggle_select_all(mode='SUB')"),
+      // Blender B — box select objects (Shift extends while modal).
+      new HotKey('B', [], 'object.select_box()'),
       new HotKey('X', [], 'object.delete_selected()'),
       new HotKey('Delete', [], 'object.delete_selected()'),
     ])
@@ -88,14 +91,21 @@ view3d.ObjectEditor {
   }
 
   static buildSettings(container: any): void {
-    container.useIcons()
-    const strip = container.strip()
-
-    strip.label('Move Tool')
+    // Blender Properties → Active Tool (Object Mode): Transform tools + options.
+    const tools = container.panel('Transform')
+    tools.closed = false
+    tools.useIcons(true)
+    const strip = tools.strip()
     strip.prop('scene.tool.transformWidget[NONE]')
     strip.prop('scene.tool.transformWidget[translate]')
     strip.prop('scene.tool.transformWidget[scale]')
     strip.prop('scene.tool.transformWidget[rotate]')
+
+    const opts = container.panel('Options')
+    opts.closed = false
+    opts.useIcons(false)
+    opts.prop('scene.propEnabled')
+    opts.listenum('scene.propMode')
   }
 
   static buildHeader(header: any, addHeaderRow: any): void {
@@ -123,24 +133,34 @@ view3d.ObjectEditor {
 
     this._updateHighlight(e, x, y, was_touch)
 
-    if (e.ctrlKey || e.altKey || e.metaKey) {
+    // Alt left for other tools; Ctrl/⌘ is toggle-select (not a no-op).
+    if (e.altKey) {
       return
     }
 
     const ret = this.findnearest(ctx, x, y)
 
+    // Click empty space → deselect all (Blender Object Mode).
     if (ret === undefined || ret.object === undefined) {
-      return
+      if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        this.ctx.api.execTool(this.ctx, "object.toggle_select_all(mode='SUB')")
+      }
+      return true
     }
 
     const ob = ret.object
-    let mode = SelOneToolModes.UNIQUE
-
-    if (e.shiftKey) {
-      mode = ob.flag & ObjectFlags.SELECT ? SelOneToolModes.SUB : SelOneToolModes.ADD
+    // Locked objects are not selectable in the viewport.
+    if (ob.flag & ObjectFlags.LOCKED) {
+      return true
     }
 
-    const cmd = `object.selectone(objectId=${ob.lib_id} setActive=true mode=${mode})`
+    // Blender: click = exclusive; Shift = toggle add/sub; Ctrl/⌘ = toggle.
+    let modeName = 'UNIQUE'
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      modeName = ob.flag & ObjectFlags.SELECT ? 'SUB' : 'ADD'
+    }
+
+    const cmd = `object.selectone(objectId=${ob.lib_id} setActive=true mode=${modeName})`
     this.ctx.api.execTool(this.ctx, cmd)
 
     return true
@@ -204,7 +224,7 @@ view3d.ObjectEditor {
         scene.objects.setHighlight(ob)
         window.redraw_viewport()
       }
-    } else {
+    } else if (scene.objects.highlight !== undefined) {
       scene.objects.setHighlight(undefined)
       window.redraw_viewport()
     }
@@ -250,6 +270,8 @@ view3d.ObjectEditor {
       gl.depthMask(mask)
     }
 
+    // Solid shading is neutral; the editor selection color belongs to outlines.
+    uniforms.uColor = this.view3d.drawmode === DrawModes.TEXTURED ? [1, 1, 1, 1] : [0.72, 0.72, 0.72, 1]
     program = Shaders.BasicLitMesh
     object.draw(this.view3d, gl, uniforms, program)
 
@@ -262,7 +284,10 @@ view3d.ObjectEditor {
 
   findnearest(ctx: any, x: number, y: number, selmask: number = SelMask.OBJECT, limit: number = 25): any | undefined {
     //let ret = findnearest()
-    const ret = FindNearest(ctx, selmask, new Vector2([x, y]), this.view3d, limit)
+    const point = new Vector2([x, y])
+    const surface = castViewRay(ctx, selmask, point, this.view3d)
+    if (surface.length) return surface[0]
+    const ret = FindNearest(ctx, selmask, point, this.view3d, limit)
 
     if (ret !== undefined && ret.length > 0) {
       return ret[0]

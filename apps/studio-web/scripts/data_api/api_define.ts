@@ -4,6 +4,7 @@ import '../image/image_ops.js'
 import '../image/image.js'
 import '../light/light.js'
 import '../light/light_ops.js'
+import '../sceneobject/add_object_ops.js'
 
 import '../core/image.js'
 // CameraData self-registers at module scope; this side-effect import pulls it into

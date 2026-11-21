@@ -3,7 +3,7 @@ import {SelMask} from '../../../core/select_types.js'
 
 import {WidgetBase, WidgetSphere, WidgetFlags, WidgetManager} from './widgets.js'
 import {TranslateOp, ScaleOp, RotateOp} from '../transform/transform_ops.js'
-import {type TransCenterResult} from '../transform/transform_query.js'
+import {calcTransAABB, calcTransCenter, calcTransMatrix, type TransCenterResult} from '../transform/transform_query.js'
 import {Icons} from '../../icon_enum.js'
 import type {ViewContext} from '../../../core/context.js'
 import type {Container} from '../../../path.ux/scripts/core/ui.js'
@@ -77,15 +77,18 @@ export class NoneWidget extends WidgetBase {
 }
 
 export class TransformWidget extends WidgetBase {
-  /**
-   * The transform widgets only ever move *objects*, so they are offered whenever an
-   * object is selected — deliberately not gated on the select mask. The mask is a
-   * mesh-editing idea (the sculpt and box-model toolmodes set `SelMask.VERTEX`), and
-   * gating on it meant the object gizmo vanished the moment the app started in a
-   * mesh toolmode, which is where it starts by default.
-   */
+  static ctxValid(ctx: ViewContext) {
+    return super.ctxValid(ctx) && this.validate(ctx)
+  }
+
+  static selectionMask(ctx: ViewContext): number {
+    return ctx.toolmode?.constructor.toolModeDefine().transformSelectMask ?? SelMask.OBJECT
+  }
+
   static validate(ctx: ViewContext) {
-    return Array.from(ctx.selectedObjects).length > 0
+    if (!Array.from(ctx.selectedObjects).length) return false
+    const mask = this.selectionMask(ctx)
+    return !(mask & SelMask.GEOM) || calcTransAABB(ctx, mask) !== undefined
   }
 
   create(ctx: ViewContext, manager: WidgetManager) {}
@@ -96,8 +99,7 @@ export class TransformWidget extends WidgetBase {
       return new Matrix4()
     }
 
-    const view3d = this.ctx.view3d
-    return new Matrix4(view3d.getTransMatrix(space))
+    return new Matrix4(calcTransMatrix(this.ctx, TransformWidget.selectionMask(this.ctx), space))
   }
 
   /**
@@ -132,15 +134,12 @@ export class TransformWidget extends WidgetBase {
     return ret
   }
 
-  /** The select-mask-independent bounds: the mask's answer only when it has size. */
   getTransBounds(): [Vector3, Vector3] | undefined {
-    const aabb = this.ctx?.view3d?.getTransBounds()
-
-    if (aabb !== undefined && aabb[0].vectorDistance(aabb[1]) > 0) {
-      return [new Vector3(aabb[0]), new Vector3(aabb[1])]
-    }
-
-    return this.getSelectedBounds() ?? (aabb as [Vector3, Vector3] | undefined)
+    if (!this.ctx) return undefined
+    const mask = TransformWidget.selectionMask(this.ctx)
+    const aabb = calcTransAABB(this.ctx, mask)
+    if (aabb) return [new Vector3(aabb[0]), new Vector3(aabb[1])]
+    return mask & SelMask.OBJECT ? this.getSelectedBounds() : undefined
   }
 
   getTransAABB(): [Vector3, Vector3] {
@@ -164,7 +163,7 @@ export class TransformWidget extends WidgetBase {
       return {center: new Vector3()}
     }
 
-    const ret = this.ctx.view3d.getTransCenter()
+    const ret = calcTransCenter(this.ctx, TransformWidget.selectionMask(this.ctx), this.ctx.view3d.transformSpace)
     const aabb = this.getTransBounds()
 
     if (!aabb) {
@@ -346,11 +345,7 @@ export class TranslateWidget extends ThreeAxisWidget {
     const tool = TranslateOp.invoke(this.ctx!, {}) //new TranslateOp([localX, localY]);
     const con = new Vector3()
 
-    // The gizmo is the *object* gizmo, so it transforms objects whatever the
-    // current mesh select mode is (sculpt runs in VERTEX), exactly as Blender's
-    // Move gizmo does. Using the view's mask here made a gizmo drag in sculpt mode
-    // try to move vertices instead.
-    tool.inputs.selmask.setValue(SelMask.OBJECT)
+    tool.inputs.selmask.setValue(TransformWidget.selectionMask(this.ctx!))
 
     if (axis >= 0) {
       if (axis > 2) {
@@ -436,8 +431,7 @@ export class ScaleWidget extends ThreeAxisWidget {
     const tool = ScaleOp.invoke(this.ctx!, {}) //new ScaleOp([localX, localY]);
     const con = new Vector3()
 
-    // Object gizmo, whatever the mesh select mode — see TranslateWidget.startTool.
-    tool.inputs.selmask.setValue(SelMask.OBJECT)
+    tool.inputs.selmask.setValue(TransformWidget.selectionMask(this.ctx!))
 
     if (axis >= 0) {
       con[axis] = 1.0
@@ -514,8 +508,7 @@ export class RotateWidget extends TransformWidget {
     con[axis] = 1.0
 
     op.inputs.constraint.setValue(con)
-    // Object gizmo, whatever the mesh select mode — see TranslateWidget.startTool.
-    op.inputs.selmask.setValue(SelMask.OBJECT)
+    op.inputs.selmask.setValue(TransformWidget.selectionMask(this.ctx!))
 
     this.execTool(this.ctx!, op, e)
   }

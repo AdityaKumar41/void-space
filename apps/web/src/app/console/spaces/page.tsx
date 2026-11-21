@@ -1,6 +1,6 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { useLinkedItem } from '../../../lib/use-linked-item';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SpatialHeartbeatInput } from '@void-space/types';
 import { useEffect, useState } from 'react';
@@ -65,20 +65,17 @@ export default function SpacesPage() {
   });
   const [title, setTitle] = useState('');
   const [lessonId, setLessonId] = useState('');
-  const params = useSearchParams();
-  useEffect(() => {
-    const room = params.get('room');
-    if (room && rooms.data?.rooms.some((r) => r.id === room && r.status === 'live'))
-      setActive(room);
-  }, [params, rooms.data]);
-  const [active, setActive] = useState<string | null>(null);
+  const [active, setActive, unavailableLink] = useLinkedItem(
+    'room',
+    rooms.data?.rooms.filter((r) => r.status === 'live'),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (active)
     return (
       <RoomSession
-        key={active}
-        roomId={active}
+        key={active.id}
+        roomId={active.id}
         leave={() => {
           setActive(null);
           void cache.invalidateQueries({ queryKey: ['spatial-rooms'] });
@@ -113,13 +110,16 @@ export default function SpacesPage() {
   }
   return (
     <div className="space-y-8">
+      {unavailableLink ? (
+        <ErrorNote message="This shared item is unavailable in your current workspace. Switch to the correct workspace or ask the sender for a current link." />
+      ) : null}
       <header className="border-b border-hairline pb-6">
         <p className="eyebrow">Spaces</p>
         <h1 className="mt-2 text-ink">Shared learning spaces</h1>
         <p className="mt-3 max-w-[65ch] text-ink-dim">
           A space is a live browser session around one published lesson or practice experience.
-          People in the room share the current step. Presence drops when a browser stops checking
-          in.
+          Facilitators can share lesson steps. Practice assessments remain individual. Presence
+          drops when a browser stops checking in.
         </p>
       </header>
       {can('spatial:manage') ? (
@@ -129,10 +129,13 @@ export default function SpacesPage() {
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              aria-label="Space title"
+              maxLength={200}
               placeholder="Space title"
               className="min-w-48 flex-1 rounded-control border border-hairline bg-surface px-3 text-sm text-ink"
             />
             <select
+              aria-label="Space lesson or experience"
               value={lessonId}
               onChange={(e) => setLessonId(e.target.value)}
               className="rounded-control border border-hairline bg-surface px-3 text-sm text-ink"
@@ -153,7 +156,7 @@ export default function SpacesPage() {
                   </option>
                 ))}
             </select>
-            <Button disabled={busy || !title || !lessonId} onClick={create}>
+            <Button disabled={busy || title.trim().length < 3 || !lessonId} onClick={create}>
               {busy ? 'Opening…' : 'Open space'}
             </Button>
           </div>
@@ -185,7 +188,7 @@ export default function SpacesPage() {
               ) : (
                 <p className="text-xs text-ink-faint">No one is in the room right now.</p>
               )}
-              <Button className="mt-auto w-fit" onClick={() => setActive(room.id)}>
+              <Button className="mt-auto w-fit" onClick={() => setActive(room)}>
                 Join space
               </Button>
             </Card>
@@ -313,6 +316,16 @@ function RoomSession({ roomId, leave }: { roomId: string; leave: () => void }) {
   if (room.isLoading) return <LoadingBlock label="Entering the space" />;
   const current = room.data?.room;
   const sharedStep = current?.worldState.lessonStep;
+  if (current && current.status !== 'live')
+    return (
+      <Card className="space-y-4 p-5">
+        <h1 className="text-xl font-semibold text-ink">This session has ended</h1>
+        <p className="text-sm text-ink-dim">
+          The facilitator closed this space. Your individual assessment records remain saved.
+        </p>
+        <Button onClick={leave}>Back to shared spaces</Button>
+      </Card>
+    );
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -323,7 +336,10 @@ function RoomSession({ roomId, leave }: { roomId: string; leave: () => void }) {
           </h1>
           <p className="mt-1 text-sm text-ink-dim">
             {joined ? 'Connected · presence refreshes every 20 seconds' : 'Connecting to presence…'}{' '}
-            · Shared steps refresh every 3 seconds.
+            ·{' '}
+            {liveStatus === 'open'
+              ? 'Live shared updates connected.'
+              : 'Using periodic shared updates while the live connection recovers.'}
           </p>
         </div>
         <Button variant="ghost" disabled={leaving} onClick={exit}>

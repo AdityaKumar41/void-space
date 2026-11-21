@@ -42,7 +42,7 @@ export async function spatialWebsocketPlugin(app: FastifyInstance): Promise<void
         if (socket.readyState !== 1) return;
         try {
           // A long-lived connection must not outlive a revoked session or role.
-          await app.authenticate(request);
+          await app.requirePermission('spatial:join')(request);
           const snapshot = await withTenant(principal.tenantId, async (db) => {
             const room = await db.spatialRoom.findFirst({
               where: { id: roomId, tenantId: principal.tenantId, status: 'live' },

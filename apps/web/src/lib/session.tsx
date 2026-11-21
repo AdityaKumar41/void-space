@@ -91,7 +91,9 @@ export function SessionProvider({
     // apiFetch already performs the single-flight refresh. Repeating it here
     // can rotate the same cookie twice and revoke a valid session family.
     if (requireAuth && (status === 401 || query.data === null)) {
-      router.replace('/login?next=%2Fconsole');
+      router.replace(
+        `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`,
+      );
     }
   }, [query.error, query.data, router, requireAuth]);
 

@@ -83,6 +83,7 @@ export function importOBJIntoScene(ctx: ToolContext, bytes: Uint8Array, filename
 
 import type {Tri} from './triangulate.js'
 import {TriangulationCache} from './triangulate.js'
+import {gatherDrawAttr} from './draw_buffers.js'
 
 export function exportLeafMeshToOBJ(data: LeafMeshData, name = 'Model'): string {
   const mesh = data.mesh
@@ -107,11 +108,15 @@ export function exportLeafMeshToOBJ(data: LeafMeshData, name = 'Model'): string 
     out += `v ${co[i].toFixed(6)} ${co[i + 1].toFixed(6)} ${co[i + 2].toFixed(6)}\n`
   }
 
+  const uv = gatherDrawAttr(mesh, tris, 'uv', 2)
+  if (uv) for (let i = 0; i < uv.length; i += 2) out += `vt ${uv[i].toFixed(6)} ${uv[i + 1].toFixed(6)}\n`
+  let corner = 1
   for (const tri of tris) {
     const i0 = (handleToIdx.get(tri.v[0]) ?? tri.v[0]) + 1
     const i1 = (handleToIdx.get(tri.v[1]) ?? tri.v[1]) + 1
     const i2 = (handleToIdx.get(tri.v[2]) ?? tri.v[2]) + 1
-    out += `f ${i0} ${i1} ${i2}\n`
+    out += uv ? `f ${i0}/${corner} ${i1}/${corner + 1} ${i2}/${corner + 2}\n` : `f ${i0} ${i1} ${i2}\n`
+    corner += 3
   }
   return out
 }
@@ -126,7 +131,9 @@ export const LEAFMESH_OBJ_FORMAT: IFileFormat<ToolContext> = {
   },
 
   exportToBytes(ctx) {
-    const ob = ctx.scene?.objects?.active || [...(ctx.scene?.objects || [])].find((o: any) => o.data instanceof LeafMeshData || triangleSourceOf(o?.data))
+    const ob =
+      ctx.scene?.objects?.active ||
+      [...(ctx.scene?.objects || [])].find((o: any) => o.data instanceof LeafMeshData || triangleSourceOf(o?.data))
     if (ob && ob.data instanceof LeafMeshData) {
       return exportLeafMeshToOBJ(ob.data, ob.name || 'Model')
     }

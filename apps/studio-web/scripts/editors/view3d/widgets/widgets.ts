@@ -1186,7 +1186,7 @@ export class WidgetManager {
 
     for (const w of this.widgets) {
       let skip = !!(w.flag & WidgetFlags.IGNORE_EVENTS)
-      skip = skip || w.parent !== undefined
+      skip = skip || w.parent !== undefined || !(w.constructor as typeof WidgetBase).ctxValid(this.ctx)
 
       if (skip) {
         continue

@@ -54,28 +54,29 @@ test('viewport header is one row and the toolmode rows live in the docked panel'
     // The header is a column of rows. Only the switcher and note rows belong to
     // makeHeader, so the viewport adding exactly one more is what a single
     // header row means here.
-    const headerRows = cols
-      ? [...cols].filter((el: any) => el.tagName?.toLowerCase().endsWith('-x')).length
-      : -1
+    const headerRows = cols ? [...cols].filter((el: any) => el.tagName?.toLowerCase().endsWith('-x')).length : -1
 
     return {
       toolHostChildCount: host?.shadowRoot?.children?.length ?? -1,
       panelIds          : v3d?.panels ? [...v3d.panels.defs.keys()] : null,
       leftRegionSize    : v3d?.panels?.regions?.left?.size ?? null,
       headerRows,
-      toolmodeName      : w.CTX?.toolmode?.constructor?.toolModeDefine?.().name ?? null,
+      headerHeight: v3d.header.getBoundingClientRect().height,
+      toolmodeName: w.CTX?.toolmode?.constructor?.toolModeDefine?.().name ?? null,
     }
   })
 
-  // The toolmode's rows went to the panel, not the header.
-  expect(shape.toolHostChildCount, 'the toolmode contributed no rows to the tool panel').toBeGreaterThan(4)
+  // T-toolbar holds gizmo + mode tool icons (not the old 320px settings wall).
+  expect(shape.toolHostChildCount, 'the toolmode contributed no rows to the tool panel').toBeGreaterThan(0)
   expect(shape.panelIds).toContain('viewport_tools')
-  expect(shape.leftRegionSize).toBe(320)
+  // Blender T-toolbar is a narrow icon rail (~48px), not a 320px settings panel.
+  expect(shape.leftRegionSize).toBe(48)
 
   // Five toolmode rows used to push this to eight or more.
-  expect(shape.headerRows, `header grew back into a wall (${shape.headerRows} rows)`).toBeLessThanOrEqual(3)
+  expect(shape.headerHeight, 'viewport header exceeds a single compact row').toBeLessThanOrEqual(32)
 
-  expect(shape.toolmodeName).toBe('sculptcore')
+  // Blender Layout boots in Object Mode (LiteMesh default scene builder).
+  expect(shape.toolmodeName).toBe('object')
   expect(pageErrors, `uncaught page errors:\n${pageErrors.join('\n')}`).toEqual([])
 })
 
@@ -115,7 +116,7 @@ test('properties rail is icon-only with the category name in a tooltip', async (
     }))
   })
 
-  expect(tabs.length, 'the properties editor lost its category tabs').toBe(8)
+  expect(tabs.length, 'the properties editor lost its category tabs').toBe(13)
 
   for (const tab of tabs) {
     // Empty label plus an icon is what makes the rail a narrow icon column
@@ -132,12 +133,10 @@ test('properties rail is icon-only with the category name in a tooltip', async (
   const icons = tabs.map((t: {icon: number}) => t.icon)
   expect(new Set(icons).size, 'two category tabs share an icon').toBe(tabs.length)
 
-  // The nearest readable match from the icon sheet, per category, in rail order.
-  // Pinned rather than merely counted so a reshuffle has to be deliberate:
-  //   Workspace 77 (gear)      Scene 44 (camera)     Material 121 (colour)
-  //   Object 133 (cube)        ObData 53 (mesh)      Texture 93 (picture)
-  //   Last Command 5 (redo)    Settings 81 (panel)
-  expect(icons).toEqual([77, 44, 121, 133, 53, 93, 5, 81])
+  // Blender Properties modeling subset (Last Command lives in the N-panel):
+  //   Active Tool 77   Object 133   ObData 53   Material 121
+  //   Texture 93       Scene 44     Settings 81
+  expect(icons).toEqual([77, 133, 42, 112, 33, 51, 53, 121, 93, 44, 43, 45, 81])
 })
 
 test('property labels are tall enough for their own descenders', async ({page}) => {
@@ -145,6 +144,22 @@ test('property labels are tall enough for their own descenders', async ({page}) 
   await page.waitForFunction(() => !!(window as any)._appstate?.screen, undefined, {timeout: 90_000})
   await page.setViewportSize({width: 1600, height: 1000})
   await page.waitForTimeout(2000)
+
+  await page.evaluate(() => {
+    const find = (root: Document | ShadowRoot | Element): any => {
+      for (const el of root.querySelectorAll('*')) {
+        if (el.tagName.toLowerCase() === 'props-editor-x') return el
+        if (el.shadowRoot) {
+          const hit = find(el.shadowRoot)
+          if (hit) return hit
+        }
+      }
+    }
+    const editor = find(document)
+    const tab = editor.tabs.tbar.tabs.find((tab: any) => tab.tooltip.startsWith('Object '))
+    editor.tabs.tbar.setActive(tab)
+  })
+  await expect(page.locator('scene-object-panel-x')).toBeVisible()
 
   const measured = await page.evaluate(() => {
     const found: {text: string; height: number; fontSize: number}[] = []
@@ -162,7 +177,17 @@ test('property labels are tall enough for their own descenders', async ({page}) 
         if ((el as Element).shadowRoot) walk((el as Element).shadowRoot as ShadowRoot)
       }
     }
-    walk(document)
+    const findProps = (root: Document | ShadowRoot | Element): Element | undefined => {
+      for (const el of root.querySelectorAll('*')) {
+        if (el.tagName.toLowerCase() === 'props-editor-x') return el
+        if (el.shadowRoot) {
+          const hit = findProps(el.shadowRoot)
+          if (hit) return hit
+        }
+      }
+    }
+    const props = findProps(document)
+    if (props) walk(props.shadowRoot ?? props)
 
     return found
   })
@@ -240,6 +265,8 @@ test('object mode builds a transform gizmo, and Shift-A opens the Add menu', asy
     expect(mesh.tris, 'a widget shape mesh has no triangles to draw').toBeGreaterThan(0)
   }
 
+  const bounds = await page.locator('view3d-editor-x').boundingBox()
+  await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2)
   await page.keyboard.press('Shift+A')
   await page.waitForTimeout(600)
 
@@ -342,18 +369,18 @@ test('the properties panel fills its column, in the units each quantity has', as
     const checkLabel = collect('check-x', objPanel)[0]?.shadowRoot?.querySelector('label')
 
     return {
-      editorW : rect(ed)?.w ?? -1,
-      railW   : rect(ed.tabs.tbar)?.w ?? -1,
-      bodyW   : rect(ed.tabs.tbar._contentsWrapper)?.w ?? -1,
-      panelW  : rect(objPanel)?.w ?? -1,
-      frameW  : rect(frame)?.w ?? -1,
+      editorW    : rect(ed)?.w ?? -1,
+      railW      : rect(ed.tabs.tbar)?.w ?? -1,
+      bodyW      : rect(ed.tabs.tbar._contentsWrapper)?.w ?? -1,
+      panelW     : rect(objPanel)?.w ?? -1,
+      frameW     : rect(frame)?.w ?? -1,
       // The editor's own scroll box is what grows a scrollbar when a panel is
       // wider than the column it was given.
-      scrollW : ed.scrollWidth,
-      clientW : ed.clientWidth,
-      vecNames: collect('vector-panel-x', objPanel).map((v: any) => v.name),
-      formats : collect('numslider-textbox-x', objPanel).map((s: any) => s.formatNumber(1.23456)),
-      sliderW : {
+      scrollW    : ed.scrollWidth,
+      clientW    : ed.clientWidth,
+      vecNames   : collect('vector-panel-x', objPanel).map((v: any) => v.name),
+      formats    : collect('numslider-textbox-x', objPanel).map((s: any) => s.formatNumber(1.23456)),
+      sliderW: {
         slider: rect(collect('numslider-x', objPanel)[0])?.w ?? -1,
         row   : rect(collect('numslider-textbox-x', objPanel)[0])?.w ?? -1,
       },
@@ -365,7 +392,7 @@ test('the properties panel fills its column, in the units each quantity has', as
         }
       })(),
       titleColour: titleFrame ? getComputedStyle(titleFrame).borderTopColor : '',
-      check      : {
+      check: {
         label: (checkLabel?.textContent ?? '').trim(),
         font : checkLabel ? getComputedStyle(checkLabel).font : '',
       },
@@ -385,17 +412,14 @@ test('the properties panel fills its column, in the units each quantity has', as
   // And a panel frame fits inside it: `PanelFrame` is `width: 100%` with content-box
   // sizing, so without an inset its own 1px borders pushed it 2px past the column
   // and the scroll box grew a horizontal scrollbar.
-  expect(
-    shape.frameW,
-    `panel frame (${shape.frameW}) is wider than its column (${shape.panelW})`
-  ).toBeLessThanOrEqual(shape.panelW)
+  expect(shape.frameW, `panel frame (${shape.frameW}) is wider than its column (${shape.panelW})`).toBeLessThanOrEqual(
+    shape.panelW
+  )
   expect(shape.scrollW, 'the properties body scrolls sideways').toBe(shape.clientW)
 
   // One slider absorbs the row's slack; two part-width fields followed by dead space
   // is what the panel looked like before.
-  expect(shape.sliderW.slider, 'the axis slider did not grow into its row').toBeGreaterThan(
-    shape.sliderW.row * 0.6
-  )
+  expect(shape.sliderW.slider, 'the axis slider did not grow into its row').toBeGreaterThan(shape.sliderW.row * 0.6)
 
   // Labels and units. A slider formats its numbers through `units.buildString`, which
   // falls back to metres for anything it was never told about — so rotation read "0 m"
@@ -407,7 +431,7 @@ test('the properties panel fills its column, in the units each quantity has', as
 
   // The tab is headed by the object's own name, not by the datapath's "name".
   expect(shape.nameLabel.text, 'the panel is headed by the raw datapath label').not.toMatch(/^name\b/)
-  expect(shape.nameLabel.font, 'the object name is not set in the theme title face').toContain('600 12px')
+  expect(shape.nameLabel.font, 'the object name is not set in the theme title face').toContain('600 11px')
 
   // Section headers stroke their own border from `panel.TitleBorder`, which upstream
   // ships as `rgba(104,104,104,1)` — a light grey box around every header, the single
@@ -417,7 +441,7 @@ test('the properties panel fills its column, in the units each quantity has', as
   // A checkbox label is a property name: 12px in the theme's face. Upstream re-fonts
   // it `14px poppins`, a family this build never loads.
   expect(shape.check.label).toBeTruthy()
-  expect(shape.check.font, 'the checkbox label is not in the theme face').toContain('12px')
+  expect(shape.check.font, 'the checkbox label is not in the theme face').toContain('11px')
   expect(shape.check.font).not.toContain('poppins')
 
   expect(pageErrors, `uncaught page errors:\n${pageErrors.join('\n')}`).toEqual([])
@@ -455,13 +479,21 @@ test('every properties category opens without an uncaught error', async ({page})
     })
   })
 
-  expect(rail.length, 'the rail has no categories').toBe(8)
+  expect(rail.length, 'the rail has no categories').toBe(13)
 
   const empty: string[] = []
 
   for (const item of rail) {
     const before = pageErrors.length
-    await page.mouse.click(item.x, item.y)
+    // Re-read geometry: a long category can change the rail's scroll position.
+    const position = await page.evaluate((tooltip) => {
+      const ed = (window as any).__propsEd
+      const tab = ed.tabs.tbar.tabs.find((tab: any) => tab.tooltip === tooltip)
+      tab.scrollIntoView({block: 'nearest'})
+      const rect = tab.getBoundingClientRect()
+      return {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2}
+    }, item.tooltip)
+    await page.mouse.click(position.x, position.y)
     await page.waitForTimeout(900)
 
     // The category has to have built *something*. A panel whose `rebuild` threw
@@ -480,11 +512,12 @@ test('every properties category opens without an uncaught error', async ({page})
       }
       scan(host?.shadowRoot ?? host)
 
-      return {hosted: !!host, widgets}
+      return {hosted: !!host, widgets, active: ed.tabs.tbar.tabs.active?.tooltip}
     })
 
+    expect(built.active, 'the intended category was not selected').toBe(item.tooltip)
     if (!built.hosted || built.widgets < 1) {
-      empty.push(`${(item.tooltip ?? '').split(' ')[0]} (${built.widgets} widgets)`)
+      empty.push(`${item.tooltip} (${built.widgets} widgets)`)
     }
 
     const added = pageErrors.slice(before)
@@ -494,4 +527,3 @@ test('every properties category opens without an uncaught error', async ({page})
   expect(empty, `categories that built an empty panel: ${empty.join(', ')}`).toEqual([])
   expect(pageErrors, `uncaught page errors:\n${pageErrors.join('\n')}`).toEqual([])
 })
-

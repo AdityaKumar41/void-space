@@ -30,6 +30,9 @@ import {loadShapes} from '../webgl/simplemesh_shapes'
 import '../editors/resbrowser/resbrowser'
 import '../editors/resbrowser/resbrowser_ops'
 import '../editors/resbrowser/resbrowser_types'
+import '../editors/outliner/OutlinerEditor'
+import '../editors/statusbar/StatusBarEditor'
+import {ensureBlenderChrome} from '../editors/screengen.js'
 
 // View3D toolmode registrations moved out of core: the always-present ones are
 // side-effect imports in `editors/view3d/tools/tools`, the rest arrive through
@@ -528,6 +531,9 @@ export class AppState {
           }
         }
       }
+
+      // Bring Layout chrome up to modeling parity (no Timeline; Object Mode).
+      ensureBlenderChrome(this)
     }, 350)
   }
 
@@ -616,10 +622,8 @@ export class AppState {
 
       const iter = gen()[Symbol.iterator]()
 
-      if (this.screen) {
-        this.screen.remove()
-      }
-
+      // Keep the current editor attached until loadFile_loadScreen replaces it.
+      // Data-only loads retain this screen, and failed loads must leave it usable.
       const pcirc = document.createElement('progress-circle-x') as unknown as {
         init(): void
         startTimer(): void
@@ -644,6 +648,7 @@ export class AppState {
         try {
           item = iter.next()
         } catch (error) {
+          window.FILE_LOADING = false
           pcirc.remove()
           window.clearInterval(timer)
           reject(error as Error)

@@ -18,7 +18,7 @@ export function buildGlbBinary(
   position: Float32Array,
   normal: Float32Array,
   indices: Uint16Array | Uint32Array,
-  options?: GlbBinaryOptions,
+  options?: GlbBinaryOptions
 ): Uint8Array {
   let minX = Infinity
   let minY = Infinity
@@ -75,7 +75,10 @@ export function buildGlbBinary(
 
   let curOffset = posPadded + normPadded
   let uvOffset = 0
-  let minU = 0, minV = 0, maxU = 1, maxV = 1
+  let minU = 0,
+    minV = 0,
+    maxU = 1,
+    maxV = 1
 
   if (hasUv) {
     uvOffset = curOffset
@@ -135,20 +138,20 @@ export function buildGlbBinary(
 
   const accessors: any[] = [
     {
-      bufferView: 0,
-      byteOffset: 0,
+      bufferView   : 0,
+      byteOffset   : 0,
       componentType: 5126, // FLOAT
-      count: vertCount,
-      type: 'VEC3',
-      min: [minX, minY, minZ],
-      max: [maxX, maxY, maxZ],
+      count        : vertCount,
+      type         : 'VEC3',
+      min          : [minX, minY, minZ],
+      max          : [maxX, maxY, maxZ],
     },
     {
-      bufferView: 1,
-      byteOffset: 0,
+      bufferView   : 1,
+      byteOffset   : 0,
       componentType: 5126, // FLOAT
-      count: vertCount,
-      type: 'VEC3',
+      count        : vertCount,
+      type         : 'VEC3',
     },
   ]
 
@@ -156,30 +159,30 @@ export function buildGlbBinary(
   if (hasUv) {
     uvAccIdx = accessors.length
     accessors.push({
-      bufferView: uvBvIdx,
-      byteOffset: 0,
+      bufferView   : uvBvIdx,
+      byteOffset   : 0,
       componentType: 5126, // FLOAT
-      count: vertCount,
-      type: 'VEC2',
-      min: [minU, minV],
-      max: [maxU, maxV],
+      count        : vertCount,
+      type         : 'VEC2',
+      min          : [minU, minV],
+      max          : [maxU, maxV],
     })
   }
 
   const idxAccIdx = accessors.length
   accessors.push({
-    bufferView: idxBvIdx,
-    byteOffset: 0,
+    bufferView   : idxBvIdx,
+    byteOffset   : 0,
     componentType: is32Bit ? 5125 : 5123, // UNSIGNED_INT or UNSIGNED_SHORT
-    count: indices.length,
-    type: 'SCALAR',
-    min: [0],
-    max: [vertCount > 0 ? vertCount - 1 : 0],
+    count        : indices.length,
+    type         : 'SCALAR',
+    min          : [0],
+    max          : [vertCount > 0 ? vertCount - 1 : 0],
   })
 
   const attributes: Record<string, number> = {
     POSITION: 0,
-    NORMAL: 1,
+    NORMAL  : 1,
   }
   if (hasUv) {
     attributes.TEXCOORD_0 = uvAccIdx
@@ -187,7 +190,7 @@ export function buildGlbBinary(
 
   const pbr: any = {
     baseColorFactor: options?.baseColorFactor || [0.85, 0.85, 0.9, 1.0],
-    metallicFactor: options?.metallicFactor ?? 0.2,
+    metallicFactor : options?.metallicFactor ?? 0.2,
     roughnessFactor: options?.roughnessFactor ?? 0.5,
   }
 
@@ -196,16 +199,16 @@ export function buildGlbBinary(
   }
 
   const gltfJson: any = {
-    asset: {version: '2.0', generator: 'VOID·STUDIO 1.0'},
-    scenes: [{name: 'Scene', nodes: [0]}],
-    nodes: [{name, mesh: 0}],
+    asset    : {version: '2.0', generator: 'VOID·STUDIO 1.0'},
+    scenes   : [{name: 'Scene', nodes: [0]}],
+    nodes    : [{name, mesh: 0}],
     meshes: [
       {
         name,
         primitives: [
           {
             attributes,
-            indices: idxAccIdx,
+            indices : idxAccIdx,
             material: 0,
           },
         ],
@@ -213,7 +216,7 @@ export function buildGlbBinary(
     ],
     materials: [
       {
-        name: 'PBR_Material',
+        name                : 'PBR_Material',
         pbrMetallicRoughness: pbr,
       },
     ],
@@ -260,7 +263,7 @@ export function buildGlbBinary(
 }
 
 export function exportTrianglesToGLB(
-  tris: {positions: Float64Array; indices: Int32Array; normals?: Float64Array},
+  tris: {positions: Float64Array; indices: Int32Array; normals?: Float64Array; uvs?: Float64Array},
   name = 'Model'
 ): Uint8Array {
   const vertCount = (tris.positions.length / 3) | 0
@@ -273,9 +276,9 @@ export function exportTrianglesToGLB(
   const posF32 = new Float32Array(tris.positions.length)
   for (let i = 0; i < vertCount; i++) {
     const idx = i * 3
-    posF32[idx] = tris.positions[idx]         // glTF X = +X
-    posF32[idx + 1] = tris.positions[idx + 2]     // glTF Y = +Z (up)
-    posF32[idx + 2] = -tris.positions[idx + 1]    // glTF Z = -Y (forward)
+    posF32[idx] = tris.positions[idx] // glTF X = +X
+    posF32[idx + 1] = tris.positions[idx + 2] // glTF Y = +Z (up)
+    posF32[idx + 2] = -tris.positions[idx + 1] // glTF Z = -Y (forward)
   }
 
   const normF32 = new Float32Array(tris.positions.length)
@@ -298,5 +301,5 @@ export function exportTrianglesToGLB(
     indices[i] = tris.indices[i]
   }
 
-  return buildGlbBinary(name, posF32, normF32, indices)
+  return buildGlbBinary(name, posF32, normF32, indices, {uv: tris.uvs ? Float32Array.from(tris.uvs) : undefined})
 }

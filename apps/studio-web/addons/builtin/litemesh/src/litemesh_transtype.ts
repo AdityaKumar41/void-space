@@ -8,15 +8,14 @@
  * `view3d.translate` — reuses its modal loop, constraints, numeric entry, header
  * readout and snapping with no new transform math.
  *
- * Mirrors `MeshTransType`: it works in the object's local space (genData reads
- * the movable verts' local positions as backups; applyTransform writes
- * `co = backup·matrix` back). The verts are C++ indices (not JS objects), so the
+ * Vertex backups remain in object space. Transform deltas and selection queries
+ * use world space, with the object's matrix converting coordinates on each side. The verts are C++ indices (not JS objects), so the
  * apply path is the bound `setVertCo`, and the per-step GPU refresh is the
  * incremental `markVertsMoved` (no full spatial rebuild). Undo is the transform's
  * own position snapshot — the MeshLog-bracketed single-step undo for "T" tools
  * comes from the *modeling op* holding its step open across the modal (§3d).
  */
-import {Vector3} from '../../../../scripts/path.ux/scripts/pathux'
+import {Matrix4, Vector3} from '../../../../scripts/path.ux/scripts/pathux'
 import {
   ITransDataType,
   TransDataType,
@@ -40,6 +39,8 @@ function activeLiteMesh(ctx: ToolContext): {ob: SceneObject; mesh: LiteMesh} | u
 
 export class LiteMeshTransElem extends TransDataElem<number, Vector3> {
   mesh?: LiteMesh
+  objectMatrix!: Matrix4
+  inverseObjectMatrix!: Matrix4
 }
 
 export class LiteMeshTransList extends TransDataList<number, Vector3> {
@@ -77,6 +78,12 @@ export const LiteMeshTransType: ITransDataType<number, Vector3, LiteMeshTransEle
     }
     const list = new LiteMeshTransList(this)
     list.mesh = lm.mesh
+    const objectMatrix = lm.ob.outputs.matrix.getValue().copy()
+    const inverseObjectMatrix = objectMatrix.copy().invert()
+    if (!inverseObjectMatrix) {
+      ctx.warning('Apply a nonzero object scale before editing geometry')
+      return undefined
+    }
 
     const {idxVec, idx, co} = lm.mesh.gatherMovableVerts()
     list.idxVec = idxVec
@@ -85,6 +92,8 @@ export const LiteMeshTransType: ITransDataType<number, Vector3, LiteMeshTransEle
     for (let i = 0; i < idx.length; i++) {
       const td = new LiteMeshTransElem()
       td.mesh = lm.mesh
+      td.objectMatrix = objectMatrix
+      td.inverseObjectMatrix = inverseObjectMatrix
       td.data1 = idx[i]
       td.data2 = new Vector3([co[i * 3], co[i * 3 + 1], co[i * 3 + 2]])
       td.index = i
@@ -97,7 +106,9 @@ export const LiteMeshTransType: ITransDataType<number, Vector3, LiteMeshTransEle
   applyTransform(ctx, elem, do_prop, matrix, toolop) {
     const td = elem as LiteMeshTransElem
     // multVecMatrix mutates applytemp in place (its return is the perspective w).
-    applytemp.load(td.data2).multVecMatrix(matrix)
+    applytemp.load(td.data2).multVecMatrix(td.objectMatrix)
+    applytemp.multVecMatrix(matrix)
+    applytemp.multVecMatrix(td.inverseObjectMatrix)
     // interp by w supports proportional-edit falloff (w === 1 for a plain grab).
     applytemp2.load(td.data2).interp(applytemp, td.w)
     td.mesh!.setVertCo(td.data1, applytemp2[0], applytemp2[1], applytemp2[2])
@@ -151,6 +162,7 @@ export const LiteMeshTransType: ITransDataType<number, Vector3, LiteMeshTransEle
       c[2] += co[i + 2]
     }
     c.mulScalar(1.0 / n)
+    c.multVecMatrix(lm.ob.outputs.matrix.getValue())
     if (space_matrix_out) {
       space_matrix_out.makeIdentity()
     }
@@ -166,15 +178,14 @@ export const LiteMeshTransType: ITransDataType<number, Vector3, LiteMeshTransEle
     const min = new Vector3([1e17, 1e17, 1e17])
     const max = new Vector3([-1e17, -1e17, -1e17])
     if (co.length === 0) {
-      min.zero()
-      max.zero()
-      return [min, max]
+      return undefined
     }
     const v = new Vector3()
     for (let i = 0; i < co.length; i += 3) {
       v[0] = co[i] ?? 0
       v[1] = co[i + 1] ?? 0
       v[2] = co[i + 2] ?? 0
+      v.multVecMatrix(lm.ob.outputs.matrix.getValue())
       min.min(v)
       max.max(v)
     }

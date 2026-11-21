@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useLinkedItem } from '../../../lib/use-linked-item';
 import type { LessonContent } from '@void-space/types';
 import { apiFetch } from '../../../lib/api';
 import { useSession } from '../../../lib/session';
@@ -17,7 +17,6 @@ const field = 'w-full rounded-control border border-hairline bg-surface p-3 text
 export default function LessonsPage() {
   const { can } = useSession();
   const cache = useQueryClient();
-  const params = useSearchParams();
   const manage = can('learning:manage');
   const lessons = useQuery({
     queryKey: ['lessons', manage],
@@ -30,7 +29,10 @@ export default function LessonsPage() {
       apiFetch<{ assets: { id: string; name: string; category: string }[] }>('/lessons/assets'),
     enabled: manage,
   });
-  const [active, setActive] = useState<DeliveryLesson | null>(null);
+  const [active, setActive, unavailableLink] = useLinkedItem(
+    'lesson',
+    lessons.data?.lessons?.filter((l) => l.isPublished),
+  );
   const [editing, setEditing] = useState<string | null>(null);
   const [assetId, setAssetId] = useState('');
   const [title, setTitle] = useState('');
@@ -40,11 +42,6 @@ export default function LessonsPage() {
   const [busy, setBusy] = useState(false);
   const [revising, setRevising] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    const id = params.get('lesson');
-    if (id && lessons.data)
-      setActive(lessons.data.lessons.find((l) => l.id === id && l.isPublished) ?? null);
-  }, [params, lessons.data]);
   async function create() {
     setBusy(true);
     setError(null);
@@ -109,6 +106,9 @@ export default function LessonsPage() {
   const publishedCount = lessons.data?.lessons.filter((lesson) => lesson.isPublished).length ?? 0;
   return (
     <div className="space-y-8">
+      {unavailableLink ? (
+        <ErrorNote message="This shared item is unavailable in your current workspace. Switch to the correct workspace or ask the sender for a current link." />
+      ) : null}
       <header className="flex flex-wrap items-end justify-between gap-6 border-b border-hairline pb-6">
         <div>
           <p className="eyebrow">Learning library</p>
@@ -213,8 +213,8 @@ export default function LessonsPage() {
               Write the reading and quiz with AI from these notes
             </label>
             <p className="text-xs leading-relaxed text-ink-dim">
-              The draft stays private until you publish it. Check every correct answer. If the
-              model is unavailable, the notes are kept so you can write the quiz yourself.
+              The draft stays private until you publish it. Check every correct answer. If the model
+              is unavailable, the notes are kept so you can write the quiz yourself.
             </p>
             <Button
               disabled={
@@ -243,7 +243,9 @@ export default function LessonsPage() {
                   {l.isPublished ? 'Published' : 'Draft · review before release'}
                 </Chip>
                 <h2 className="mt-3 text-2xl font-semibold text-ink">{l.title}</h2>
-                <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-ink-dim">{l.summary}</p>
+                <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-ink-dim">
+                  {l.summary}
+                </p>
                 <p className="mt-3 text-xs text-ink-faint">
                   {l.outline.length} guided steps · {l.questions.length} questions · pass at{' '}
                   {l.passingScore}%
@@ -343,7 +345,7 @@ function LessonEditor({
         result.generation.mode === 'ai'
           ? `Added ${fresh.length} questions from ${result.generation.model ?? 'the model'}. Check every correct answer before you publish.`
           : (result.generation.reason ??
-            `Added ${fresh.length} questions from the lesson notes. Check every correct answer before you publish.`),
+              `Added ${fresh.length} questions from the lesson notes. Check every correct answer before you publish.`),
       );
     } catch (e) {
       setError((e as Error).message);
@@ -371,7 +373,10 @@ function LessonEditor({
       ) : null}
       {error ? <ErrorNote message={error} /> : null}
       {questionNote ? (
-        <p role="status" className="rounded-control border border-hairline p-4 text-sm text-ink-dim">
+        <p
+          role="status"
+          className="rounded-control border border-hairline p-4 text-sm text-ink-dim"
+        >
           {questionNote}
         </p>
       ) : null}

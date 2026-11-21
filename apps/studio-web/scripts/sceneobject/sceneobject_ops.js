@@ -33,29 +33,44 @@ export class DeleteObjectOp extends SceneObjectOp {
   }
 
   exec(ctx) {
-    let scene = ctx.scene
+    const scene = ctx.scene
+    const list = []
 
-    let list = []
-
-    for (let ob of scene.objects.selected.editable) {
+    // Delete selected even if hidden (Blender does). Skip locked only.
+    for (const ob of scene.objects.selected) {
+      if (ob.flag & ObjectFlags.LOCKED) continue
+      if (ob.flag & ObjectFlags.INTERNAL) continue
       list.push(ob)
     }
 
-    for (let ob of list) {
+    // Outliner buttons select their target before invoking this operation.
+    if (list.length === 0) return
+
+    for (const ob of list) {
+      const data = ob.data
       scene.remove(ob)
 
-      if (ob.lib_users <= 0) {
-        console.log('Nuking object')
-        let data = ob.data
+      // Scene held a user; drop leftover refs so Delete really removes the block.
+      // Previously lib_users > 0 after scene.remove left orphans that felt undeletable.
+      while (ob.lib_users > 0) {
+        ob.lib_remUser()
+      }
+      try {
+        ctx.datalib.remove(ob)
+      } catch (error) {
+        console.warn('delete_selected: could not remove object block', ob, error)
+      }
 
-        ctx.datalib.remove(ob) //will call ob.destroy()
-
-        if (data.lib_users <= 0) {
-          console.log('Nuking object data too')
+      if (data && data.lib_users <= 0) {
+        try {
           ctx.datalib.remove(data)
+        } catch (error) {
+          console.warn('delete_selected: could not remove object data', data, error)
         }
       }
     }
+
+    window.redraw_viewport?.(true)
   }
 }
 
@@ -134,7 +149,7 @@ export const ApplyTransFlags = {
 export class ApplyTransformOp extends ToolOp {
   static tooldef() {
     return {
-      uiname  : 'Apply Tranform',
+      uiname  : 'Apply Transform',
       toolpath: 'object.apply_transform',
       inputs: {
         mode: new FlagProperty(ApplyTransFlags.ALL, ApplyTransFlags),

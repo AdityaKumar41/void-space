@@ -265,7 +265,7 @@ SculptBrush {
     bst.float('autosmooth', 'autosmooth', 'Autosmooth').range(0.0, 2.0).noUnits()
     bst.float('autosmoothInflate', 'autosmoothInflate', 'Inflation').range(0.0, 1.0).noUnits()
 
-    bst.float('planeoff', 'planeoff', 'planeoff').range(-3.5, 3.5).noUnits()
+    bst.float('planeoff', 'planeoff', 'Plane Offset').range(-3.5, 3.5).noUnits()
     bst
       .float('wingAngle', 'wingAngle', 'Wing Angle', 'Half-angle between the two Wing Scrape planes')
       .range(0.0, 80.0)

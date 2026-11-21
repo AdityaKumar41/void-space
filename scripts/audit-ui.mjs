@@ -62,6 +62,8 @@ const PUBLIC_ROUTES = [
 /** Console routes per role. `expectStatus` documents the intended outcome of the request itself. */
 const CONSOLE_ROUTES = [
   { path: '/console', label: 'Overview', roles: ['creator'] },
+  { path: '/console/help', label: 'Void Space help', roles: ['creator'] },
+  { path: '/console/account', label: 'Account and wallets', roles: ['creator'] },
   { path: '/console/library', label: 'Library', roles: ['creator'] },
   { path: '/console/catalog', label: 'Catalogue (staff view)', roles: ['creator'] },
   { path: '/console/licenses', label: 'Licences', roles: ['creator'] },

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiRequestError, apiFetch } from '../src/lib/api';
+import { apiFetch } from '../src/lib/api';
 
 describe('apiFetch error responses', () => {
   afterEach(() => vi.unstubAllGlobals());

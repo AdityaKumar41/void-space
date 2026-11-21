@@ -24,7 +24,7 @@ import {
 } from '@framework/api'
 
 import {LeafMeshData} from './leafmesh.js'
-import {aabbOf, centroidOf, gatherMovableVerts, propagationDistances, snapshotBytes} from './transform_geom.js'
+import {centroidOf, gatherMovableVerts, propagationDistances, snapshotBytes} from './transform_geom.js'
 import type {Vec3} from './topo.js'
 
 /** Resolve the active LeafMesh object; the type is gated to it through `isValid`. */
@@ -36,12 +36,16 @@ function activeLeafMesh(ctx: ToolContext): {ob: SceneObject; data: LeafMeshData}
 
 export class LeafMeshTransElem extends TransDataElem<number, Vector3> {
   data?: LeafMeshData
+  objectMatrix!: Matrix4
+  inverseObjectMatrix!: Matrix4
 }
 
 export class LeafMeshTransList extends TransDataList<number, Vector3> {
   data?: LeafMeshData
   /** Every vertex this transform touches, for one invalidation per step. */
   handles = new Int32Array(0)
+  objectMatrix = new Matrix4()
+  inverseObjectMatrix = new Matrix4()
 }
 
 interface LeafMeshUndoData {
@@ -67,6 +71,8 @@ function nearVerts(data: LeafMeshData): (co: Readonly<Vec3>, radius: number) => 
 function pushElem(list: LeafMeshTransList, data: LeafMeshData, v: number, x: number, y: number, z: number, w: number) {
   const td = new LeafMeshTransElem()
   td.data = data
+  td.objectMatrix = list.objectMatrix
+  td.inverseObjectMatrix = list.inverseObjectMatrix
   td.data1 = v
   td.data2 = new Vector3([x, y, z])
   td.index = list.length
@@ -100,6 +106,11 @@ export const LeafMeshTransType: ITransDataType<number, Vector3, LeafMeshTransEle
 
     const list = new LeafMeshTransList(this)
     list.data = data
+    list.objectMatrix.load(active.ob.outputs.matrix.getValue())
+    if (!list.inverseObjectMatrix.load(list.objectMatrix).invert()) {
+      ctx.warning('Apply a nonzero object scale before editing geometry')
+      return undefined
+    }
 
     for (let i = 0; i < verts.length; i++) {
       pushElem(list, data, verts[i], co[i * 3], co[i * 3 + 1], co[i * 3 + 2], 1.0)
@@ -125,7 +136,9 @@ export const LeafMeshTransType: ITransDataType<number, Vector3, LeafMeshTransEle
     const td = elem
     // multVecMatrix mutates applytemp in place (its return is the perspective w),
     // and interp by td.w is what makes the proportional falloff show up.
-    applytemp.load(td.data2).multVecMatrix(matrix)
+    applytemp.load(td.data2).multVecMatrix(td.objectMatrix)
+    applytemp.multVecMatrix(matrix)
+    applytemp.multVecMatrix(td.inverseObjectMatrix)
     applytemp2.load(td.data2).interp(applytemp, td.w)
 
     // Written straight into the column: the invalidation this needs is one per
@@ -173,7 +186,10 @@ export const LeafMeshTransType: ITransDataType<number, Vector3, LeafMeshTransEle
     }
 
     const c = centroidOf(active.data.mesh, gatherMovableVerts(active.data.mesh).verts)
-    return c === undefined ? undefined : new Vector3(c)
+    if (c === undefined) return undefined
+    const world = new Vector3(c)
+    world.multVecMatrix(active.ob.outputs.matrix.getValue())
+    return world
   },
 
   calcAABB(ctx, selmask) {
@@ -182,8 +198,19 @@ export const LeafMeshTransType: ITransDataType<number, Vector3, LeafMeshTransEle
       return undefined
     }
 
-    const box = aabbOf(active.data.mesh, gatherMovableVerts(active.data.mesh).verts)
-    return box === undefined ? undefined : [new Vector3(box[0]), new Vector3(box[1])]
+    const {co} = gatherMovableVerts(active.data.mesh)
+    if (!co.length) return undefined
+    const min = new Vector3([Infinity, Infinity, Infinity])
+    const max = new Vector3([-Infinity, -Infinity, -Infinity])
+    const point = new Vector3()
+    const matrix = active.ob.outputs.matrix.getValue()
+    for (let i = 0; i < co.length; i += 3) {
+      point.loadXYZ(co[i], co[i + 1], co[i + 2])
+      point.multVecMatrix(matrix)
+      min.min(point)
+      max.max(point)
+    }
+    return [min, max]
   },
 
   getOriginMatrix() {

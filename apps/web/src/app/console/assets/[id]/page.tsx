@@ -152,6 +152,18 @@ export default function AssetConsolePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  const publishing = useQuery({
+    queryKey: ['publishing-health'],
+    queryFn: () =>
+      apiFetch<{ dependencies: { contract: { status: string }; chain: { status: string } } }>(
+        '/health',
+      ),
+    staleTime: 30_000,
+  });
+  const mintingAvailable =
+    publishing.data?.dependencies.contract.status === 'up' &&
+    publishing.data?.dependencies.chain.status === 'up';
+
   const [comment, setComment] = useState('');
   const [decisionComment, setDecisionComment] = useState('');
   const [acceptTags, setAcceptTags] = useState(true);
@@ -420,37 +432,39 @@ export default function AssetConsolePage() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-12 mt-2">
-        <div className="lg:col-span-6 xl:col-span-7 space-y-5">
+        <div className="min-w-0 lg:col-span-6 xl:col-span-7 space-y-5">
           <Panel title="Review history" right={`${asset.decisions.length} decisions`}>
             {asset.decisions.length === 0 ? (
               <div className="px-5 py-6 text-[13.5px]" style={{ color: 'var(--vs-fg-faint)' }}>
                 No decisions recorded yet.
               </div>
             ) : (
-              <table className="vs-table">
-                <thead>
-                  <tr>
-                    <th>Decision</th>
-                    <th>Assessor</th>
-                    <th>Comment</th>
-                    <th className="text-right">When</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {asset.decisions.map((decision) => (
-                    <tr key={decision.id}>
-                      <td className="font-mono text-[12px] text-ink-dim uppercase">
-                        {decision.decision}
-                      </td>
-                      <td className="opacity-80">{decision.assessor?.fullName ?? '—'}</td>
-                      <td className="opacity-80">{decision.comment ?? '—'}</td>
-                      <td className="font-mono text-[12px] text-ink-dim whitespace-nowrap text-right opacity-70">
-                        {formatRelative(decision.createdAt)}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="vs-table">
+                  <thead>
+                    <tr>
+                      <th>Decision</th>
+                      <th>Assessor</th>
+                      <th>Comment</th>
+                      <th className="text-right">When</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {asset.decisions.map((decision) => (
+                      <tr key={decision.id}>
+                        <td className="font-mono text-[12px] text-ink-dim uppercase">
+                          {decision.decision}
+                        </td>
+                        <td className="opacity-80">{decision.assessor?.fullName ?? '—'}</td>
+                        <td className="opacity-80">{decision.comment ?? '—'}</td>
+                        <td className="font-mono text-[12px] text-ink-dim whitespace-nowrap text-right opacity-70">
+                          {formatRelative(decision.createdAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Panel>
 
@@ -526,7 +540,7 @@ export default function AssetConsolePage() {
           </Panel>
         </div>
 
-        <div className="lg:col-span-6 xl:col-span-5 space-y-4">
+        <div className="min-w-0 lg:col-span-6 xl:col-span-5 space-y-4">
           <Panel
             title="AI classification"
             right={
@@ -700,6 +714,13 @@ export default function AssetConsolePage() {
           {may(PERMISSIONS.publish) && asset.status === 'approved' ? (
             <Panel title="Publish" right="FR-9.1">
               <div className="p-3">
+                {!mintingAvailable ? (
+                  <p className="mb-3 text-sm text-ink-dim">
+                    Licence publishing is unavailable until the workspace deployment has a reachable
+                    supported chain and a configured licence contract. Ask the administrator to
+                    complete that setup.
+                  </p>
+                ) : null}
                 <label className="block">
                   <span className="text-[12px] tracking-[0.01em] text-ink-faint">Licence type</span>
                   <select
@@ -724,7 +745,9 @@ export default function AssetConsolePage() {
                 <button
                   type="button"
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm mt-3 w-full justify-center"
-                  disabled={petition !== null || version?.pinStatus !== 'pinned'}
+                  disabled={
+                    petition !== null || version?.pinStatus !== 'pinned' || !mintingAvailable
+                  }
                   onClick={() =>
                     void act(
                       () =>
@@ -782,38 +805,40 @@ export default function AssetConsolePage() {
                 enqueue one, so an empty list means none of them has been triggered yet.
               </div>
             ) : (
-              <table className="vs-table">
-                <thead>
-                  <tr>
-                    <th>Queue</th>
-                    <th>State</th>
-                    <th className="text-right">Attempt</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {asset.jobs.map((job) => (
-                    <tr key={job.id}>
-                      <td className="font-mono text-[12px] text-ink-dim">{job.queue}</td>
-                      <td
-                        className="font-mono text-[12px] text-ink-dim uppercase"
-                        style={{
-                          color:
-                            job.status === 'completed'
-                              ? 'var(--vs-published)'
-                              : job.status === 'failed'
-                                ? 'var(--vs-accent)'
-                                : 'var(--vs-fg-dim)',
-                        }}
-                      >
-                        {job.status}
-                      </td>
-                      <td className="font-mono tracking-[-0.01em] tabular-nums text-right">
-                        {job.attempts}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="vs-table">
+                  <thead>
+                    <tr>
+                      <th>Queue</th>
+                      <th>State</th>
+                      <th className="text-right">Attempt</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {asset.jobs.map((job) => (
+                      <tr key={job.id}>
+                        <td className="font-mono text-[12px] text-ink-dim">{job.queue}</td>
+                        <td
+                          className="font-mono text-[12px] text-ink-dim uppercase"
+                          style={{
+                            color:
+                              job.status === 'completed'
+                                ? 'var(--vs-published)'
+                                : job.status === 'failed'
+                                  ? 'var(--vs-accent)'
+                                  : 'var(--vs-fg-dim)',
+                          }}
+                        >
+                          {job.status}
+                        </td>
+                        <td className="font-mono tracking-[-0.01em] tabular-nums text-right">
+                          {job.attempts}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Panel>
 
@@ -821,33 +846,35 @@ export default function AssetConsolePage() {
             title="Versions"
             right={asset.versions.length > 1 ? 'Immutable history' : 'Initial upload'}
           >
-            <table className="vs-table">
-              <thead>
-                <tr>
-                  <th>Ver</th>
-                  <th>Format</th>
-                  <th className="text-right">Poly</th>
-                  <th className="text-right">Size</th>
-                </tr>
-              </thead>
-              <tbody>
-                {asset.versions.map((item) => (
-                  <tr key={item.id}>
-                    <td className="font-mono text-[12px] text-ink-dim">
-                      v{item.versionNumber}{' '}
-                      {item.isCurrent ? <span className="text-brand">●</span> : null}
-                    </td>
-                    <td className="font-mono text-[12px] text-ink-dim">{item.format}</td>
-                    <td className="font-mono tracking-[-0.01em] tabular-nums text-right">
-                      {formatNumber(item.polycount)}
-                    </td>
-                    <td className="font-mono tracking-[-0.01em] tabular-nums text-right">
-                      {formatBytes(item.sizeBytes)}
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="vs-table">
+                <thead>
+                  <tr>
+                    <th>Ver</th>
+                    <th>Format</th>
+                    <th className="text-right">Poly</th>
+                    <th className="text-right">Size</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {asset.versions.map((item) => (
+                    <tr key={item.id}>
+                      <td className="font-mono text-[12px] text-ink-dim">
+                        v{item.versionNumber}{' '}
+                        {item.isCurrent ? <span className="text-brand">●</span> : null}
+                      </td>
+                      <td className="font-mono text-[12px] text-ink-dim">{item.format}</td>
+                      <td className="font-mono tracking-[-0.01em] tabular-nums text-right">
+                        {formatNumber(item.polycount)}
+                      </td>
+                      <td className="font-mono tracking-[-0.01em] tabular-nums text-right">
+                        {formatBytes(item.sizeBytes)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Panel>
 
           <Panel title="Ledger slice" right={`${asset.auditTrail.length} EVENTS`}>

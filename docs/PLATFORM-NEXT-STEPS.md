@@ -1,5 +1,7 @@
 # Platform next steps
 
+Latest follow-up: [21 November feature integration](./VOID-SPACE-FEATURE-READINESS-2026-11-21.md). It records the usability/integration improvements and verification limits; live payments are excluded by user request.
+
 Latest status: read the [18 November Void Space verification](./VOID-SPACE-VERIFICATION-2026-11-18.md) first. It records the implemented payment, WebSocket, credential and WebAR repairs, the current verification evidence and the remaining integration/security limits. The inventory below predates those changes.
 
 The current product now has a usable learning loop: reviewed 3D asset, lesson,

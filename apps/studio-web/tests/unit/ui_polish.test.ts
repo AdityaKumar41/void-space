@@ -40,10 +40,10 @@ describe('VOID·STUDIO UI overrides', () => {
     check.setCSS()
 
     const label = (check as unknown as {_label: HTMLElement})._label
-    expect(label.style.font).toContain('12px')
+    expect(label.style.font).toContain('11px')
     expect(label.style.font).not.toContain('poppins')
-    // The colour is upstream's own themed value, so the patch does not invent one.
-    expect(label.style.color).toBe('rgb(157, 157, 170)')
+    // The colour is the theme's dim face (#b8b8b8), so the patch does not invent one.
+    expect(label.style.color).toBe('rgb(184, 184, 184)')
   })
 
   test('a panel frame is inset by its own border, so it fits the column it is in', () => {
@@ -141,7 +141,7 @@ describe('VOID·STUDIO UI overrides', () => {
     check.setCSS()
 
     const label = (check as unknown as {_label: HTMLElement})._label
-    expect(label.style.font).toContain('12px')
+    expect(label.style.font).toContain('11px')
     expect(label.style.font).not.toContain('poppins')
   })
 })

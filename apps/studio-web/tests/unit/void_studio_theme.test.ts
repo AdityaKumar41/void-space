@@ -49,14 +49,14 @@ describe('VOID·STUDIO theme — properties panel surfaces', () => {
     expect(dropbox['background-color']).toBe(p.surface2)
   })
 
-  test('an unchecked checkbox is a visible slot with a 12px label', () => {
+  test('an unchecked checkbox is a visible slot with a Blender-sized label', () => {
     const checkbox = theme().checkbox
     const font = checkbox.DefaultText as {size: number; color: string}
 
     // The box is the *fill* alone until it takes focus, so the fill is the whole
     // affordance: upstream's `rgb(168,168,168)` is a light grey.
     expect(checkbox['background-color']).toBe(p.lineStrong)
-    expect(font.size).toBe(12)
+    expect(font.size).toBe(11)
     expect(font.color).toBe(p.fgDim)
   })
 
@@ -82,7 +82,7 @@ describe('VOID·STUDIO theme — properties panel surfaces', () => {
     expect(scrollbars).toBeInstanceOf(ThemeScrollBars)
     expect(scrollbars.color).toBe(p.bg)
     expect(scrollbars.color2).toBe(p.lineStrong)
-    expect(scrollbars.width).toBe(10)
+    expect(scrollbars.width).toBe(11)
   })
 
   test('buttons and sliders sit on the chip surface with a readable face', () => {
@@ -90,7 +90,13 @@ describe('VOID·STUDIO theme — properties panel surfaces', () => {
 
     expect(record.button['background-color']).toBe(p.surface3)
     expect(record.button['border-color']).toBe(p.lineStrong)
-    expect((record.button.DefaultText as {size: number}).size).toBe(13)
+    expect((record.button.DefaultText as {size: number}).size).toBe(12)
     expect(record.numslider['background-color']).toBe(p.surface3)
+  })
+
+  test('accent is Blender UI blue and corners stay nearly square', () => {
+    expect(p.accent).toBe('#5680c2')
+    expect(p.bg).toBe('#303030')
+    expect(theme().base['border-radius']).toBe(3)
   })
 })

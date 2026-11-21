@@ -160,6 +160,18 @@ export async function hydratePrincipal(payload: AccessTokenPayload): Promise<Aut
       throw new UnauthenticatedError('Account is not active', 'ACCOUNT_INACTIVE');
     }
 
+    if (payload.amr === 'apikey') {
+      if (!payload.kid)
+        throw new UnauthenticatedError('API key reference missing', 'API_KEY_INVALID');
+      const key = await db.apiKey.findFirst({
+        where: { id: payload.kid, tenantId: payload.tid, userId: payload.sub, revokedAt: null },
+        select: { expiresAt: true },
+      });
+      if (!key || (key.expiresAt && key.expiresAt.getTime() <= Date.now())) {
+        throw new UnauthenticatedError('API key is no longer active', 'API_KEY_INVALID');
+      }
+    }
+
     const roles = memberships.map((membership) => membership.role.name as Role);
     if (roles.length === 0) {
       throw new ForbiddenError('No role in this workspace', 'NO_MEMBERSHIP');

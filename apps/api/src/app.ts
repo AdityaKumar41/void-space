@@ -206,13 +206,14 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
               ? 'Anthropic is not selected; compatible text AI is configured (availability not probed)'
               : 'offline enricher fallback in use',
           } as const),
-      contract: env.CONTRACT_ADDRESS
-        ? ({ status: 'up', detail: env.CONTRACT_ADDRESS } as const)
-        : ({
-            status: 'disabled',
-            detail:
-              'Configure CONTRACT_ADDRESS with a deployed AssetLicenseRegistry for the selected chain',
-          } as const),
+      contract:
+        env.CONTRACT_ADDRESS && env.CHAIN_ID === 43113
+          ? ({ status: 'up', detail: env.CONTRACT_ADDRESS } as const)
+          : ({
+              status: 'disabled',
+              detail:
+                'Configure CONTRACT_ADDRESS with a deployed AssetLicenseRegistry for the selected chain',
+            } as const),
     };
 
     const degraded = Object.values(dependencies).some((dependency) => dependency.status === 'down');

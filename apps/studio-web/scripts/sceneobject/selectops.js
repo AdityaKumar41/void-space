@@ -1,4 +1,4 @@
-import {Vector2} from '../util/vectormath.js'
+import {Vector2, Vector3} from '../util/vectormath.js'
 import {IntProperty, BoolProperty, EnumProperty, ToolOp, ListProperty} from '../path.ux/scripts/pathux.js'
 import {ObjectFlags} from './sceneobject.js'
 
@@ -190,6 +190,7 @@ export class ObjectBoxSelectOp extends ObjectSelectOpBase {
     super()
 
     this.mdown = false
+    this._clearFirst = false
     this.start = new Vector2()
     this.end = new Vector2()
   }
@@ -208,9 +209,28 @@ export class ObjectBoxSelectOp extends ObjectSelectOpBase {
     }
   }
 
+  static invoke(ctx, args) {
+    const tool = new this()
+    if (args?.mode !== undefined) {
+      tool.inputs.mode.setValue(args.mode)
+    }
+    return tool
+  }
+
   on_mousedown(e) {
     let view3d = this.modal_ctx.view3d
     let mpos = view3d.getLocalMouse(e.x, e.y)
+
+    // Blender: plain box replaces selection; Shift extends; Ctrl subtracts.
+    if (e.ctrlKey || e.metaKey) {
+      this.inputs.mode.setValue(SelToolModes.SUB)
+    } else if (e.shiftKey) {
+      this.inputs.mode.setValue(SelToolModes.ADD)
+    } else {
+      // UNIQUE-style: clear first, then add hits.
+      this.inputs.mode.setValue(SelToolModes.ADD)
+      this._clearFirst = true
+    }
 
     this.start.load(mpos)
     this.end.load(mpos)
@@ -272,16 +292,39 @@ export class ObjectBoxSelectOp extends ObjectSelectOpBase {
     let min = new Vector2([Math.min(this.start[0], this.end[0]), Math.min(this.start[1], this.end[1])])
     let max = new Vector2([Math.max(this.start[0], this.end[0]), Math.max(this.start[1], this.end[1])])
 
+    // Ignore tiny accidental clicks (no selection change).
+    if (max[0] - min[0] < 3 && max[1] - min[1] < 3) {
+      return
+    }
+
     let selmask = ctx.selectMask || SelMask.OBJECT
     let prop = this.inputs.objectIds
+    prop.clear()
 
     for (let ob of view3d.sortedObjects) {
-      if (!ob.data) {
-        continue
+      if (ob.flag & ObjectFlags.HIDE) continue
+      if (ob.flag & ObjectFlags.LOCKED) continue
+
+      let hit = false
+      if (ob.data && typeof ob.data.castScreenRect === 'function') {
+        let ret = ob.data.castScreenRect(ctx, view3d, ob, selmask, min, max)
+        hit = !!(ret && ret.elements && ret.elements.length > 0)
+      } else {
+        // Origin fallback for empties / data-less objects.
+        let mat = ob.outputs?.matrix?.getValue?.()
+        if (mat) {
+          let origin = new Vector3()
+          origin.multVecMatrix(mat)
+          view3d.project(origin)
+          hit =
+            origin[0] >= min[0] &&
+            origin[0] <= max[0] &&
+            origin[1] >= min[1] &&
+            origin[1] <= max[1]
+        }
       }
 
-      let ret = ob.data.castScreenRect(ctx, view3d, ob, selmask, min, max)
-      if (ret.elements.length > 0) {
+      if (hit) {
         prop.push(ob.lib_id)
       }
     }
@@ -293,13 +336,24 @@ export class ObjectBoxSelectOp extends ObjectSelectOpBase {
     let scene = ctx.scene
     let mode = this.inputs.mode.getValue()
 
+    if (this._clearFirst && mode === SelToolModes.ADD) {
+      for (let ob of scene.objects) {
+        scene.objects.setSelect(ob, false)
+      }
+      this._clearFirst = false
+    }
+
     for (let id of this.inputs.objectIds) {
       let ob = ctx.datalib.get(id)
       if (ob === undefined) {
         continue
       }
+      if (ob.flag & ObjectFlags.LOCKED) continue
 
       scene.objects.setSelect(ob, mode !== SelToolModes.SUB)
+      if (mode !== SelToolModes.SUB) {
+        scene.objects.setActive(ob)
+      }
     }
 
     window.redraw_viewport(true)

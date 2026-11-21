@@ -75,10 +75,28 @@ export function register(api: AddonAPI<IAddon>) {
   // the source is an adapter over the engine's bulk UV accessors, so it cannot
   // be found by a capability query on the data block.
   api.registerUVSource(LITEMESH_UV_PROVIDER)
+  api.registerDeformationSource({
+    kindId: 'litemesh',
+    capture(data) {
+      const values = (data as LiteMesh).dumpVertCo()
+      return {handles: values.idx, positions: values.co.flat()}
+    },
+    write(data, handles, positions) {
+      const mesh = data as LiteMesh
+      const ids = mesh._intVecOut(), coords = mesh._floatVecOut()
+      mesh.wasm.setBoundIntVector(ids.vec as never, handles)
+      mesh.wasm.setBoundFloatVector(coords.vec as never, positions)
+      ;(mesh.mesh as unknown as {setVertCos(ids: unknown, coords: unknown): void}).setVertCos(ids.vec, coords.vec)
+      mesh.recalcNormals()
+      mesh.markVertsMovedGPU(ids.vec)
+      mesh.regenBounds()
+    },
+  })
 
   // The startup file `void-studio` selects: a LiteMesh sphere in sculpt mode.
   // Named, so the distribution picks it rather than load order deciding.
-  api.registerDefaultSceneBuilder('litemesh-sphere', buildLiteMeshDefaultScene, 'sculptcore')
+  // Blender boots Layout in Object Mode with a ~2-unit cube — not Sculpt Mode.
+  api.registerDefaultSceneBuilder('litemesh-sphere', buildLiteMeshDefaultScene, 'object')
 
   for (const [name, builder] of Object.entries({...LITEMESH_TEST_SCENES, ...LITEMESH_EXAMPLE_SCENES})) {
     api.registerTestScene(name, builder)

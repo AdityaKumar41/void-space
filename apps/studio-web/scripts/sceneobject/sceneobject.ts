@@ -61,7 +61,7 @@ export const Colors: {[k: number]: Vector4} = {
   0                    : new Vector4([0.7, 0.7, 0.7, 1.0]), //0
   [ObjectFlags.SELECT]   : new Vector4([1.0, 0.378, 0.15, 1.0]), //1
   [ObjectFlags.HIGHLIGHT]: new Vector4([0.9, 0.5, 0.3, 1.0]), //8
-  [ObjectFlags.ACTIVE]   : new Vector4([0.0, 0.5, 1.0, 1.0]),
+  [ObjectFlags.ACTIVE]   : new Vector4([1.0, 0.48, 0.06, 1.0]),
 }
 
 Colors[ObjectFlags.SELECT | ObjectFlags.HIGHLIGHT] = mix(Colors[ObjectFlags.SELECT], Colors[ObjectFlags.HIGHLIGHT], 0.5)
@@ -124,6 +124,7 @@ export class SceneObject<
     matrix: Matrix4Socket
   }
 > {
+  workflow = ''
   data: OBDATA
   flag: ObjectFlags
   drawMode: DrawModes
@@ -251,6 +252,10 @@ export class SceneObject<
 
     ostruct
       .flags('drawFlag', 'drawFlag', deleteTsEnumIntegers(DrawFlags), 'Draw Flags', 'Extra viewport draw options')
+      .uiNames({
+        FORCE_XRAY: 'In Front',
+        WIREFRAME : 'Wireframe',
+      })
       .on('change', function () {
         window.redraw_viewport(true)
       })
@@ -262,6 +267,7 @@ export class SceneObject<
     this,
     `
 SceneObject {
+  workflow : string;
   flag     : int;
   drawMode : int;
   drawFlag : int;
@@ -367,6 +373,7 @@ SceneObject {
   copyTo(b: this) {
     super.copyTo(b, false)
 
+    b.workflow = this.workflow
     b.drawMode = this.drawMode
     b.drawFlag = this.drawFlag
   }
@@ -377,6 +384,7 @@ SceneObject {
 
     const ret = super.copy()
 
+    ret.workflow = this.workflow
     ret.flag = this.flag
     ret.drawMode = this.drawMode
     ret.drawFlag = this.drawFlag

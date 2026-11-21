@@ -26,6 +26,7 @@
  * Applied once, from `mountVoidStudio`, before the first widget is built.
  */
 import {Check} from '../path.ux/scripts/widgets/ui_widgets.js'
+import {Label} from '../path.ux/scripts/core/ui.js'
 import {PanelContents, PanelFrame} from '../path.ux/scripts/widgets/ui_panel.js'
 import {ListBox} from '../path.ux/scripts/widgets/ui_listbox.js'
 import {TabBar, type TabItem} from '../path.ux/scripts/widgets/ui_tabs.js'
@@ -36,6 +37,17 @@ import type {CSSFont} from '../path.ux/scripts/core/cssfont.js'
 import {VOID_STUDIO_PALETTE} from './theme.js'
 
 let applied = false
+
+/** Keeps compact labels tall enough for the entire font line. */
+function patchLabelLineHeight(): void {
+  const original = Label.prototype._updateFont
+  Label.prototype._updateFont = function () {
+    original.call(this)
+    // Explicit line metrics keep the compact editor face from clipping descenders.
+    this.dom.style.lineHeight = '1.25'
+    this.dom.style.minHeight = '1.25em'
+  }
+}
 
 /**
  * Re-applies the themed label face after `Check.setCSS` overwrites it.
@@ -265,7 +277,7 @@ function patchListBoxSurface(): void {
     if (typeof border === 'string') {
       self.style.border = `1px solid ${border}`
     }
-    self.style.borderRadius = '3px'
+    self.style.borderRadius = '2px'
   }
 }
 
@@ -349,6 +361,7 @@ export function applyVoidStudioUIOverrides(): void {
   applied = true
 
   for (const [what, patch] of [
+    ['label line height', patchLabelLineHeight],
     ['checkbox label font', patchCheckLabelFont],
     ['checkbox tick', patchCheckTick],
     ['active tab icon', patchTabBarActiveIcon],

@@ -25,6 +25,8 @@ import { cookies, headers } from 'next/headers';
 import { API_INTERNAL_URL, apiFetch } from './api';
 import { ACCESS_COOKIE } from './cookies';
 import type { SessionView } from './session-types';
+import { safeNextPath } from './safe-next-path';
+export { safeNextPath } from './safe-next-path';
 
 export interface ServerSession {
   /** Present when the access token was still valid for this request. */
@@ -62,30 +64,5 @@ export async function getServerSession(): Promise<ServerSession> {
  * ever entered by clicking a link inside the app — so this reads that and falls back to `/console`.
  */
 export async function intendedPath(): Promise<string> {
-  const referer = (await headers()).get('referer');
-  if (referer) {
-    try {
-      const url = new URL(referer);
-      const path = `${url.pathname}${url.search}`;
-      // Only same-origin, non-auth destinations: an open redirect is not worth the convenience.
-      if (path.startsWith('/') && !path.startsWith('/login')) return path;
-    } catch {
-      // Malformed referer — fall through to the default.
-    }
-  }
-  return '/console';
-}
-
-/**
- * Rejects a `?next=` value that could send a freshly authenticated user somewhere off-site.
- * Allows only absolute paths within this application.
- */
-export function safeNextPath(value: string | string[] | undefined, fallback = '/console'): string {
-  const candidate = Array.isArray(value) ? value[0] : value;
-  if (!candidate) return fallback;
-  if (!candidate.startsWith('/')) return fallback;
-  // `//evil.com` is protocol-relative and therefore off-site.
-  if (candidate.startsWith('//')) return fallback;
-  if (candidate.startsWith('/login')) return fallback;
-  return candidate;
+  return safeNextPath((await headers()).get('x-void-request-path') ?? undefined);
 }

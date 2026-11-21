@@ -113,12 +113,7 @@ function readAccessorFloats(
   return out
 }
 
-function parseGltfImage(
-  img: any,
-  idx: number,
-  gltf: any,
-  binBuffer: ArrayBuffer | null
-): ExtractedTexture | null {
+function parseGltfImage(img: any, idx: number, gltf: any, binBuffer: ArrayBuffer | null): ExtractedTexture | null {
   if (!img) return null
   const mimeType = img.mimeType || 'image/png'
   const name = img.name || `Texture_${idx}`
@@ -163,8 +158,7 @@ export function leafMeshFromGLB(bytes: Uint8Array, filename?: string): GlbImport
       const chunk1Offset = 20 + jsonLength
       if (chunk1Offset + 8 <= bytes.byteLength) {
         const binLength = view.getUint32(chunk1Offset, true)
-        const binStart = bytes.byteOffset + chunk1Offset + 8
-        binBuffer = bytes.buffer.slice(binStart, binStart + binLength)
+        binBuffer = Uint8Array.from(bytes.subarray(chunk1Offset + 8, chunk1Offset + 8 + binLength)).buffer
       }
     } else {
       // Non-binary JSON glTF
@@ -275,14 +269,7 @@ export function leafMeshFromGLB(bytes: Uint8Array, filename?: string): GlbImport
                   const v0 = localVertHandles[indices[i]]
                   const v1 = localVertHandles[indices[i + 1]]
                   const v2 = localVertHandles[indices[i + 2]]
-                  if (
-                    v0 !== undefined &&
-                    v1 !== undefined &&
-                    v2 !== undefined &&
-                    v0 !== v1 &&
-                    v1 !== v2 &&
-                    v0 !== v2
-                  ) {
+                  if (v0 !== undefined && v1 !== undefined && v2 !== undefined && v0 !== v1 && v1 !== v2 && v0 !== v2) {
                     try {
                       const f = data.mesh.makeFace([[v0, v1, v2]])
                       if (f !== ELEM_NONE) {
@@ -319,8 +306,8 @@ export function leafMeshFromGLB(bytes: Uint8Array, filename?: string): GlbImport
                   for (const l of data.mesh.faceLoops(f)) {
                     for (const c of data.mesh.loopCorners(l)) {
                       const vert = data.mesh.c.v[c]
-                      uvCornerLayer.column.data[c * 2] = uvLayerVert.column.data[vert * 2]
-                      uvCornerLayer.column.data[c * 2 + 1] = uvLayerVert.column.data[vert * 2 + 1]
+                      uvLayerCorner.column.data[c * 2] = uvLayerVert.column.data[vert * 2]
+                      uvLayerCorner.column.data[c * 2 + 1] = uvLayerVert.column.data[vert * 2 + 1]
                     }
                   }
                 }
@@ -389,7 +376,8 @@ export function importGLBIntoScene(ctx: ToolContext, bytes: Uint8Array, filename
     output.graph_ui_pos[0] = 300
     output.graph_ui_pos[1] = 0
 
-    attr.outputs.vector.connect(imgNode.inputs.uv)
+    // Shader links support explicit vector-size coercion in the WGSL generator.
+    attr.outputs.vector.connect(imgNode.inputs.uv as unknown as typeof attr.outputs.vector)
     imgNode.outputs.color.connect(diff.inputs.color)
     geom.outputs.normal.connect(diff.inputs.normal)
     diff.outputs.surface.connect(output.inputs.surface)
@@ -497,11 +485,7 @@ export function extractTextureBytesFromMaterial(mat: any): {bytes?: Uint8Array; 
   return {}
 }
 
-export function exportLeafMeshToGLB(
-  data: LeafMeshData,
-  name = 'Model',
-  material?: Material
-): Uint8Array {
+export function exportLeafMeshToGLB(data: LeafMeshData, name = 'Model', material?: Material): Uint8Array {
   const mesh = data.mesh
   const cache = new TriangulationCache()
   const tris: Tri[] = []
@@ -550,7 +534,11 @@ export function exportLeafMeshToGLB(
 export function exportSceneToGLB(ctx: ToolContext, name = 'SceneModel'): Uint8Array {
   const sceneObs = ctx.scene?.objects ? [...ctx.scene.objects] : []
   const meshObs = sceneObs.filter(
-    (o: any) => o.data instanceof LeafMeshData || triangleSourceOf(o?.data) || typeof o.data?.extractTriangles === 'function' || o.data?.mesh
+    (o: any) =>
+      o.data instanceof LeafMeshData ||
+      triangleSourceOf(o?.data) ||
+      typeof o.data?.extractTriangles === 'function' ||
+      o.data?.mesh
   )
 
   if (meshObs.length === 0) {
@@ -655,7 +643,10 @@ export function exportSceneToGLB(ctx: ToolContext, name = 'SceneModel'): Uint8Ar
             } else {
               allNormals.push(0, 1, 0)
             }
-            allUVs.push(0, 0)
+            if (tris.uvs && vi * 2 + 1 < tris.uvs.length) {
+              allUVs.push(tris.uvs[vi * 2], tris.uvs[vi * 2 + 1])
+              hasAnyUV = true
+            } else allUVs.push(0, 0)
           }
         }
       } catch (err) {
@@ -673,22 +664,16 @@ export function exportSceneToGLB(ctx: ToolContext, name = 'SceneModel'): Uint8Ar
   const indices = isLarge ? new Uint32Array(vertCount) : new Uint16Array(vertCount)
   for (let i = 0; i < vertCount; i++) indices[i] = i
 
-  return buildGlbBinary(
-    name,
-    new Float32Array(allPositions),
-    new Float32Array(allNormals),
-    indices,
-    {
-      uv: hasAnyUV ? new Float32Array(allUVs) : undefined,
-      textureBytes: sharedTexBytes,
-      textureMimeType: sharedMimeType,
-    }
-  )
+  return buildGlbBinary(name, new Float32Array(allPositions), new Float32Array(allNormals), indices, {
+    uv             : hasAnyUV ? new Float32Array(allUVs) : undefined,
+    textureBytes   : sharedTexBytes,
+    textureMimeType: sharedMimeType,
+  })
 }
 
 export const LEAFMESH_GLB_FORMAT: IFileFormat<ToolContext> = {
-  id: 'glb',
-  uiName: 'glTF 2.0 Binary / Model',
+  id        : 'glb',
+  uiName    : 'glTF 2.0 Binary / Model',
   extensions: ['.glb', '.gltf'],
 
   importFromBytes(ctx, bytes, filename) {

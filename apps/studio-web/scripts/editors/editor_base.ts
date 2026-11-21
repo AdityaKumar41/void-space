@@ -1154,6 +1154,14 @@ App {
         getAppState().toolstack.redo()
         window.redraw_viewport()
       }),
+      new HotKey('Z', ['meta'], () => {
+        getAppState().toolstack.undo()
+        window.redraw_viewport()
+      }),
+      new HotKey('Z', ['meta', 'shift'], () => {
+        getAppState().toolstack.redo()
+        window.redraw_viewport()
+      }),
       /*
       new HotKey("T", ["ALT"], () => {
         if (window.__stest) {

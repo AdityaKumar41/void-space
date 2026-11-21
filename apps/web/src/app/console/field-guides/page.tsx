@@ -1,8 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { useLinkedItem } from '../../../lib/use-linked-item';
 import { ArrowDown, ArrowUp, Check, Copy, Plus, Trash2, Wrench } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
 import { useSession } from '../../../lib/session';
@@ -28,7 +28,6 @@ const newStep = (): Step => ({ id: crypto.randomUUID(), instruction: '' });
 export default function FieldGuidesPage() {
   const { can } = useSession();
   const cache = useQueryClient();
-  const params = useSearchParams();
   const guides = useQuery({
     queryKey: ['field-guides'],
     queryFn: () => apiFetch<{ guides: Guide[] }>('/field-guides'),
@@ -38,7 +37,10 @@ export default function FieldGuidesPage() {
     queryFn: () => apiFetch<{ lessons: { id: string; title: string }[] }>('/lessons'),
     enabled: can('learning:manage'),
   });
-  const [active, setActive] = useState<Guide | null>(null);
+  const [active, setActive, unavailableLink] = useLinkedItem(
+    'guide',
+    guides.data?.guides?.filter((l) => l.status === 'published'),
+  );
   const [editing, setEditing] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
@@ -48,11 +50,6 @@ export default function FieldGuidesPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
-  useEffect(() => {
-    const id = params.get('guide');
-    const guide = guides.data?.guides.find((g) => g.id === id && g.status === 'published');
-    if (guide) setActive(guide);
-  }, [params, guides.data]);
   function begin(guide?: Guide) {
     setEditing(guide?.id ?? null);
     setTitle(guide?.title ?? '');
@@ -127,6 +124,9 @@ export default function FieldGuidesPage() {
   if (active) return <GuideRun guide={active} close={() => setActive(null)} />;
   return (
     <div className="space-y-7">
+      {unavailableLink ? (
+        <ErrorNote message="This shared guide is unavailable in the current workspace. Switch workspaces or ask its author for access." />
+      ) : null}
       <header className="flex flex-wrap items-end justify-between gap-5">
         <div>
           <p className="eyebrow">Field guides</p>
@@ -401,9 +401,7 @@ function GuideRun({ guide, close }: { guide: Guide; close: () => void }) {
             />
           </div>
           <p className="mt-2 text-xs text-ink-faint">
-            {result
-              ? 'All steps acknowledged'
-              : `Step ${step + 1} of ${guide.steps.length}`}
+            {result ? 'All steps acknowledged' : `Step ${step + 1} of ${guide.steps.length}`}
           </p>
         </div>
       </div>

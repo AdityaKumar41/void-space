@@ -78,7 +78,7 @@ export class LeafMeshAddCubeOp extends ToolOp {
     return {
       uiname  : 'Add Cube',
       toolpath: 'leafmesh.add_cube',
-      icon    : Icons.CUBE ?? Icons.MESHTOOL,
+      icon    : Icons.BOX_MODEL,
       inputs  : {
         size: new FloatProperty(2.0),
       },
@@ -96,7 +96,7 @@ export class LeafMeshAddUVSphereOp extends ToolOp {
     return {
       uiname  : 'Add UV Sphere',
       toolpath: 'leafmesh.add_uv_sphere',
-      icon    : Icons.SPHERE ?? Icons.MESHTOOL,
+      icon    : Icons.MESHTOOL,
       inputs  : {
         segments: new IntProperty(16),
         rings   : new IntProperty(8),
@@ -118,7 +118,7 @@ export class LeafMeshAddIcoSphereOp extends ToolOp {
     return {
       uiname  : 'Add Ico Sphere',
       toolpath: 'leafmesh.add_icosphere',
-      icon    : Icons.SPHERE ?? Icons.MESHTOOL,
+      icon    : Icons.MESHTOOL,
       inputs  : {
         subdivisions: new IntProperty(1),
         radius      : new FloatProperty(1.0),

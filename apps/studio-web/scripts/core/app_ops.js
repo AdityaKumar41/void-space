@@ -370,7 +370,11 @@ export class FileExportSTL extends ToolOp {
       }
     }
 
-    if (!stlData || (stlData instanceof Uint8Array && stlData.length === 0) || (stlData instanceof ArrayBuffer && stlData.byteLength === 0)) {
+    if (
+      !stlData ||
+      (stlData instanceof Uint8Array && stlData.length === 0) ||
+      (stlData instanceof ArrayBuffer && stlData.byteLength === 0)
+    ) {
       ctx.warning?.('No geometry to export as STL')
       return
     }
@@ -412,6 +416,44 @@ ToolOp.register(FileExportSTL)
 // that was coupling core to mesh — see plan §3 / §12). The class is still
 // exported globally via its ToolOp.register call there.
 
+/** Portable browser picker for engines without the File System Access API. */
+function readImportWithFileInput(formats) {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = formats.flatMap((fmt) => fmt.extensions).join(',')
+    input.style.display = 'none'
+    const cleanup = () => input.remove()
+    input.addEventListener(
+      'cancel',
+      () => {
+        cleanup()
+        resolve(undefined)
+      },
+      {once: true}
+    )
+    input.addEventListener(
+      'change',
+      async () => {
+        const file = input.files?.[0]
+        cleanup()
+        if (!file) {
+          resolve(undefined)
+          return
+        }
+        try {
+          resolve({filename: file.name, data: await file.arrayBuffer()})
+        } catch (error) {
+          reject(error)
+        }
+      },
+      {once: true}
+    )
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
 export class FileImportOp extends ToolOp {
   static tooldef() {
     return {
@@ -439,37 +481,30 @@ export class FileImportOp extends ToolOp {
       extensions: fmt.extensions.map((ext) => (ext.startsWith('.') ? ext.slice(1) : ext)),
     }))
 
-    let filename = ''
+    const browserFallback =
+      typeof window !== 'undefined' && !window.haveNwjs && typeof window.showOpenFilePicker !== 'function'
+    const picked = browserFallback
+      ? readImportWithFileInput(formats)
+      : platform.platform.showOpenDialog('Import File', {filters}).then(async (paths) => {
+          if (!paths?.length) return undefined
+          return {
+            filename: paths[0].filename ?? String(paths[0]),
+            data    : await platform.platform.readFile(paths[0], 'application/x-octet-stream'),
+          }
+        })
 
-    platform.platform
-      .showOpenDialog('Import File', {filters})
-      .then((paths) => {
-        if (!paths || paths.length === 0) {
-          return undefined
-        }
-
-        filename = paths[0].filename ?? String(paths[0])
-        return platform.platform.readFile(paths[0], 'application/x-octet-stream')
-      })
-      .then((data) => {
-        if (!data) {
-          return
-        }
-
-        const fmt = formatForFilename(filename)
-        if (fmt === undefined) {
-          ctx.error?.(`No importer for ${filename}`)
-          return
-        }
-
-        fmt.importFromBytes(ctx, new Uint8Array(data), filename)
+    return picked
+      .then((result) => {
+        if (!result) return
+        const fmt = formatForFilename(result.filename)
+        if (!fmt) throw new Error(`No importer for ${result.filename}`)
+        fmt.importFromBytes(ctx, new Uint8Array(result.data), result.filename)
         window.redraw_viewport()
       })
-      .catch((err) => {
-        if (err?.name === 'AbortError') {
-          return
-        }
-        console.warn('Import dialog error:', err)
+      .catch((error) => {
+        if (error?.name === 'AbortError') return
+        ctx.error?.(`Could not import file: ${error?.message ?? error}`)
+        console.warn('Import dialog error:', error)
       })
   }
 }

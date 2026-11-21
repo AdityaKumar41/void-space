@@ -186,7 +186,7 @@ export function readOBJ(text: string, mesh = new LeafMesh()): ObjReadResult {
 }
 
 export function exportTrianglesToOBJ(
-  tris: {positions: Float64Array; indices: Int32Array},
+  tris: {positions: Float64Array; indices: Int32Array; uvs?: Float64Array},
   name = 'Model'
 ): string {
   const vertCount = (tris.positions.length / 3) | 0
@@ -202,11 +202,17 @@ export function exportTrianglesToOBJ(
     out += `v ${x.toFixed(6)} ${y.toFixed(6)} ${z.toFixed(6)}\n`
   }
 
+  const hasUV = !!tris.uvs && tris.uvs.length === vertCount * 2
+  if (hasUV)
+    for (let i = 0; i < vertCount; i++) {
+      out += `vt ${tris.uvs![i * 2].toFixed(6)} ${tris.uvs![i * 2 + 1].toFixed(6)}\n`
+    }
+
   for (let i = 0; i < tris.indices.length; i += 3) {
     const i0 = tris.indices[i] + 1
     const i1 = tris.indices[i + 1] + 1
     const i2 = tris.indices[i + 2] + 1
-    out += `f ${i0} ${i1} ${i2}\n`
+    out += hasUV ? `f ${i0}/${i0} ${i1}/${i1} ${i2}/${i2}\n` : `f ${i0} ${i1} ${i2}\n`
   }
 
   return out

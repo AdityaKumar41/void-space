@@ -11,8 +11,8 @@
   <meta charset="utf-8">
   <meta name="description" content="VOID·STUDIO — the AI-assisted 3D creation environment for VOID·SPACE.">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <!-- Matches `--vs-bg` so the browser chrome is the same graphite as the app ground. -->
-  <meta name="theme-color" content="#08080a">
+  <!-- Matches Blender Dark `--vs-bg` so the browser chrome matches the editor ground. -->
+  <meta name="theme-color" content="#303030">
   <title>VOID·STUDIO</title>
 
   <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml">
@@ -21,39 +21,32 @@
   <link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
   <style>
       /*
-       * VOID·SPACE design tokens.
+       * Blender Dark theme tokens for the shell.
        *
-       * These are the same values apps/web/src/app/globals.css defines, copied rather than
-       * imported because this shell is a static document that boots before any bundler output
-       * exists. The ground surfaces and the text ramp come from the "Ethereal Glass" system; the
-       * accent is `--fc-heat`, which is what the marketplace's `brand` Tailwind token actually
-       * maps to. When those values move, move these too — a Studio whose dark grey is a slightly
-       * different dark grey from the marketplace is the kind of drift nobody reports and everybody
-       * notices.
-       *
-       * Only the tokens this shell needs are here. The editor's own widgets are themed from
-       * scripts/voidspace/theme.ts, which is the equivalent file for the in-canvas UI.
+       * Keep these in step with scripts/voidspace/theme.ts (VOID_STUDIO_PALETTE). The editor
+       * widgets read the TypeScript palette; this document paints the loading overlay and the
+       * page chrome before the bundle runs.
        */
       :root {
-        --vs-bg: #08080a;
-        --vs-surface: #101013;
-        --vs-surface-2: #16161a;
-        --vs-surface-3: #1d1d22;
-        --vs-line: #232329;
-        --vs-line-strong: #34343d;
+        --vs-bg: #303030;
+        --vs-surface: #2e2e2e;
+        --vs-surface-2: #232323;
+        --vs-surface-3: #3d3d3d;
+        --vs-line: #1d1d1d;
+        --vs-line-strong: #545454;
 
-        --vs-fg: #f3f3f5;
-        --vs-fg-dim: #9d9daa;
-        --vs-fg-faint: #6c6c7a;
+        --vs-fg: #eeeeee;
+        --vs-fg-dim: #b8b8b8;
+        --vs-fg-faint: #888888;
 
-        --vs-heat: #fa5d19;
-        --vs-heat-warm: #ff7a3d;
-        --vs-signal: #3ddc97;
+        --vs-heat: #5680c2;
+        --vs-heat-warm: #6b95d6;
+        --vs-signal: #6fb86f;
 
-        --vs-font-sans: 'Plus Jakarta Sans', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
+        --vs-font-sans: 'Segoe UI', 'Helvetica Neue', Arial, system-ui, sans-serif;
         --vs-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-        --vs-radius: 10px;
+        --vs-radius: 3px;
         --vs-ease: cubic-bezier(0.22, 1, 0.36, 1);
       }
 
@@ -121,8 +114,8 @@
            */
           background-color: var(--vs-bg);
           background-image:
-            radial-gradient(900px 420px at 50% -10%, rgba(250, 93, 25, 0.10), transparent 70%),
-            radial-gradient(700px 500px at 12% 110%, rgba(110, 168, 254, 0.06), transparent 70%);
+            radial-gradient(900px 420px at 50% -10%, rgba(86, 128, 194, 0.14), transparent 70%),
+            radial-gradient(700px 500px at 12% 110%, rgba(35, 35, 35, 0.45), transparent 70%);
           color: var(--vs-fg-dim);
           font-family: var(--vs-font-sans);
           font-size: 13px;

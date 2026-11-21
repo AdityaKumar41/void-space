@@ -228,4 +228,35 @@ describe('FR-2.5 API-key tokens', () => {
     expect(response.statusCode).toBe(401);
     expect((response.json() as { code: string }).code).toBe('TOKEN_INVALID');
   });
+  it('invalidates an already-issued bearer token when its API key is revoked or expires', async () => {
+    for (const reason of ['revoked', 'expired'] as const) {
+      const { key, id, tenantId } = await createKey(`live bearer ${reason}`);
+      try {
+        const issued = await context.app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/token',
+          payload: { apiKey: key },
+        });
+        expect(issued.statusCode).toBe(200);
+        const headers = { authorization: `Bearer ${issued.json().accessToken}` };
+        expect((await context.app.inject({ url: '/api/v1/auth/me', headers })).statusCode).toBe(
+          200,
+        );
+        await withTenant(tenantId, (db) =>
+          db.apiKey.update({
+            where: { id },
+            data:
+              reason === 'revoked'
+                ? { revokedAt: new Date() }
+                : { expiresAt: new Date(Date.now() - 1000) },
+          }),
+        );
+        expect((await context.app.inject({ url: '/api/v1/auth/me', headers })).statusCode).toBe(
+          401,
+        );
+      } finally {
+        await deleteKey(id, tenantId);
+      }
+    }
+  });
 });

@@ -21,6 +21,9 @@
 
 import {
   ElementDomain,
+  DrawModes,
+  PrimitiveTypes,
+  Shaders,
   GeometryCapability,
   InvalidationKind,
   Matrix4,
@@ -552,7 +555,26 @@ leafmesh.LeafMeshData {
     if (frame.program === undefined) {
       return
     }
+    if (view3d.drawmode === DrawModes.WIRE || object.drawMode === DrawModes.WIRE) {
+      this.drawWireframeQ(view3d, queue, {...frame, program: Shaders.ObjectLineShader}, object)
+      return
+    }
     queue.submit({pipeline: frame.program, mesh: this.drawable})
+  }
+
+  drawWireframeQ(_view3d: View3D, queue: DrawQueue, frame: FrameContext, _object: SceneObject): void {
+    const mesh = this.drawable.getLineMesh()
+    if (!mesh || !frame.program) return
+    const flags = mesh.islands.map(island => island.primflag)
+    const original = mesh.primflag
+    mesh.primflag = PrimitiveTypes.LINES
+    for (const island of mesh.islands) island.primflag = PrimitiveTypes.LINES
+    try {
+      queue.submit({pipeline: frame.program, mesh, uniforms: frame.uniforms})
+    } finally {
+      mesh.primflag = original
+      mesh.islands.forEach((island, i) => { island.primflag = flags[i] })
+    }
   }
 
   onContextLost(e: Event): void {

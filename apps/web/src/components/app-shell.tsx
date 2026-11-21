@@ -26,6 +26,7 @@ import {
 import type { Permission } from '@void-space/types';
 
 import { apiFetch } from '../lib/api';
+import { useToast } from './toast';
 import { cn } from '../lib/cn';
 import { SessionProvider, useSession } from '../lib/session';
 import type { SessionView } from '../lib/session-types';
@@ -240,6 +241,7 @@ function WorkspaceSearch() {
 
 function WorkspaceSwitcher() {
   const { session, memberships, switchTenant } = useSession();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
 
   if (!session) return null;
@@ -266,6 +268,8 @@ function WorkspaceSwitcher() {
         setBusy(true);
         try {
           await switchTenant(event.target.value);
+        } catch (caught) {
+          toast.failure('Workspace switch failed', (caught as Error).message);
         } finally {
           setBusy(false);
         }
@@ -291,6 +295,7 @@ function WorkspaceSwitcher() {
  */
 function AccountMenu() {
   const { session, signOut } = useSession();
+  const toast = useToast();
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -336,6 +341,8 @@ function AccountMenu() {
 
             <div className="py-1.5">
               {[
+                { href: '/console/account', label: 'Account and wallets' },
+                { href: '/console/help', label: 'Void Space help' },
                 { href: '/console/notifications', label: 'Notifications' },
                 { href: '/docs', label: 'Studio guide' },
                 { href: '/catalog', label: 'Public catalogue' },
@@ -364,7 +371,9 @@ function AccountMenu() {
                 type="button"
                 onClick={() => {
                   setOpen(false);
-                  void signOut().then(() => router.replace('/login'));
+                  void signOut()
+                    .then(() => router.replace('/login'))
+                    .catch((error: Error) => toast.failure('Could not sign out', error.message));
                 }}
                 className="block w-full px-4 py-2 text-left text-[13.5px] text-state-rejected transition-colors duration-150 ease-standard hover:bg-veil-6"
               >
@@ -496,12 +505,12 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
         </nav>
         <div className="border-t border-hairline p-4">
           <Link
-            href="/console/field-guides"
+            href="/console/help"
             onClick={close}
             className="flex items-center gap-3 rounded-lg px-2 py-2 text-xs text-ink-dim hover:text-ink"
           >
             <CircleHelp size={17} />
-            <span>Guidance when you need it</span>
+            <span>Void Space help</span>
           </Link>
           <p className="mt-3 truncate px-2 text-[10px] text-ink-faint">{session?.tenant.name}</p>
         </div>

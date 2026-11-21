@@ -4,11 +4,11 @@
 let exports = {
   addonLoadWaitTime: 500,
   pathuxConfig: {
-    addHelpPickers: true,
+    addHelpPickers: false,
 
-    useAreaTabSwitcher   : true,
+    useAreaTabSwitcher   : false,
     autoSizeUpdate       : true,
-    showPathsInToolTips  : true,
+    showPathsInToolTips  : false,
     colorSchemeType      : 'dark',
     useNumSliderTextboxes: true,
 

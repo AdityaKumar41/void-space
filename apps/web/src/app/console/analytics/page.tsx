@@ -63,7 +63,10 @@ function CohortAnalytics() {
       {report.data ? (
         <>
           <StatRow>
-            <StatCell label="Published lessons" value={formatNumber(report.data.totals.lessonsPublished)} />
+            <StatCell
+              label="Published lessons"
+              value={formatNumber(report.data.totals.lessonsPublished)}
+            />
             <StatCell label="Attempts" value={formatNumber(report.data.totals.attempts)} />
             <StatCell
               label="Pass rate"
@@ -89,38 +92,43 @@ function CohortAnalytics() {
             />
           </StatRow>
 
-          <Panel title="Per-lesson assessment" right={`${report.data.lessons.length} lessons with attempts`}>
+          <Panel
+            title="Per-lesson assessment"
+            right={`${report.data.lessons.length} lessons with attempts`}
+          >
             {report.data.lessons.length === 0 ? (
               <div className="px-5 py-6 text-[13.5px]" style={{ color: 'var(--vs-fg-faint)' }}>
                 No assessment attempts recorded yet.
               </div>
             ) : (
-              <table className="vs-table">
-                <thead>
-                  <tr>
-                    <th>Lesson</th>
-                    <th>State</th>
-                    <th className="text-right">Attempts</th>
-                    <th className="text-right">Avg score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.data.lessons.map((row) => (
-                    <tr key={row.lessonId}>
-                      <td>{row.title}</td>
-                      <td>
-                        <span className="chip">{row.published ? 'Published' : 'Draft'}</span>
-                      </td>
-                      <td className="text-right font-mono text-[12px]">
-                        {formatNumber(row.attempts)}
-                      </td>
-                      <td className="text-right font-mono text-[12px]">
-                        {row.averageScore === null ? '—' : `${row.averageScore}%`}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="vs-table">
+                  <thead>
+                    <tr>
+                      <th>Lesson</th>
+                      <th>State</th>
+                      <th className="text-right">Attempts</th>
+                      <th className="text-right">Avg score</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {report.data.lessons.map((row) => (
+                      <tr key={row.lessonId}>
+                        <td>{row.title}</td>
+                        <td>
+                          <span className="chip">{row.published ? 'Published' : 'Draft'}</span>
+                        </td>
+                        <td className="text-right font-mono text-[12px]">
+                          {formatNumber(row.attempts)}
+                        </td>
+                        <td className="text-right font-mono text-[12px]">
+                          {row.averageScore === null ? '—' : `${row.averageScore}%`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </Panel>
         </>

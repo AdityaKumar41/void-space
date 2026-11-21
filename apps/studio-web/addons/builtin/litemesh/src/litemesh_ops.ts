@@ -1638,6 +1638,7 @@ export class GenerateUVOp extends LiteMeshAttrOp<{
     return {
       toolpath: 'litemesh.generate_uv',
       uiname  : 'Generate UVs from Seams',
+      icon    : Icons.IMAGE_EDITOR,
       inputs: {
         margin: new FloatProperty(0.01).setRange(0.0, 0.25).noUnits(),
       },
@@ -1689,6 +1690,7 @@ export class TriangulateLiteMeshOp extends LiteMeshAttrOp {
     return {
       toolpath: 'litemesh.triangulate',
       uiname  : 'Triangulate',
+      icon    : Icons.TRIANGLE_FLIPPER,
       inputs  : {},
     }
   }
@@ -2191,6 +2193,9 @@ export class QuadRemeshLiteMeshOp extends LiteMeshAttrOp<{
     return {
       toolpath: 'litemesh.quad_remesh',
       uiname  : 'Quad Remesh',
+      // Iconsheet has no dedicated remesh glyph; topology brush is the closest
+      // Blender-adjacent mark so the T-toolbar stays icon-only (no "Reme" text).
+      icon    : Icons.SCULPT_TOPOLOGY,
       inputs: {
         targetQuadCount          : new IntProperty(15000).setRange(1, 1000000).noUnits(),
         // 0 = derive the edge length from targetQuadCount (count mode).

@@ -19,7 +19,12 @@ import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 
 import type { ApiEnv } from '../../env';
-import { ConflictError, ForbiddenError, NotFoundError, ServiceUnavailableError } from '../../lib/errors';
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from '../../lib/errors';
 import { parseBody, parseParams } from '../../lib/http';
 import type { JobProducer } from '../../lib/jobs';
 
@@ -74,7 +79,11 @@ async function enqueue(
     await withTenant(params.tenantId, (db) =>
       db.job.update({
         where: { id: jobId },
-        data: { status: 'failed', error: outcome.error ?? 'queue unreachable', finishedAt: new Date() },
+        data: {
+          status: 'failed',
+          error: outcome.error ?? 'queue unreachable',
+          finishedAt: new Date(),
+        },
       }),
     );
   }
@@ -120,13 +129,23 @@ export async function licensingRoutes(
           );
         }
         if (asset.licenses.length > 0) {
-          throw new ConflictError('This asset already carries an active licence', 'ALREADY_LICENSED');
+          throw new ConflictError(
+            'This asset already carries an active licence',
+            'ALREADY_LICENSED',
+          );
         }
         if (!asset.currentVersion?.ipfsCid) {
           throw new ConflictError(
             'The current version has not been pinned to IPFS yet',
             'VERSION_NOT_PINNED',
             { pinStatus: asset.currentVersion?.pinStatus ?? 'unknown' },
+          );
+        }
+
+        if (!env.CONTRACT_ADDRESS || env.CHAIN_ID !== 43113) {
+          throw new ServiceUnavailableError(
+            'Licence minting is not configured for this deployment',
+            'LICENSING_UNAVAILABLE',
           );
         }
 

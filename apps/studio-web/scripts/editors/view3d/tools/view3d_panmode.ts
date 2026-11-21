@@ -27,13 +27,14 @@ view3d.PanToolMode {
 
   static toolModeDefine() {
     return {
-      name        : 'pan',
-      uiname      : 'Pan',
-      icon        : Icons.PAN,
-      flag        : 0,
-      description : 'Pan',
-      selectMode  : SelMask.OBJECT, //if set, preferred selectmode, see SelModes
-      transWidgets: [],
+      name            : 'pan',
+      hideFromModeMenu: true,
+      uiname          : 'Pan',
+      icon            : Icons.PAN,
+      flag            : 0,
+      description     : 'Pan',
+      selectMode      : SelMask.OBJECT, //if set, preferred selectmode, see SelModes
+      transWidgets    : [],
     }
   }
 

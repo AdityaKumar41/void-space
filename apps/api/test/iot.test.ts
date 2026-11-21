@@ -4,6 +4,7 @@ import { cookieHeader, createTestApp, DEMO, DEMO_TENANT_IDS, login, type TestApp
 let context: TestApp;
 let cookie: string;
 let deviceId: string;
+let deviceSecret: string;
 beforeAll(async () => {
   context = await createTestApp();
   cookie = cookieHeader((await login(context.app, DEMO.users.auroraCreator)).cookies, 'vs_access');
@@ -26,6 +27,7 @@ describe('IoT telemetry history', () => {
     expect(register.statusCode).toBe(201);
     const body = register.json() as { device: { id: string }; deviceSecret: string };
     deviceId = body.device.id;
+    deviceSecret = body.deviceSecret;
     const ingest = await context.app.inject({
       method: 'POST',
       url: '/api/v1/iot/telemetry',
@@ -42,5 +44,42 @@ describe('IoT telemetry history', () => {
     expect(history.json()).toMatchObject({
       telemetry: [expect.objectContaining({ payload: { temperature: 24 } })],
     });
+  });
+  it('updates a real twin only after valid device authentication and never lists its secret', async () => {
+    const twin = await context.app.inject({
+      method: 'POST',
+      url: '/api/v1/iot/twins',
+      headers: { cookie },
+      payload: { deviceId, label: 'Temperature verification twin' },
+    });
+    expect(twin.statusCode).toBe(201);
+    const rejected = await context.app.inject({
+      method: 'POST',
+      url: '/api/v1/iot/telemetry',
+      headers: { cookie, 'x-device-id': deviceId, 'x-device-secret': 'x'.repeat(40) },
+      payload: { payload: { temperature: 99 } },
+    });
+    expect(rejected.statusCode).toBe(403);
+    const sent = await context.app.inject({
+      method: 'POST',
+      url: '/api/v1/iot/telemetry',
+      headers: { cookie, 'x-device-id': deviceId, 'x-device-secret': deviceSecret },
+      payload: { payload: { temperature: 26 } },
+    });
+    expect(sent.statusCode).toBe(202);
+    const devices = await context.app.inject({ url: '/api/v1/iot/devices', headers: { cookie } });
+    const device = devices.json().devices.find((item: { id: string }) => item.id === deviceId);
+    expect(device.twins).toEqual(
+      expect.arrayContaining([expect.objectContaining({ state: { temperature: 26 } })]),
+    );
+    expect(device.secretHash).toBeUndefined();
+    const viewer = cookieHeader(
+      (await login(context.app, DEMO.users.auroraViewer)).cookies,
+      'vs_access',
+    );
+    expect(
+      (await context.app.inject({ url: '/api/v1/iot/devices', headers: { cookie: viewer } }))
+        .statusCode,
+    ).toBe(403);
   });
 });

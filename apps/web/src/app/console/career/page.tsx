@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../../lib/api';
 import { Chip } from '../../../components/ui/chip';
@@ -10,7 +11,14 @@ export default function CareerPage() {
     queryFn: () =>
       apiFetch<{
         evidenceCount: number;
-        skills: { kind: string; title: string; verifiedAt: string }[];
+        skills: {
+          kind: string;
+          sourceId: string;
+          title: string;
+          verifiedAt: string;
+          credentialId?: string;
+          mintStatus?: string;
+        }[];
         recommendations: { role: string; reason: string }[];
       }>('/career/profile'),
   });
@@ -49,6 +57,13 @@ export default function CareerPage() {
           </div>
         </div>
       </section>
+      <p className="text-sm text-ink-dim">
+        <Link className="text-brand underline" href="/console/account">
+          Manage your linked wallet
+        </Link>{' '}
+        for optional on-chain credential issuance. Your application records remain usable without
+        one.
+      </p>
       <div className="learning-columns">
         <section>
           <div className="learning-section-head">
@@ -57,10 +72,27 @@ export default function CareerPage() {
           {skills.length ? (
             <div className="learning-list">
               {skills.map((skill) => (
-                <div key={`${skill.kind}-${skill.title}`} className="learning-list-row">
+                <div key={`${skill.kind}-${skill.sourceId}`} className="learning-list-row">
                   <div className="min-w-0 flex-1">
                     <h3>{skill.title}</h3>
                     <p>Verified {new Date(skill.verifiedAt).toLocaleDateString()}</p>
+                    {skill.credentialId ? (
+                      <div className="mt-2 space-y-1 text-xs">
+                        <p className="text-ink-dim">
+                          {skill.mintStatus === 'minted'
+                            ? 'On-chain record minted'
+                            : 'Application verification record · on-chain anchoring not complete'}
+                        </p>
+                        <a
+                          className="inline-block text-brand underline"
+                          href={`/api/v1/credentials/${skill.credentialId}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open verification record
+                        </a>
+                      </div>
+                    ) : null}
                   </div>
                   <Chip tone="live">{skill.kind}</Chip>
                 </div>
@@ -95,6 +127,17 @@ export default function CareerPage() {
             />
           )}
         </section>
+      </div>
+      <div className="flex flex-wrap gap-4 text-sm">
+        <Link className="text-brand underline" href="/console/lessons">
+          Explore lessons
+        </Link>
+        <Link className="text-brand underline" href="/console/simulations">
+          Open practice
+        </Link>
+        <Link className="text-brand underline" href="/console/field-guides">
+          Open field guides
+        </Link>
       </div>
     </div>
   );

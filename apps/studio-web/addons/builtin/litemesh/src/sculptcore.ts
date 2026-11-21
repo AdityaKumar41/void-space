@@ -124,18 +124,24 @@ export class SculptCorePaintMode extends PaintToolModeBase {
 
   static toolModeDefine(): IToolModeDefine {
     return {
-      name        : 'sculptcore',
-      uiname      : 'Sculptcore',
-      icon        : Icons.SCULPT_DRAW,
-      flag        : 0,
-      description : 'Sculptcore mode',
-      selectMode  : SelMask.OBJECT,
+      name         : 'sculptcore',
+      uiname       : 'Sculpt Mode',
+      editMenuLabel: 'Sculpt',
+      icon         : Icons.SCULPT_DRAW,
+      flag         : 0,
+      description  : 'Sculpt the active mesh with brushes',
+      dataKinds    : ['litemesh'],
+      selectMode   : SelMask.OBJECT,
       // The object gizmo is offered here as well as in object mode — Blender's
       // header gizmo is available in every mode. It is *off* by default (the base
       // class leaves `transformWidget` at NONE) because a sculpt stroke is the
       // normal interaction; the Move/Rotate/Scale buttons in the header turn it on.
-      transWidgets: [TranslateWidget, ScaleWidget, RotateWidget],
+      transWidgets : [TranslateWidget, ScaleWidget, RotateWidget],
     }
+  }
+
+  static buildEditMenu(): string[] {
+    return ['litemesh.triangulate()|Triangulate Mesh', 'litemesh.generate_uv()|Generate UVs']
   }
 
   static buildSettings(container: Container<ViewContext>): void {
@@ -164,21 +170,22 @@ export class SculptCorePaintMode extends PaintToolModeBase {
     let panel
     let panel2
 
-    const settings = col.panel('Brush Settings')
-    settings.closed = true
+    // Blender Active Tool: Brush settings are open by default so the panel
+    // is immediately useful, not an empty stack of closed headers.
+    // Props already carry their own labels (Radius / Strength / …) — do not
+    // add strip.label() beside them or the UI doubles as "Radius Radius".
+    const settings = col.panel('Brush')
+    settings.closed = false
+    settings.useIcons(false)
+    settings.prop(path + '.brushRadius')
+    settings.prop(path + '.brush.strength')
     strip = settings.row().strip()
     strip.useIcons(false)
-    strip.label('Spacing')
+    strip.prop(path + '.brush.spacing')
     strip.prop(path + '.brush.spacingMode')
-
+    settings.prop(path + '.brush.strokeMethod')
     strip = settings.row().strip()
     strip.useIcons(false)
-    strip.label('Stroke Method')
-    strip.prop(path + '.brush.strokeMethod')
-
-    strip = settings.row().strip()
-    strip.useIcons(false)
-    strip.label('Anchored Live')
     strip.prop(path + '.brush.anchoredDragRadius')
     strip.prop(path + '.brush.anchoredLiveMode')
 
@@ -310,7 +317,7 @@ export class SculptCorePaintMode extends PaintToolModeBase {
     col.useIcons(false)
     col.prop(path + '.brush.flag[INVERT]')
     col.prop(path + '.brush.flag[ACCUMULATE]')
-    col.prop(path + '.brush.spacing')
+    // Spacing already lives under Brush (above); keep color / plane here.
     col.prop(path + '.brush.color')
     col.prop(path + '.brush.bgcolor')
     col.tool(`brush.swap_colors(dataPath='${path}.brush')`)
@@ -399,112 +406,38 @@ export class SculptCorePaintMode extends PaintToolModeBase {
     const name = this.toolModeDefine().name
     const path = `scene.tools.${name}`
 
-    /*
-    One header row, plus short rows in the editor's docked tool panel.
-
-    This used to append four rows to the header itself, stacking a ~180px wall
-    of unlabelled icons over the top of the viewport. The header now holds what a
-    header is for — the brush picker, its radius and strength, and the draw
-    toggles — and each `addHeaderRow()` group below is kept to two or three
-    controls so it fits the docked panel's width instead of being clipped by it.
-
-    `buildSettings` (the properties editor's Workspace tab) still carries the
-    full brush UI; these rows are the at-a-glance subset Blender keeps beside the
-    viewport.
-    */
+    // Blender Tool Settings strip: brush radius / strength beside the mode.
     let strip = header.strip()
-    strip.useIcons(true)
-    strip.prop(path + '.tool')
+    strip.useIcons(false)
     strip.prop(path + '.brushRadius')
     strip.prop(path + '.brush.strength')
 
-    // The object gizmo controls — Blender's viewport-header gizmo dropdown, in the
-    // mode the app starts in.
-    buildTransformWidgetRow(header.strip())
-
     strip = header.strip()
+    strip.useIcons(true)
     strip.prop(path + '.drawWireframe')
     strip.prop(path + '.drawFlat')
     strip.prop(path + '.drawMask')
     strip.prop(path + '.drawFeatureOverlay')
-    strip.prop(path + '.drawPolyGroupEdges')
-    strip.prop(path + '.drawBVH')
 
+    /*
+    Blender T-toolbar: brush picker + mesh ops as a vertical icon rail.
+    Full brush UI stays in Properties → Active Tool (`buildSettings`).
+    */
     let row = addHeaderRow()
     strip = row.strip()
     strip.useIcons(true)
+    strip.style.flexDirection = 'column'
+    strip.prop(path + '.tool')
     strip.tool('litemesh.symmetrize()')
     strip.tool('litemesh.mark_seam_interactive()')
     strip.tool('litemesh.mark_sharp_interactive()')
-
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.useIcons(true)
-    strip.tool('litemesh.mark_sharp_by_angle()')
     strip.tool('litemesh.generate_uv()')
     strip.tool('litemesh.triangulate()')
     if (FeatureFlags.get('sculptcore.quad_remesher')) {
       strip.tool('litemesh.quad_remesh()')
     }
-
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.prop(path + '.symmetryAxes')
-    // Click a face -> extrude every face in its poly group (the polygroup brush
-    // paints the groups; this pulls a painted region out).
     strip.tool('litemesh.extrude_polygroup()')
-
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.prop(path + '.brush.dynamics.radius.useDynamics')
-
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.prop(path + '.brush.flag[SHARED_SIZE]', PackFlags.HIDE_CHECK_MARKS)
-    // Via the ToolOp, not the raw `radiusMode` datapath: switching the unit has
-    // to rescale the stored radius or the brush changes size on the switch.
-    const screenRadiusMode = strip.tool('brush.set_radius_mode(mode=SCREEN)')
-    const worldRadiusMode = strip.tool('brush.set_radius_mode(mode=WORLD)')
-
-    if (screenRadiusMode) {
-      if (!(screenRadiusMode instanceof IconButton)) {
-        screenRadiusMode.name = 'Screen'
-      }
-      screenRadiusMode.title = 'Set brush radius space to screen'
-    }
-    if (worldRadiusMode) {
-      if (!(worldRadiusMode instanceof IconButton)) {
-        worldRadiusMode.name = 'World'
-      }
-      worldRadiusMode.title = 'Set brush radius space to world'
-    }
-
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.prop(path + '.brush.dynamics.strength.useDynamics')
-
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.prop(path + '.brush.spacing')
-
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.prop(path + '.reprojectCustomData')
-
-    // Stats are long strings, so each gets its own row rather than being clipped
-    // mid-number beside a control.
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.pathlabel(path + '.dynTopoStatsLabel', '')
-
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.pathlabel(path + '.gpuBrushStatsLabel', '')
-
-    row = addHeaderRow()
-    strip = row.strip()
-    // eslint-disable-next-line pathux/valid-datapath
-    strip.pathlabel('object.data.faceCount', 'Faces')
+    strip.prop(path + '.symmetryAxes')
 
     header.flushUpdate()
   }
@@ -549,7 +482,7 @@ export class SculptCorePaintMode extends PaintToolModeBase {
 
     st.bool('drawWireframe', 'drawWireframe', 'Draw Wireframe').on('change', onchange).icon(Icons.DRAW_SCULPT_WIREFRAME)
     st.bool('drawBVH', 'drawBVH', 'Draw BVH').on('change', onchange)
-    st.bool('drawMask', 'drawMask', 'Draw Mask').on('change', onchange)
+    st.bool('drawMask', 'drawMask', 'Draw Mask').icon(Icons.SCULPT_MASK_PAINT).on('change', onchange)
 
     st.bool('drawColPatches', 'drawColPatches', 'Draw Color Patches').on('change', onchange)
 
@@ -562,7 +495,7 @@ export class SculptCorePaintMode extends PaintToolModeBase {
       }
       window.redraw_viewport(true)
     }
-    st.bool('drawFeatureOverlay', 'drawFeatureOverlay', 'Feature Overlay')
+    st.bool('drawFeatureOverlay', 'drawFeatureOverlay', 'Feature Overlay').icon(Icons.MARK_SEAM)
       .description('Draw seam / sharp / UV-chart boundaries')
       .on('change', refreshSeams)
     st.bool('drawPolyGroupEdges', 'drawPolyGroupEdges', 'Poly Group Edges')

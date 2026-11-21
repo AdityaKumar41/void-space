@@ -299,6 +299,15 @@ export class LeafMeshDrawable implements Drawable {
     this.simpleMesh = sm
   }
 
+  /** Reuse the cached edge geometry for line-only viewport submissions. */
+  getLineMesh(): SimpleMesh | undefined {
+    if (this.dirty || this.simpleMesh === undefined) {
+      this.rebuild()
+      this.buildSimpleMesh()
+    }
+    return this.simpleMesh
+  }
+
   draw(gl: WebGL2RenderingContext, uniforms: IUniformsBlock, program: ShaderProgram): void {
     if (this.dirty || this.simpleMesh === undefined) {
       this.rebuild()

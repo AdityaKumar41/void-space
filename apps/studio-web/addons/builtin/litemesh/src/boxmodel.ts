@@ -82,17 +82,52 @@ BoxModelToolMode {
 
   static toolModeDefine(): IToolModeDefine {
     return {
-      name        : 'boxmodel',
-      uiname      : 'Box Model',
-      icon        : Icons.BOX_MODEL,
-      flag        : 0,
-      description : 'Traditional box modeling (select / extrude / inset / loop cut)',
-      selectMode  : SelMask.OBJECT,
-      // Object gizmo, offered but off by default — same reasoning as sculptcore:
+      name         : 'boxmodel',
+      uiname       : 'Edit Mode',
+      editMenuLabel: 'Mesh',
+      icon         : Icons.BOX_MODEL,
+      flag         : 0,
+      description  : 'Edit mesh (select / extrude / inset / loop cut)',
+      dataKinds    : ['litemesh'],
+      selectMode   : SelMask.OBJECT,
+      transformSelectMask: SelMask.GEOM,
+      // Mesh gizmo, offered but off by default — same reasoning as sculptcore:
       // the mode's own interactions own the pointer, and the header buttons are how
       // it is switched on. See `buildTransformWidgetRow`.
-      transWidgets: [TranslateWidget, ScaleWidget, RotateWidget],
+      transWidgets : [TranslateWidget, ScaleWidget, RotateWidget],
     }
+  }
+
+  static deleteTool(): string {
+    return 'litemesh.delete_selected()'
+  }
+
+  static buildSelectMenu(): string[] {
+    return [
+      'litemesh.select_all(mode=ALL)|Select All',
+      'litemesh.select_all(mode=NONE)|Deselect All',
+      'litemesh.select_box()|Box Select',
+      'litemesh.select_circle()|Circle Select',
+    ]
+  }
+
+  static buildEditMenu(): string[] {
+    return [
+      'litemesh.extrude_region(transform=true)|Extrude Region',
+      'litemesh.extrude_individual(transform=true)|Extrude Individual',
+      'litemesh.extrude_wire(transform=true)|Extrude Edges',
+      'litemesh.split_off(transform=true)|Split',
+      'litemesh.inset_region()|Inset Faces',
+      'litemesh.bevel_verts()|Bevel Vertices',
+      'litemesh.subdivide()|Subdivide',
+      'litemesh.loop_cut()|Loop Cut',
+      'litemesh.generate_uv()|Generate UVs',
+      'litemesh.triangulate()|Triangulate',
+      'litemesh.delete_selected(domain=VERTICES)|Delete Vertices',
+      'litemesh.delete_selected(domain=EDGES)|Delete Edges',
+      'litemesh.delete_selected(domain=FACES)|Delete Faces',
+      'litemesh.delete_selected(domain=FACES_ONLY)|Delete Only Faces',
+    ]
   }
 
   static defineAPI(api: DataAPI, struct?: DataStruct): DataStruct {
@@ -244,21 +279,15 @@ BoxModelToolMode {
     strip.prop(`scene.tools.${name}.drawPoints`)
     strip.prop(`scene.tools.${name}.xray`)
 
-    // Object gizmo controls — see `buildTransformWidgetRow`.
-    buildTransformWidgetRow(header.strip())
-
+    // Blender T-toolbar: select + mesh ops as a vertical icon rail.
     let row = addHeaderRow()
     strip = row.strip()
     strip.useIcons(true)
+    strip.style.flexDirection = 'column'
     strip.tool('litemesh.select_all(mode=AUTO)')
     strip.tool('litemesh.select_box()')
     strip.tool('litemesh.select_circle()')
     strip.tool('litemesh.select_path()')
-
-    // Modeling tools (the "T" tools auto-chain a transform via transform=true).
-    row = addHeaderRow()
-    strip = row.strip()
-    strip.useIcons(true)
     strip.tool('litemesh.extrude_region(transform=true)')
     strip.tool('litemesh.extrude_individual(transform=true)')
     strip.tool('litemesh.extrude_wire(transform=true)')

@@ -1,3 +1,5 @@
+import {readWorkflow} from '../../core/object_workflows'
+import {modelingModesForData, objectDataKind} from '../../core/modeling_modes'
 import {KeyMap} from '../editor_base'
 import {SimpleMesh, ChunkedSimpleMesh, LayerTypes} from '../../webgl/simplemesh'
 import {IWidgetConstructor, WidgetBase, WidgetFlags, WidgetManager} from './widgets/widgets.js'
@@ -32,6 +34,10 @@ export interface IToolModeDefine {
   flag: number
   description: string
   selectMode?: number
+  transformSelectMask?: number
+  dataKinds?: readonly string[]
+  hideFromModeMenu?: boolean
+  editMenuLabel?: string
   stdtools?: StandardTools
   transWidgets?: (typeof WidgetBase<any, any>)[]
 }
@@ -162,8 +168,20 @@ export class ToolMode<NodeInputs extends INodeSocketSet = {}, NodeOutputs extend
     return undefined
   }
 
+  static deleteTool(): string | undefined {
+    return undefined
+  }
+
   static buildEditMenu(): string[] {
     return []
+  }
+
+  static buildSelectMenu(): string[] {
+    return [
+      "object.toggle_select_all(mode='AUTO')|Select All",
+      "object.toggle_select_all(mode='SUB')|Deselect All",
+      'object.select_box()|Box Select',
+    ]
   }
 
   static buildElementSettings(container: ViewContainer) {}
@@ -232,8 +250,8 @@ export class ToolMode<NodeInputs extends INodeSocketSet = {}, NodeOutputs extend
 
     enumdef.NONE = 0
     icons.NONE = Icons.DISABLED
-    uinames.NONE = 'disable'
-    descr.NONE = 'Hide transform widgets'
+    uinames.NONE = 'Off'
+    descr.NONE = 'Hide transform gizmos'
 
     let i = 1
 
@@ -409,7 +427,7 @@ export class ToolMode<NodeInputs extends INodeSocketSet = {}, NodeOutputs extend
       tcls = tws[ti]
     }
 
-    if (this.transWidget && tcls !== this.transWidget.constructor) {
+    if (this.transWidget && (tcls !== this.transWidget.constructor || !tcls?.ctxValid(this.ctx))) {
       this.removeUniqueWidget(this.transWidget)
       this.transWidget = undefined
     }
@@ -615,6 +633,15 @@ export class MeshCache {
 }
 
 export const ToolModes = [] as (typeof ToolMode)[]
+
+export function getAvailableToolModes(ctx: ViewContext): IToolModeDefine[] {
+  const workflow = readWorkflow(ctx.object?.workflow)
+  const bound = !!workflow.base && (!!workflow.rig || workflow.modifiers.length > 0)
+  return modelingModesForData(
+    ToolModes.map((cls) => cls.toolModeDefine()),
+    objectDataKind(ctx.object?.data)
+  ).filter((mode) => !bound || !mode.dataKinds)
+}
 
 export function makeToolModeEnum() {
   const map = {} as {[k: string]: number}

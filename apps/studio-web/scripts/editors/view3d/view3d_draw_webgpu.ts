@@ -263,7 +263,7 @@ export function drawViewportWebGpu(view3d: ViewLike): boolean {
     colorAttachments: [
       {
         view      : canvasTex.createView(),
-        clearValue: {r: 0.031, g: 0.031, b: 0.039, a: 1},
+        clearValue: {r: 0.224, g: 0.224, b: 0.224, a: 1},
         loadOp    : 'clear',
         storeOp   : 'store',
       },

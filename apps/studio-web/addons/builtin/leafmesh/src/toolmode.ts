@@ -94,18 +94,43 @@ leafmesh.LeafMeshToolMode {
 
   static toolModeDefine() {
     return {
-      name        : 'leafmesh',
-      uiname      : 'Leaf Model',
+      name         : 'leafmesh',
+      uiname       : 'Edit Mode',
+      editMenuLabel: 'Mesh',
       // Shared with the BREP editor until P13 removes it, at which point this
       // is the only mesh-editing mode wearing it.
-      icon        : Icons.MESHTOOL,
-      flag        : 0,
-      description : 'Model a LeafMesh (select / extrude / inset / loop cut)',
-      selectMode  : SelMask.OBJECT,
-      // Object gizmo, offered but off by default; the header buttons switch it on
+      icon         : Icons.MESHTOOL,
+      flag         : 0,
+      description  : 'Edit mesh topology (select / extrude / inset / loop cut)',
+      dataKinds    : ['leafmesh'],
+      selectMode   : SelMask.OBJECT,
+      transformSelectMask: SelMask.GEOM,
+      // Mesh gizmo, offered but off by default; the header buttons switch it on
       // (see `buildTransformWidgetRow`).
-      transWidgets: [TranslateWidget, ScaleWidget, RotateWidget],
+      transWidgets : [TranslateWidget, ScaleWidget, RotateWidget],
     }
+  }
+
+  static deleteTool(): string {
+    return 'leafmesh.delete_selected()'
+  }
+
+  static buildSelectMenu(): string[] {
+    return [
+      'leafmesh.select_all(mode=ALL)|Select All',
+      'leafmesh.select_all(mode=NONE)|Deselect All',
+      'leafmesh.select_box()|Box Select',
+      'leafmesh.select_circle()|Circle Select',
+    ]
+  }
+
+  static buildEditMenu(): string[] {
+    return [
+      'leafmesh.extrude_region(transform=true)|Extrude Region',
+      'leafmesh.inset_faces()|Inset Faces',
+      'leafmesh.subdivide()|Subdivide',
+      'leafmesh.delete_selected()|Delete Selected Elements',
+    ]
   }
 
   static defineAPI(api: DataAPI, struct?: DataStruct): DataStruct {
@@ -205,6 +230,35 @@ leafmesh.LeafMeshToolMode {
     }
   }
 
+  static buildSettings(container: Container<ViewContext>): void {
+    // Blender Properties → Active Tool (Edit Mode).
+    const name = this.toolModeDefine().name
+    const path = `scene.tools.${name}`
+
+    const sel = container.panel('Mesh Select')
+    sel.closed = false
+    sel.useIcons(true)
+    this.buildSelModeChips(sel.strip(), name)
+    sel.useIcons(false)
+    sel.prop(`${path}.selectRadius`)
+
+    const overlays = container.panel('Viewport Display')
+    overlays.closed = false
+    overlays.useIcons(true)
+    overlays.prop(`${path}.drawSelectionOverlay`)
+    overlays.prop(`${path}.drawWireframe`)
+    overlays.prop(`${path}.drawPoints`)
+
+    const tools = container.panel('Transform')
+    tools.closed = false
+    tools.useIcons(true)
+    const strip = tools.strip()
+    strip.prop('scene.tool.transformWidget[NONE]')
+    strip.prop('scene.tool.transformWidget[translate]')
+    strip.prop('scene.tool.transformWidget[scale]')
+    strip.prop('scene.tool.transformWidget[rotate]')
+  }
+
   static buildHeader(header: Container<ViewContext>, addHeaderRow: () => Container<ViewContext>): void {
     super.buildHeader(header, addHeaderRow)
 
@@ -220,18 +274,17 @@ leafmesh.LeafMeshToolMode {
     // Object gizmo controls — see `buildTransformWidgetRow`.
     buildTransformWidgetRow(header.strip())
 
+    // Blender T-toolbar: vertical icon rail for select + mesh ops.
     const row = addHeaderRow()
     strip = row.strip()
     strip.useIcons(true)
+    strip.style.flexDirection = 'column'
     strip.tool('leafmesh.select_all(mode=AUTO)')
     strip.tool('leafmesh.select_box()')
     strip.tool('leafmesh.select_circle()')
-
-    const tools = addHeaderRow().strip()
-    tools.useIcons(true)
-    tools.tool('leafmesh.extrude_region(transform=true)')
-    tools.tool('leafmesh.inset_faces()')
-    tools.tool('leafmesh.subdivide()')
+    strip.tool('leafmesh.extrude_region(transform=true)')
+    strip.tool('leafmesh.inset_faces()')
+    strip.tool('leafmesh.subdivide()')
 
     header.flushUpdate()
   }

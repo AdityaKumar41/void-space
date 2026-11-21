@@ -1047,6 +1047,36 @@ export abstract class LiteMeshTopoOpBase<
   }
 }
 
+/** Domain-aware element deletion, recorded by the native topology log. */
+export class LiteMeshDeleteOp extends LiteMeshTopoOpBase<{domain: EnumProperty}> {
+  static tooldef() {
+    return {
+      toolpath: 'litemesh.delete_selected',
+      uiname  : 'Delete Selected Elements',
+      icon    : Icons.DELETE,
+      inputs: {
+        domain: new EnumProperty(-1, {AUTO: -1, VERTICES: 0, EDGES: 1, FACES: 2, FACES_ONLY: 3}),
+      },
+    }
+  }
+
+  exec(ctx: ToolContext) {
+    const mesh = this._getMesh(ctx)
+    if (!mesh) return
+    let domain = this.inputs.domain.getValue() as number
+    if (domain < 0) {
+      const mask = (ctx.toolmode as unknown as IBoxModelToolMode)?.boxModelSelMode ?? SelMask.VERTEX
+      domain = mask & SelMask.FACE ? 2 : mask & SelMask.EDGE ? 1 : 0
+    }
+    const log = this._log()
+    if (typeof log.deleteSelected !== 'function')
+      throw new Error('The modeling engine needs rebuilding for element deletion.')
+    log.deleteSelected(mesh.mesh, domain)
+    this._logStepId = log.lastStepId()
+    this._afterTopoChange(mesh)
+  }
+}
+
 /** Build the geom-op + TranslateOp macro for a "T" tool (one undo unit). The
  * geom op's `normalSpace` output is wired to the translate's constraint space and
  * the constraint is locked to that space's Z (the extrude normal). */
@@ -1571,6 +1601,7 @@ export const BoxModelSelectOps = [
 ]
 
 export const BoxModelTopoOps = [
+  LiteMeshDeleteOp,
   LiteMeshExtrudeRegionOp,
   LiteMeshExtrudeIndividualOp,
   LiteMeshExtrudeWireOp,

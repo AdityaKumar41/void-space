@@ -1,9 +1,10 @@
+import './WorkflowPanel'
+import type {WorkflowPanel} from './WorkflowPanel'
 import {Icons} from '../icon_enum'
 
 import {DataBlockBrowser, Editor, MaterialPanel} from '../editor_base'
 import {
   DataAPI,
-  LastToolPanel,
   loadUIData,
   nstructjs,
   Number3,
@@ -151,6 +152,10 @@ export class ObjectPanel extends ColumnFrame<ViewContext> {
     }
 
     this.clear()
+    if (!this.ctx.object) {
+      this.label('Select an object to inspect its properties.')
+      return
+    }
 
     /*
      * The object's name heads the tab, the way an ID block heads Blender's
@@ -160,34 +165,44 @@ export class ObjectPanel extends ColumnFrame<ViewContext> {
      * headed "name Object4". `TitleText` is the panel titles' 12px/600 face, so
      * the name reads as the tab's subject rather than as one more property row.
      */
+    // Blender Object tab: ID name, then Transform (Location / Rotation / Scale).
     const nameLabel = this.pathlabel('object.name', '')
     nameLabel.font = 'TitleText'
+    this.prop('object.name')
 
     let panel: PanelContents<ViewContext>
 
     panel = this.panel('Transform')
+    panel.closed = false
     panel.useIcons(false)
 
+    panel.label('Location')
     vectorRow(panel, `object.inputs["loc"].value`, {unit: 'meter', decimals: 3})
+
+    panel.label('Rotation')
     vectorRow(panel, `object.inputs["rot"].value`, {
       unit       : 'radian',
       displayUnit: 'degree',
       decimals   : 1,
     })
 
-    // The order the euler angles are applied in. It belongs with Rotation, not
-    // after it, because it changes what the three numbers above it mean.
+    // Euler order belongs with Rotation — it changes what the three numbers mean.
     panel.prop('object.inputs["rotOrder"].value')
 
+    panel.label('Scale')
     vectorRow(panel, `object.inputs["scale"].value`, {unit: 'none', decimals: 3})
 
     panel.tool('object.apply_transform()')
 
-    panel = this.panel('Draw')
+    // Blender: Object → Viewport Display
+    panel = this.panel('Viewport Display')
+    panel.closed = false
     panel.useIcons(false)
     panel.prop('object.drawMode')
     panel.prop('object.drawFlag[FORCE_XRAY]')
     panel.prop('object.drawFlag[WIREFRAME]')
+    panel.prop('object.flag[HIDE]')
+    panel.prop('object.flag[LOCKED]')
 
     const ob = this.ctx.object
     if (!ob) {
@@ -217,12 +232,9 @@ export class ObjectPanel extends ColumnFrame<ViewContext> {
   update() {
     super.update()
 
-    if (!this.ctx?.object) {
-      return
-    }
-
+    if (!this.ctx) return
     const ob = this.ctx.object
-    const key = '' + ob.lib_id + ':' + ob.data.lib_id
+    const key = ob ? `${ob.lib_id}:${ob.data?.lib_id ?? ''}` : 'empty'
 
     if (key !== this._last_update_key) {
       this._last_update_key = key
@@ -478,6 +490,8 @@ export class TextureSelectPanel extends TexturePanel {
 UIBase.register(TextureSelectPanel)
 
 export class PropsEditor extends Editor {
+  private _updateObjectDataTab?: () => void
+
   tabs!: TabContainer<ViewContext>
   texPanel!: Container<ViewContext>
   objTab!: TabItemContainer<ViewContext>
@@ -740,59 +754,30 @@ PropsEditor {
       return item
     }
 
+    /*
+    Blender Properties rail order (modeling subset):
+      Active Tool → Object → Object Data → Material → Texture → Scene → Settings
+    Last Command lives in the viewport N-panel rail, not here.
+    */
     this.workspaceTab = iconTab(
-      'Workspace',
+      'Active Tool',
       Icons.EDITOR_SETTINGS,
-      'Active Tool — the settings of the tool in the viewport'
+      'Active Tool — settings for the tool in the 3D Viewport'
     )
-    let panel: PanelContents<ViewContext>
 
-    let tab = iconTab('Scene', Icons.RENDER, 'Scene — viewport and render settings')
-    panel = tab.panel('Viewport Settings')
-    panel.useIcons(false)
-    panel.prop('view3d.cameraMode[PERSPECTIVE]')
-    panel.prop('view3d.cameraMode[ORTHOGRAPHIC]')
-
-    const viewAxis = (axis: Number3, sign: number) => {
-      this.ctx.view3d.viewAxis(axis, sign)
-    }
-
-    const axes = {
-      Front : [1, 1],
-      Left  : [0, 1],
-      Back  : [1, -1],
-      Right : [0, -1],
-      Top   : [2, 1],
-      Bottom: [2, -1],
-    } as const
-
-    function makeAxis(key: string, axis: Number3, sign: number) {
-      panel.button(key, () => {
-        viewAxis(axis, sign)
-      })
-    }
-
-    for (const k in axes) {
-      const [axis, sign] = axes[k as keyof typeof axes]
-      makeAxis(k, axis, sign)
-    }
-
-    panel = tab.panel('Render Settings')
-    panel.prop('scene.envlight.color')
-    panel.prop('scene.envlight.power')
-    panel.prop('scene.envlight.flag')
-    panel.prop('scene.envlight.ao_dist')
-    panel.prop('scene.envlight.ao_fac')
-    panel.prop('view3d.render.sharpen')
-
-    tab = iconTab('Material', Icons.SCULPT_COLOR, 'Material — the material on the active object')
-    this.materialPanel(tab)
-
-    tab = this.objTab = iconTab('Object', Icons.BOX_MODEL, 'Object — transform, visibility and collections')
+    let tab = (this.objTab = iconTab('Object', Icons.BOX_MODEL, 'Object — transform and viewport display'))
     const obpanel = UIBase.createElement('scene-object-panel-x') as ObjectPanel
     tab.add(obpanel)
 
-    const obDataTab = iconTab('ObData', Icons.MESHTOOL, 'Object Data — the mesh this object points at')
+    for (const [name, icon] of [['Modifiers', Icons.SUBSURF], ['Rigging', Icons.STRANDS], ['Animation', Icons.SHOW_ANIMPATHS], ['Physics', Icons.PAN]] as const) {
+      const tab = iconTab(name, icon, `${name} — object workflow`)
+      const panel = UIBase.createElement('object-workflow-panel-x') as WorkflowPanel
+      panel.category = name
+      tab.add(panel)
+    }
+
+    const obDataTab = iconTab('Object Data', Icons.MESHTOOL, 'Object Data — the mesh this object points at')
+    let obDataInitialized = false
     let obDataType: string | undefined
     const obDataUIDatas = new Map<string, string>()
 
@@ -812,9 +797,10 @@ PropsEditor {
     const rebuildObDataTab = () => {
       const type = this.ctx?.object?.data?.lib_type ?? undefined
 
-      if (type === obDataType && !obDataForceRebuild) {
+      if (obDataInitialized && type === obDataType && !obDataForceRebuild) {
         return
       }
+      obDataInitialized = true
       obDataForceRebuild = false
 
       if (obDataType !== undefined) {
@@ -823,6 +809,7 @@ PropsEditor {
 
       obDataType = this.ctx?.object?.data?.lib_type
       obDataTab.clear()
+      if (obDataType === undefined) obDataTab.label('Select an object to inspect its data.')
 
       if (obDataType !== undefined && this.ctx?.object?.data !== undefined) {
         const cls = this.ctx?.object?.data?.constructor as any
@@ -835,16 +822,58 @@ PropsEditor {
         obDataTab.flushUpdate()
       }
     }
-    this.updateAfter(rebuildObDataTab)
+    this._updateObjectDataTab = rebuildObDataTab
+    this.doOnce(rebuildObDataTab)
+
+    tab = iconTab('Material', Icons.SCULPT_COLOR, 'Material — the material on the active object')
+    this.materialPanel(tab)
 
     tab = this.texTab = iconTab('Texture', Icons.IMAGE_EDITOR, 'Texture — the procedural texture being edited')
     this.textureTab(tab)
 
-    this._last_obj = undefined
+    tab = iconTab('Scene', Icons.RENDER, 'Scene — camera, environment and view axes')
+    let panel: PanelContents<ViewContext> = tab.panel('Camera')
+    panel.closed = false
+    panel.useIcons(false)
+    panel.prop('view3d.cameraMode[PERSPECTIVE]')
+    panel.prop('view3d.cameraMode[ORTHOGRAPHIC]')
 
-    tab = iconTab('Last Command', Icons.REDO, 'Last Command — redo and adjust the previous operation')
-    const last = document.createElement('last-tool-panel-x') as LastToolPanel<ViewContext>
-    tab.add(last)
+    const viewAxis = (axis: Number3, sign: number) => {
+      this.ctx.view3d.viewAxis(axis, sign)
+    }
+
+    const axes = {
+      Front : [1, 1],
+      Left  : [0, 1],
+      Back  : [1, -1],
+      Right : [0, -1],
+      Top   : [2, 1],
+      Bottom: [2, -1],
+    } as const
+
+    panel = tab.panel('View')
+    panel.closed = false
+    for (const k in axes) {
+      const [axis, sign] = axes[k as keyof typeof axes]
+      panel.button(k, () => {
+        viewAxis(axis, sign)
+      })
+    }
+
+    tab = iconTab('World', Icons.LIGHT, 'World — environment lighting and ambient occlusion')
+    panel = tab.panel('Environment')
+    panel.closed = false
+    panel.prop('scene.envlight.color')
+    panel.prop('scene.envlight.power')
+    panel.prop('scene.envlight.flag')
+    panel.prop('scene.envlight.ao_dist')
+    panel.prop('scene.envlight.ao_fac')
+    tab = iconTab('Render', Icons.VIEW_RAW, 'Render — viewport rendering settings')
+    panel = tab.panel('Viewport rendering')
+    panel.closed = false
+    panel.prop('view3d.render.sharpen')
+
+    this._last_obj = undefined
 
     this._settingsTab = iconTab('Settings', Icons.EDITOR_PROPERTIES, 'Settings — addons, brushes, feature flags')
     this._buildSettingsPanels()
@@ -953,6 +982,7 @@ PropsEditor {
     this.updateToolMode()
 
     super.update()
+    this._updateObjectDataTab?.()
   }
 
   copy() {

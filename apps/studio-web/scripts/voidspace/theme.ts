@@ -1,5 +1,5 @@
 /**
- * VOID·STUDIO's theme for the in-canvas editor UI.
+ * VOID·STUDIO theme — Blender Dark UI.
  *
  * path.ux ships exactly one theme, `DefaultTheme`, and it is **light**: dark text on a light grey
  * ground. Re-colouring only the surfaces would therefore produce a dark editor with near-black
@@ -20,9 +20,8 @@
  *     (`CSSFont`, `BoxBorder`, …) whose behaviour depends on their prototypes, and a deep clone would
  *     quietly strip them. Overriding `base` key-by-key leaves every other entry the same object.
  *
- * The palette mirrors `apps/web/src/app/globals.css`. It cannot be imported from there — this runs
- * inside the editor bundle, which shares no build step with the marketplace — so the two are kept in
- * step by hand. If a token moves in one, move it in both.
+ * The palette tracks Blender's default Dark theme (4.x): graphite panels, blue UI selection, nearly
+ * square corners, system UI faces. Creators who know Blender should feel at home immediately.
  */
 import {CSSFont} from '../path.ux/scripts/core/cssfont'
 import {DefaultTheme} from '../path.ux/scripts/core/theme'
@@ -31,32 +30,33 @@ import {ThemeScrollBars} from '../path.ux/scripts/core/ui_theme'
 import type {ThemeRecord} from '../path.ux/scripts/core/ui_theme'
 
 /**
- * The design tokens, named after their marketplace counterparts.
+ * Blender Dark theme tokens.
  *
- * `accent` is `--fc-heat`, which is what the marketplace's `brand` Tailwind token resolves to. The
- * ground and text ramp are the `--vs-*` "Ethereal Glass" values.
+ * Numbers approximate Blender's shipped theme XML (window back, panel, header, widget inner,
+ * blue `item` highlight). Kept as named hex so the shell CSS vars in `index.html` can stay in step.
  */
 export const VOID_STUDIO_PALETTE = {
-  bg        : '#08080a',
-  surface   : '#101013',
-  surface2  : '#16161a',
-  surface3  : '#1d1d22',
-  line      : '#232329',
-  lineStrong: '#34343d',
+  bg        : '#303030',
+  surface   : '#2e2e2e',
+  surface2  : '#232323',
+  surface3  : '#3d3d3d',
+  line      : '#1d1d1d',
+  lineStrong: '#545454',
 
-  fg     : '#f3f3f5',
-  fgDim  : '#9d9daa',
-  fgFaint: '#6c6c7a',
+  fg     : '#eeeeee',
+  fgDim  : '#b8b8b8',
+  fgFaint: '#888888',
 
-  accent    : '#fa5d19',
-  accentWarm: '#ff7a3d',
-  signal    : '#3ddc97',
+  /** Blender's UI selection / active control blue. */
+  accent    : '#5680c2',
+  accentWarm: '#6b95d6',
+  signal    : '#6fb86f',
 
-  // Status ramp used by the VOID·SPACE bridge panel (loading / error states).
-  gold: '#fbbf24',
-  heat: '#f43f5e',
+  /** Blender's object-selection orange — used for status chips, not primary chrome. */
+  gold: '#e87d0d',
+  heat: '#e87d0d',
 
-  fontSans: 'Plus Jakarta Sans, Segoe UI, system-ui, sans-serif',
+  fontSans: 'Segoe UI, Helvetica Neue, Arial, system-ui, sans-serif',
   fontMono: 'JetBrains Mono, ui-monospace, Menlo, monospace',
 } as const
 
@@ -107,80 +107,38 @@ function font(args: {size: number; weight?: string; color: string; family?: stri
 function surfaceOverrides(): Partial<ThemeRecord> {
   const p = VOID_STUDIO_PALETTE
   const fieldBG = p.surface3
-  const fieldText = font({size: 14, color: p.fg})
+  const fieldText = font({size: 12, color: p.fg})
 
   return {
-    /* Panels carry the most area, so they set the perceived theme. The shipped
-     * class paints `rgba(184,184,184,.76)` with a `rgba(177,219,255,1)` title
-     * bar and a black title face.
-     *
-     * `TitleBorder` is the key worth naming: the title row strokes *its own*
-     * border from that key (`ui_panel.makeHeader`) rather than from
-     * `border-color`, and upstream's value is `rgba(104,104,104,1)` — a light
-     * grey outline drawn around every section header, which is what made
-     * "Transform" and "Draw" read as unstyled form boxes. `border-width` is
-     * upstream's `1.141`; a fraction lands on a half device pixel and renders
-     * soft, so it becomes 1.
-     */
+    /* Panels: Blender section boxes — flat, tight, dark header strip. */
     panel: {
       ...DefaultTheme.panel,
       'background-color': p.surface,
       'border-color'    : p.line,
       'border-style'    : 'solid',
       'border-width'    : 1,
-      /* Upstream insets a panel 5.6px from the left and 0 from the right, an
-       * asymmetry meant for a panel floating inside a wide column. The
-       * properties body gives its panels the full width, so the insets go to 0
-       * and the frame lines up with the labels and sliders inside it. */
       'margin-left'     : 0,
       'margin-right'    : 0,
-      /* Sections sit flush by default, so the title bar of the next one reads as
-       * part of the previous panel's contents. A little air between them is what
-       * makes a group of properties read as a group. */
-      'margin-bottom'   : 6,
+      'margin-bottom'   : 2,
       TitleBackground   : p.surface2,
       TitleBorder       : p.line,
-      TitleText         : font({size: 12, weight: '600', color: p.fg}),
+      TitleText         : font({size: 11, weight: '600', color: p.fg}),
     },
 
-    /*
-     * Checkboxes. The box is drawn on a canvas: a rounded fill from
-     * `background-color`, then the tick icon when checked. Upstream's fill is
-     * `rgb(168,168,168)`, a light grey, and the *unchecked* box is the fill
-     * alone — there is no stroke until the widget takes focus — so the fill is
-     * the only affordance the control has and it has to read against the panel
-     * behind it. `lineStrong` is the chip grey: visible as a slot, quiet enough
-     * not to shout.
-     *
-     * `DefaultText` is the label beside the box. Upstream's class inherits the
-     * button's 13px/600 face; a checkbox's label is a property name, so it takes
-     * the same 12px dim face as every other label.
-     */
     checkbox: {
       ...DefaultTheme.checkbox,
       'background-color': p.lineStrong,
       'border-color'    : p.lineStrong,
-      DefaultText       : font({size: 12, color: p.fgDim}),
+      DefaultText       : font({size: 11, color: p.fgDim}),
     },
 
-    /*
-     * Drop-downs. `dropTextBG` is the fill of the box carrying the current
-     * value, and the shipped `rgba(233,233,233,1)` is near-white while the
-     * widget's text stays `#f3f3f5` — so "Textured" and "xyz" were painted
-     * white on white and could not be read at all. The widget's own
-     * `background-color` resolves up to the ground (`#08080a`), which leaves the
-     * value box to carry the field; it takes the input surface instead so a
-     * drop-down matches the text fields beside it.
-     */
     dropbox: {
       ...DefaultTheme.dropbox,
       'background-color': p.surface2,
       dropTextBG        : p.surface3,
-      DefaultText       : font({size: 13, weight: '600', color: p.fg}),
+      DefaultText       : font({size: 12, weight: '600', color: p.fg}),
     },
 
-    /* Inputs. The shipped fills are near-white, the single most jarring thing
-     * on a dark ground. */
     textbox : {...DefaultTheme.textbox, 'background-color': fieldBG, DefaultText: fieldText},
     richtext: {...DefaultTheme.richtext, 'background-color': fieldBG, DefaultText: fieldText},
     tooltip : {...DefaultTheme.tooltip, 'background-color': p.surface3, ToolTipText: fieldText},
@@ -188,9 +146,6 @@ function surfaceOverrides(): Partial<ThemeRecord> {
     assetgallery: {...DefaultTheme.assetgallery, 'background-color': p.surface},
     assetthumb  : {...DefaultTheme.assetthumb, 'background-color': p.surface2},
 
-    /* Sliders pin a top-level fill *and* per-state sub-objects (`highlight`,
-     * `pressed`), each with its own light fill and black label. The accent is
-     * the drag highlight, which is where it reads best. */
     numslider: {
       ...DefaultTheme.numslider,
       'background-color': p.surface3,
@@ -201,173 +156,82 @@ function surfaceOverrides(): Partial<ThemeRecord> {
     numslider_simple : {...DefaultTheme.numslider_simple, 'background-color': p.surface3},
     numslider_textbox: {...DefaultTheme.numslider_textbox, 'background-color': p.surface3},
 
-    /*
-     * Buttons. The shipped chip is `rgba(238,238,238,0.87)` with a near-black
-     * `DefaultText`, so every tool button ("Triangulate", "Screen", …) painted
-     * as a light chip on the dark ground.
-     */
     button: {
       ...DefaultTheme.button,
       'background-color': p.surface3,
-      /* The shipped chip's `border` is a 2px white `BoxBorder`, which resolves
-       * to a pale outline around every tool button. */
       'border-color'    : p.lineStrong,
       'border-width'    : 1,
-      DefaultText       : font({size: 13, weight: '600', color: p.fg}),
+      DefaultText       : font({size: 12, weight: '600', color: p.fg}),
 
-      /*
-       * `button.disabled` is the record path.ux resolves for a disabled widget
-       * (the check box on the Material tab's derived `has_shader`, among others),
-       * and the shipped one pairs a near-black fill with a `#f58f8f` border and
-       * bold poppins text — so a read-only control shouted with a pink outline,
-       * louder than anything else in the panel. Disabled means quiet: no border,
-       * the panel's surface, dimmed text.
-       */
       disabled: {
         ...DefaultTheme.button.disabled,
-        DefaultText       : font({size: 12, color: p.fgFaint}),
+        DefaultText       : font({size: 11, color: p.fgFaint}),
         'background-color': p.surface,
         'border-color'    : 'transparent',
         'border-width'    : 0,
       },
     },
 
-    /*
-     * Labels. `base.LabelText` is themed, but the `label` class re-declares
-     * `LabelText: vars.labelFont` — the *shipped* label font, which is dark — so
-     * it shadowed the override and left plain labels unreadable on the dark
-     * ground. Re-pinning it here is what makes property labels legible.
-     *
-     * Size 12, not the shipped class's 14: path.ux lays a property row out as a
-     * `widget-with-label-x` whose height comes from the widget, and the label is
-     * a shrinking flex item inside it. At 14px the label's line box is taller
-     * than the space it is given, so every descender ("Spacing", "Rotation Y")
-     * was overlapped by the row below. The panel titles — 12px in the same
-     * layout — are the control that shows 12px fits.
-     *
-     * `DefaultText` is the disabled face: `Label.on_disabled` re-points the font
-     * at that key, and the shipped class inherits a near-black `bodyFont` for
-     * it. A disabled property must *read* as disabled, not vanish.
-     */
     label: {
       ...DefaultTheme.label,
-      LabelText  : font({size: 12, color: p.fgDim}),
-      DefaultText: font({size: 12, color: p.fgFaint}),
+      LabelText  : font({size: 11, color: p.fgDim}),
+      DefaultText: font({size: 11, color: p.fgFaint}),
     },
 
-    /*
-     * `widget-with-label-x` — the wrapper that carries a property's name. Its
-     * own `font` key is what its inner label inherits, so leaving it at
-     * `bodyFont` put a 14px near-black label on the dark panel.
-     */
-    propLabels: {...DefaultTheme.propLabels, font: font({size: 12, color: p.fgDim})},
+    propLabels: {...DefaultTheme.propLabels, font: font({size: 11, color: p.fgDim})},
 
-    /*
-     * The properties editor's tab body, which most of the right-hand panel sits
-     * on. Shipped as `rgba(222,222,222)` with `rgba(183,183,183)` inactive chips
-     * and a black tab face. The `strip` class inside it is translucent
-     * (`rgba(75,75,75,0.33)`), so darkening the parent is what makes those rows
-     * read as dark chips rather than light ones.
-     */
     tabs: {
       ...DefaultTheme.tabs,
       'background-color': p.surface,
-      /*
-       * Which tab is active has to be legible at a glance in an icon-only rail.
-       * `TabActive` was `surface3` — two steps off the rail's own `surface2`, which
-       * on a 26px-wide chip is very nearly the same colour, so the active section
-       * was invisible; the accent stroke is the second half of the marker (the
-       * leading edge bar is drawn in `ui_polish`). `TabHighlight` is the hover tone
-       * and has to sit between the two.
-       */
       TabActive         : p.lineStrong,
       TabInactive       : p.surface2,
       TabHighlight      : p.surface3,
       TabStrokeStyle2   : p.accent,
-      TabText           : font({size: 13, weight: '600', color: p.fg}),
+      TabText           : font({size: 12, weight: '600', color: p.fg}),
     },
 
-    strip: {...DefaultTheme.strip, 'background-color': 'rgba(255, 255, 255, 0.045)', 'border-color': p.line},
+    strip: {...DefaultTheme.strip, 'background-color': 'rgba(255, 255, 255, 0.04)', 'border-color': p.line},
 
-    /*
-     * The dividers between screen areas. `screenborder` is not a widget's class:
-     * `FrameManager` draws one strip per area edge, taking its *background* from
-     * `border-inner` and its outline from `border-outer`, and the shipped
-     * `border-inner` is literally `grey`. Every seam between the viewport and the
-     * panes — and around the whole window — was therefore a pale line, the
-     * brightest structure on the screen. On a dark ground a divider should be a
-     * hairline just off the ground, which is what `line` is.
-     */
     screenborder: {
       ...DefaultTheme.screenborder,
       'border-inner': p.line,
       'border-outer': p.line,
     },
 
-    /*
-     * Scrollbars. These are not drawn by a widget — `FrameManager.updateScrollStyling`
-     * emits one global `::-webkit-scrollbar` rule from this record — so a theme
-     * that ignores it gets the browser's default light bar. On the properties
-     * body, which is `overflow: scroll` (it reserves both axes), that produced a
-     * pale grey band across the bottom of the panel and a light stripe down the
-     * side of every long tab. The shipped record leaves every field `undefined`;
-     * the defaults behind them are `grey` for the track and a 15px bar.
-     *
-     * `color` is the track, `color2` the thumb, and the pair is emitted as
-     * `scrollbar-color: <thumb> <track>` — so the thumb takes the chip grey and
-     * the track takes the ground, leaving the bar visible without being the
-     * brightest thing in the column. `width` 10 keeps it under Chrome's default
-     * but still grabbable; a grooved border is what made the default look like an
-     * unstyled OS widget, so there is none.
-     */
     scrollbars: new ThemeScrollBars({
       color : p.bg,
       color2: p.lineStrong,
-      width : 10,
+      width : 11,
       border: 'none',
     }),
 
-    /*
-     * A `ListBox` — used once in the editor, for the material slots in the Material
-     * tab (`MaterialChooser.rebuild`). The shipped record is a light-theme widget
-     * through and through:
-     *
-     *   - `ListActive` is `rgba(200,205,215)` and the item's text is the same
-     *     near-white, so a material name was painted white on light grey — the row
-     *     that read as "an empty box with nothing in it".
-     *   - `width: 110` is the list's whole width in a 374px column, so the list sat
-     *     in a third of the panel with the rest empty, and `height: 200` made an
-     *     empty list a 200px void rather than a small empty box.
-     *
-     * The list is the only one in this build, so the sizes are set here rather than
-     * per-caller: five rows of `ItemHeight`, and a width that fills the panel column.
-     */
     listbox: {
       ...DefaultTheme.listbox,
       'background-color' : p.surface2,
       'border-color'     : p.line,
-      ListActive         : p.surface3,
-      ListActiveHighlight: p.lineStrong,
-      ListHighlight      : p.line,
+      ListActive         : p.accent,
+      ListActiveHighlight: p.accentWarm,
+      ListHighlight      : p.lineStrong,
       width              : 330,
       height             : 120,
     },
 
     sidebar: {...DefaultTheme.sidebar, 'background-color': p.surface2},
 
-    /*
-     * Popup menus — the menu bar's drop-downs and the `Shift-A` Add menu. The
-     * shipped `MenuBG` is `rgba(250,250,250)` with a dark `MenuText`, i.e. a
-     * white popup over a dark editor.
-     */
+    treeview: {
+      ...DefaultTheme.treeview,
+      itemIndent: 12,
+      rowHeight : 20,
+    },
+
     menu: {
       ...DefaultTheme.menu,
       MenuBG          : p.surface2,
       MenuBorder      : `1px solid ${p.lineStrong}`,
       MenuHighlight   : p.accent,
       MenuTextDisabled: p.fgFaint,
-      MenuText        : font({size: 13, color: p.fg}),
-      HotkeyText      : font({size: 12, color: p.fgFaint}),
+      MenuText        : font({size: 12, color: p.fg}),
+      HotkeyText      : font({size: 11, color: p.fgFaint}),
       HotkeyTextColor : p.fgFaint,
     },
   }
@@ -386,33 +250,26 @@ export function buildVoidStudioTheme(): ThemeRecord {
   const base = {
     ...DefaultTheme.base,
 
-    /* Ground and elevation. Panels step up in lightness so a nested panel reads as nested. */
     'background-color': palette.bg,
     DefaultPanelBG    : palette.surface,
     InnerPanelBG      : palette.surface2,
     BoxSubBG          : palette.surface3,
     BoxSub2BG         : palette.surface3,
 
-    /* Borders are the only structure on a dark ground, so they stay legible rather than subtle. */
     'border-color': palette.lineStrong,
     BoxBorder     : rgba(palette.lineStrong, 1),
 
-    /* The accent. `BoxHighlight` is what path.ux uses for a selected or focused box. */
     BoxHighlight: rgba(palette.accent, 1),
     BoxDepressed: palette.surface3,
 
-    /* Headers get the second surface so areas separate without needing a shadow. */
     AreaHeaderBG: palette.surface2,
 
-    /* Text. The inherited values are near-black, which is the readability problem this solves. */
-    DefaultText: font({size: 14, color: palette.fg}),
-    /* 12, matching `TitleText`: a 14px label overruns the row height path.ux
-     * allots it and is overlapped by the widget below. See `surfaceOverrides`. */
-    LabelText  : font({size: 12, color: palette.fgDim}),
-    TitleText  : font({size: 12, weight: '600', color: palette.fg}),
+    DefaultText: font({size: 12, color: palette.fg}),
+    LabelText  : font({size: 11, color: palette.fgDim}),
+    TitleText  : font({size: 11, weight: '600', color: palette.fg}),
 
-    /* Sharper than the inherited ~12px pill, matching the marketplace's radius scale. */
-    'border-radius': 8,
+    /* Blender widgets are nearly square. */
+    'border-radius': 3,
   }
 
   return {...DefaultTheme, base, ...surfaceOverrides()} as ThemeRecord
@@ -444,6 +301,7 @@ export function applyVoidStudioTheme(): ThemeApplicationResult {
       if (document.body) {
         document.body.style.backgroundColor = VOID_STUDIO_PALETTE.bg
         document.body.style.color = VOID_STUDIO_PALETTE.fg
+        document.body.style.fontFamily = VOID_STUDIO_PALETTE.fontSans
       }
       if (document.documentElement) {
         document.documentElement.style.backgroundColor = VOID_STUDIO_PALETTE.bg

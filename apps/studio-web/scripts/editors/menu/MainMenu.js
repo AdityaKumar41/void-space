@@ -1,12 +1,24 @@
 import {Area, BorderMask, AreaFlags} from '../../path.ux/scripts/screen/ScreenArea.js'
 import {Icons} from '../icon_enum.js'
+import {View3DFlags} from '../view3d/view3d_base.js'
+import {getAvailableToolModes} from '../view3d/view3d_toolmode'
+import {DrawModes} from '../../sceneobject/drawmode.js'
 
 import {NoteFrame, Note} from '../../path.ux/scripts/widgets/ui_noteframe.js'
 import {Editor, VelPan} from '../editor_base.ts'
 
 import {saveFile, loadFile, DataPathError, KeyMap, HotKey} from '../../path.ux/scripts/pathux.js'
 
-import {UIBase, color2css, _getFont, css2color, nstructjs, DropBox, createMenu, startMenu} from '../../path.ux/pathux.js'
+import {
+  UIBase,
+  color2css,
+  _getFont,
+  css2color,
+  nstructjs,
+  DropBox,
+  createMenu,
+  startMenu,
+} from '../../path.ux/pathux.js'
 
 import {Container} from '../../path.ux/scripts/core/ui.js'
 import {RowFrame, ColumnFrame} from '../../path.ux/scripts/core/ui_containers.js'
@@ -17,7 +29,8 @@ import {NodeEditorBase} from '../node/NodeEditor.js'
 import * as cconst from '../../core/const.js'
 import {Menu} from '../../path.ux/scripts/widgets/ui_menu.js'
 
-const menuSize = 27
+/** Blender's top bar is a single compact strip; keep room for workspace tabs. */
+const menuSize = 28
 
 import * as platform from '../../core/platform.js'
 import addonManager from '../../addon/addon.js'
@@ -32,7 +45,14 @@ import {getAppState} from '../../core/app_instance.js'
  * primitives were reachable only by navigating the menu bar.
  */
 export function addMenuEntries() {
-  return ['light.new()', ...addonManager.getAddonMenuEntries()]
+  // Blender Add order (subset): Mesh… / Light / Camera / Empty
+  return [
+    ...addonManager.getAddonMenuEntries(),
+    Menu.SEP,
+    'light.new()|Light',
+    'object.add_camera()|Camera',
+    'object.add_empty()|Empty',
+  ]
 }
 
 /**
@@ -49,6 +69,66 @@ export function spawnAddMenu(ctx) {
   } catch (error) {
     util.print_stack(error)
     ctx.warning('Could not open the Add menu')
+  }
+}
+
+/**
+ * When a workspace tab is activated, nudge the scene into the mode Blender
+ * users expect for that workspace (docs → Workspaces).
+ */
+export function applyWorkspaceToolMode(ctx, workspaceName) {
+  const scene = ctx?.scene
+  const prop = scene?.constructor?.toolModeProp
+  if (!scene || !prop?.values) return
+
+  const available = getAvailableToolModes(ctx)
+  const name = String(workspaceName || '')
+  let targetKey = 'object'
+  if (/sculpt/i.test(name) && available.some((mode) => mode.name === 'sculptcore')) {
+    targetKey = 'sculptcore'
+  } else if (/model/i.test(name)) {
+    targetKey = available.find((mode) => mode.editMenuLabel === 'Mesh')?.name ?? 'object'
+  } else if (/layout/i.test(name) || !name || /^screen/i.test(name)) {
+    targetKey = 'object'
+  } else if (/script/i.test(name)) {
+    targetKey = 'object'
+  }
+
+  const idx = prop.values[targetKey]
+  if (idx === undefined || scene.toolmode_i === idx) return
+  scene.switchToolMode(idx)
+  window.redraw_viewport?.(true)
+}
+
+/**
+ * Blender Ctrl-Tab — pick Object / Sculpt / Edit (LeafMesh) / Box Model.
+ * docs.blender.org → Modes
+ */
+export function spawnModeSwitchMenu(ctx) {
+  const scene = ctx?.scene
+  const prop = scene?.constructor?.toolModeProp
+  if (!scene || !prop?.values) return
+
+  const entries = []
+  const add = (key, label) => {
+    if (!(key in prop.values)) return
+    entries.push([
+      label,
+      () => {
+        scene.switchToolMode(prop.values[key])
+        window.redraw_viewport?.(true)
+      },
+    ])
+  }
+
+  for (const mode of getAvailableToolModes(ctx)) add(mode.name, mode.uiname)
+
+  if (entries.length === 0) return
+  try {
+    const menu = createMenu(ctx, 'Mode', entries)
+    startMenu(menu, ctx.screen.mpos[0], ctx.screen.mpos[1])
+  } catch (error) {
+    console.warn('Could not open the Mode menu', error)
   }
 }
 
@@ -188,7 +268,7 @@ MenuBarEditor {
     def.push([
       'Redo',
       () => {
-        getAppState().toolstack.undo()
+        getAppState().toolstack.redo()
       },
       'Ctrl+Shift+Z',
       Icons.REDO,
@@ -256,13 +336,6 @@ MenuBarEditor {
       'app.export_ply()|Export Stanford (.ply)',
     ]
 
-    fileMenu.push(Menu.SEP, [
-      'Guide',
-      () => {
-        window.open('/docs', '_blank', 'noopener')
-      },
-    ])
-
     // Only the NW.js shell owns a window to close; the browser build has no Exit.
     if (window.haveNwjs) {
       fileMenu.push(Menu.SEP, [
@@ -281,12 +354,7 @@ MenuBarEditor {
 
     this.buildEditMenu()
 
-    let tools = [
-      'view3d.view_selected()',
-      //"light.new(position='cursor')",
-    ]
-
-    // Dynamically generated menu
+    // Dynamically generated menu — Blender's Shift+A sibling.
     const addMenu = menubar.menu('Add', ['light.new()'])
     addMenu._build_menu = function () {
       if (this._menu?.parentNode !== undefined) {
@@ -298,19 +366,145 @@ MenuBarEditor {
       return this._menu
     }
 
-    menubar.menu('Session', [
+    menubar.menu('View', [
+      'view3d.view_selected()',
+      Menu.SEP,
       [
-        'Save Default File  ',
+        'Toggle Grid Floor',
         () => {
-          console.log('saving default file')
+          const v3d = this.ctx?.view3d
+          if (!v3d) return
+          v3d.flag ^= View3DFlags.SHOW_GRID
+          window.redraw_viewport?.(true)
+        },
+        'Shift+Z',
+      ],
+      [
+        'Toggle 3D Cursor',
+        () => {
+          const v3d = this.ctx?.view3d
+          if (!v3d) return
+          v3d.flag ^= View3DFlags.SHOW_CURSOR
+          window.redraw_viewport?.(true)
+        },
+      ],
+      [
+        'Toggle Camera View Frame',
+        () => {
+          const v3d = this.ctx?.view3d
+          if (!v3d) return
+          v3d.flag ^= View3DFlags.SHOW_CAMERA_VIEW
+          window.redraw_viewport?.(true)
+        },
+      ],
+      [
+        'Toggle Rendered Preview',
+        () => {
+          const v3d = this.ctx?.view3d
+          if (!v3d) return
+          v3d.flag ^= View3DFlags.SHOW_RENDER
+          window.redraw_viewport?.(true)
+        },
+      ],
+      Menu.SEP,
+      [
+        'Wireframe',
+        () => {
+          const v3d = this.ctx?.view3d
+          if (!v3d) return
+          v3d.flag &= ~View3DFlags.SHOW_RENDER
+          v3d.drawmode = DrawModes.WIRE
+          window.redraw_viewport?.(true)
+        },
+        'Z',
+      ],
+      [
+        'Solid',
+        () => {
+          const v3d = this.ctx?.view3d
+          if (!v3d) return
+          v3d.flag &= ~View3DFlags.SHOW_RENDER
+          v3d.drawmode = DrawModes.SOLID
+          window.redraw_viewport?.(true)
+        },
+      ],
+      [
+        'Material Preview',
+        () => {
+          const v3d = this.ctx?.view3d
+          if (!v3d) return
+          v3d.flag &= ~View3DFlags.SHOW_RENDER
+          v3d.drawmode = DrawModes.TEXTURED
+          window.redraw_viewport?.(true)
+        },
+      ],
+      [
+        'Rendered',
+        () => {
+          const v3d = this.ctx?.view3d
+          if (!v3d) return
+          v3d.flag |= View3DFlags.SHOW_RENDER
+          window.redraw_viewport?.(true)
+        },
+      ],
+      Menu.SEP,
+      ['Front', () => this.ctx?.view3d?.viewAxis?.(1, 1), 'Numpad 1'],
+      ['Right', () => this.ctx?.view3d?.viewAxis?.(0, 1), 'Numpad 3'],
+      ['Top', () => this.ctx?.view3d?.viewAxis?.(2, 1), 'Numpad 7'],
+      [
+        'Toggle Perspective/Orthographic',
+        () => {
+          const v3d = this.ctx?.view3d
+          if (!v3d) return
+          v3d.cameraMode ^= 1
+          window.redraw_viewport?.(true)
+        },
+        'Numpad 5',
+      ],
+    ])
+
+    menubar.menu('Object', [
+      "object.toggle_select_all(mode='AUTO')|Select All",
+      "object.toggle_select_all(mode='SUB')|Deselect All",
+      'object.select_box()|Box Select',
+      Menu.SEP,
+      'object.delete_selected()|Delete',
+    ])
+
+    menubar.menu('Window', [
+      [
+        'Save Startup File',
+        () => {
           getAppState().saveStartupFile()
         },
       ],
       [
-        'Clear Default File  ',
+        'Load Factory Settings',
         () => {
-          console.log('saving default file')
           getAppState().clearStartupFile()
+        },
+      ],
+      Menu.SEP,
+      [
+        'New Workspace',
+        () => {
+          this._on_tab_change({id: 'maketab'})
+        },
+      ],
+    ])
+
+    menubar.menu('Help', [
+      [
+        'Manual',
+        () => {
+          window.open('/docs', '_blank', 'noopener')
+        },
+        'F1',
+      ],
+      [
+        'About VOID·STUDIO',
+        () => {
+          this.ctx?.message?.('VOID·STUDIO — Blender-style authoring for VOID·SPACE')
         },
       ],
     ])
@@ -331,7 +525,8 @@ MenuBarEditor {
 
     strip.noteframe()
 
-    //this.makeScreenSwitcher(this.container);
+    // Workspace tabs — Blender's Layout / Modeling / … switcher.
+    this.makeScreenSwitcher(strip)
 
     this.setCSS()
     this.flushUpdate()
@@ -343,15 +538,18 @@ MenuBarEditor {
 
   onFileLoad() {
     super.onFileLoad()
-    //this.rebuildScreenSwitcher();
+    this.rebuildScreenSwitcher()
   }
 
   rebuildScreenSwitcher() {
     if (this.tabs !== undefined) {
       this.tabs.remove()
+      this.tabs = undefined
     }
 
-    //this.makeScreenSwitcher(this.container);
+    if (this._strip) {
+      this.makeScreenSwitcher(this._strip)
+    }
   }
 
   _on_tab_change(tab) {
@@ -385,6 +583,10 @@ MenuBarEditor {
 
       if (sblock !== undefined) {
         this.ctx.state.switchScreen(sblock)
+        // Blender workspaces imply a mode focus (Layout/Modeling → Object,
+        // Sculpting → Sculpt). Apply after the screen swap so the viewport
+        // header matches the tab the Creator just chose.
+        applyWorkspaceToolMode(this.ctx, sblock.name)
       } else {
         console.log('failed to load screen', tab.id, tab)
       }
@@ -393,10 +595,15 @@ MenuBarEditor {
 
   _makeSwitcherHash() {
     let ret = ''
-    for (let k of getAppState().datalib.screen) {
-      ret += k + '|'
+    try {
+      const lib = getAppState()?.datalib?.screen
+      if (!lib) return ''
+      for (let k of lib) {
+        ret += k + '|'
+      }
+    } catch {
+      return ''
     }
-
     return ret
   }
 
@@ -404,27 +611,30 @@ MenuBarEditor {
     let tabs = (this.tabs = container.tabs())
 
     this._switcher_key = this._makeSwitcherHash()
-    //console.log("rebuilding screen switcher tabs");
 
     tabs.onchange = (tab) => {
       this._on_tab_change(tab)
     }
 
-    let lib = this.ctx.datalib.getLibrary('screen')
+    let lib = this.ctx?.datalib?.getLibrary?.('screen')
+    if (!lib) {
+      this._ignore_tab_change = false
+      return
+    }
 
     this._ignore_tab_change = true
 
     for (let sblock of lib) {
-      let screen = sblock.screen
-
-      let tab = tabs.tab(sblock.name, sblock.lib_id)
+      const raw = sblock.name || ''
+      const name = !raw || raw === 'screen' || raw === 'Screen' || /^Screen\d*$/i.test(raw) ? 'Layout' : raw
+      let tab = tabs.tab(name, sblock.lib_id)
 
       if (sblock === lib.active) {
         tabs.setActive(tab)
       }
     }
 
-    let tab = tabs.tab('+', 'maketab')
+    tabs.tab('+', 'maketab')
     this._ignore_tab_change = false
   }
 
@@ -437,9 +647,13 @@ MenuBarEditor {
     super.update()
 
     if (this.ctx?.toolmode?.constructor && this.ctx.toolmode.constructor.name !== this._last_toolmode) {
-      console.warn('Rebuilding edit menu')
       this._last_toolmode = this.ctx.toolmode.constructor.name
       this.buildEditMenu()
+    }
+
+    const switcherKey = this._makeSwitcherHash()
+    if (this.tabs && switcherKey !== this._switcher_key) {
+      this.rebuildScreenSwitcher()
     }
 
     if (this.minSize[1] !== this.menuSize) {

@@ -1,23 +1,28 @@
 import {
   Area,
+  AreaFlags,
   Container,
   DataAPI,
   IAreaDef,
   LastToolPanel,
+  Menu,
   nstructjs,
   Number3,
+  PanelFlags,
   PanelManager,
   PanelSides,
+  RegionMode,
   util,
 } from '../../path.ux/scripts/pathux'
 
+import {ViewportNavigation} from './viewport_navigation'
 import {spawnToolSearchMenu} from '../editor_base'
-import {spawnAddMenu} from '../menu/MainMenu.js'
+import {spawnAddMenu, spawnModeSwitchMenu} from '../menu/MainMenu.js'
 import {getAppState, peekAppState} from '../../core/app_instance'
 
 import {getBlueMask} from '../../shadernodes/shader_lib'
 
-import {ToolMode} from './view3d_toolmode'
+import {ToolMode, getAvailableToolModes} from './view3d_toolmode'
 
 import './transform/all'
 import './tools/tools'
@@ -119,7 +124,7 @@ export function initWebGL(state = peekAppState()) {
   canvas.style['height'] = h + 'px'
   canvas.style['position'] = 'absolute'
   canvas.style.zIndex = '-2'
-  canvas.style['backgroundColor'] = '#08080a'
+  canvas.style['backgroundColor'] = '#393939'
 
   canvas.dpi = dpi
 
@@ -271,6 +276,7 @@ export class View3D<OPT extends {started?: true | false} = {}> extends Editor {
   glPos: Vector2
   camera: Camera
   activeCamera: Camera
+  _modeContextKey = ''
   _last_selectmode: number
   transformSpace: number
   renderEngine: OptionalIfNot<RenderEngine, OPT['started']>
@@ -378,7 +384,7 @@ View3D {
 
     this.drawlines = []
 
-    this.camera.pos = new Vector3([20, 0, 10])
+    this.camera.pos = new Vector3([7, -7, 5])
     this.camera.target = new Vector3([0, 0, 0])
 
     this._select_transparent = false
@@ -393,7 +399,7 @@ View3D {
     this.camera.far = 10000.0
     this.camera.fovy = 50.0
 
-    this.drawmode = DrawModes.TEXTURED
+    this.drawmode = DrawModes.SOLID
   }
 
   get cursor3D() {
@@ -707,6 +713,10 @@ View3D {
 
   defineKeyMap() {
     this.keymap = new KeyMap([
+      new HotKey('I', [], () => {
+        if (this.ctx.toolmode?.constructor.toolModeDefine().name === 'object')
+          this.ctx.api.execTool(this.ctx, 'object.workflow(action=KEY_INSERT)')
+      }),
       new HotKey('G', [], 'view3d.translate()'),
       // `R` was only bound inside the object toolmode's own map, so rotate did
       // nothing in every other mode while `G`/`S` worked.
@@ -714,6 +724,10 @@ View3D {
       new HotKey('S', [], 'view3d.scale()'),
       new HotKey('.', [], 'view3d.view_selected()'),
 
+      // Blender: F3 opens Menu Search; Space also opens tool search here for discoverability.
+      new HotKey('F3', [], () => {
+        spawnToolSearchMenu(this.ctx)
+      }),
       new HotKey('Space', [], () => {
         spawnToolSearchMenu(this.ctx)
       }),
@@ -725,6 +739,17 @@ View3D {
         spawnAddMenu(this.ctx)
       }),
 
+      // Deletion follows the active editing domain; never delete an object
+      // as a fallback when its mesh mode lacks an element-delete operation.
+      ...(['X', 'Delete'] as const).map((key) => new HotKey(key, [], () => {
+        const mode = this.ctx.toolmode
+        const tool = mode?.constructor.toolModeDefine().name === 'object'
+          ? 'object.delete_selected()'
+          : mode?.constructor.deleteTool()
+        if (tool) this.ctx.api.execTool(this.ctx, tool)
+        else this.ctx.warning('Element deletion is unavailable in this mode. Switch to Object Mode to delete the object.')
+      })),
+
       // Blender's Tab: toggle between Object Mode and Edit/Sculpt Mode
       new HotKey('Tab', [], () => {
         const scene = this.ctx?.scene as any
@@ -734,43 +759,127 @@ View3D {
         const isObjectMode = scene.toolmode_i === objectIdx
 
         if (isObjectMode) {
-          const ob = scene.objects?.active || this.ctx?.object
-          const kind = ob?.data?.constructor?.dataDefine?.()?.id || ob?.data?.name || ''
-          if (kind === 'leafmesh' && 'leafmesh' in toolModeProp.values) {
-            scene.switchToolMode(toolModeProp.values['leafmesh'])
-          } else if (kind === 'litemesh' || kind === 'sculptcore') {
-            const target = toolModeProp.values['sculptcore'] ?? toolModeProp.values['leafmesh']
-            if (target !== undefined) scene.switchToolMode(target)
-          } else if ('leafmesh' in toolModeProp.values) {
-            scene.switchToolMode(toolModeProp.values['leafmesh'])
-          }
+          const mode = getAvailableToolModes(this.ctx).find((def) => def.editMenuLabel === 'Mesh')
+          if (mode) scene.switchToolMode(mode.name)
         } else {
           scene.switchToolMode(objectIdx)
         }
         window.redraw_viewport(true)
       }),
+      // Blender Ctrl-Tab: mode pie / menu (Object, Sculpt, Edit, Box Model).
+      new HotKey('Tab', ['ctrl'], () => {
+        spawnModeSwitchMenu(this.ctx)
+      }),
 
+      // Blender numpad views (also top-row 1/3/5/7 for keyboards without a pad).
       new HotKey('Key1', [], () => {
         this.viewAxis(1, 1)
       }),
+      new HotKey('Num1', [], () => {
+        this.viewAxis(1, 1)
+      }),
       new HotKey('Key3', [], () => {
+        this.viewAxis(0, 1)
+      }),
+      new HotKey('Num3', [], () => {
         this.viewAxis(0, 1)
       }),
       new HotKey('Key5', [], () => {
         this.cameraMode ^= 1
         window.redraw_viewport(true)
       }),
+      new HotKey('Num5', [], () => {
+        this.cameraMode ^= 1
+        window.redraw_viewport(true)
+      }),
       new HotKey('Key7', [], () => {
+        this.viewAxis(2, 1)
+      }),
+      new HotKey('Num7', [], () => {
         this.viewAxis(2, 1)
       }),
       new HotKey('Key1', ['ctrl'], () => {
         this.viewAxis(1, -1)
       }),
+      new HotKey('Num1', ['ctrl'], () => {
+        this.viewAxis(1, -1)
+      }),
       new HotKey('Key3', ['ctrl'], () => {
+        this.viewAxis(0, -1)
+      }),
+      new HotKey('Num3', ['ctrl'], () => {
         this.viewAxis(0, -1)
       }),
       new HotKey('Key7', ['ctrl'], () => {
         this.viewAxis(2, -1)
+      }),
+      new HotKey('Num7', ['ctrl'], () => {
+        this.viewAxis(2, -1)
+      }),
+      new HotKey('Num0', [], () => {
+        // Blender Numpad 0 — Camera View frame cue.
+        this.flag ^= View3DFlags.SHOW_CAMERA_VIEW
+        window.redraw_viewport(true)
+      }),
+
+      // Blender: H hides selected objects; Alt+H unhides all.
+      new HotKey('H', [], () => {
+        const scene = this.ctx?.scene as any
+        if (!scene?.objects) return
+        for (const ob of scene.objects.selected?.editable ?? scene.objects) {
+          if (ob.flag & 1 /* SELECT */) ob.flag |= 2 /* HIDE */
+        }
+        window.redraw_viewport(true)
+      }),
+      new HotKey('H', ['alt'], () => {
+        const scene = this.ctx?.scene as any
+        if (!scene?.objects) return
+        for (const ob of scene.objects) {
+          ob.flag &= ~2 /* HIDE */
+        }
+        window.redraw_viewport(true)
+      }),
+
+      // Blender Z shading cycle: Wire → Solid → Material → Rendered → Wire.
+      // Rendered is View3DFlags.SHOW_RENDER (realtime engine), not a DrawModes value.
+      new HotKey('Z', [], () => {
+        if (this.flag & View3DFlags.SHOW_RENDER) {
+          this.flag &= ~View3DFlags.SHOW_RENDER
+          this.drawmode = DrawModes.WIRE
+        } else if (this.drawmode === DrawModes.WIRE) {
+          this.drawmode = DrawModes.SOLID
+        } else if (this.drawmode === DrawModes.SOLID) {
+          this.drawmode = DrawModes.TEXTURED
+        } else {
+          this.flag |= View3DFlags.SHOW_RENDER
+        }
+        window.redraw_viewport(true)
+      }),
+      // Shift+Z toggles the floor grid (Blender overlay).
+      new HotKey('Z', ['shift'], () => {
+        this.flag ^= View3DFlags.SHOW_GRID
+        window.redraw_viewport(true)
+      }),
+      // Alt+Z — X-Ray cue: force wire + keep solid selectable feel via FORCE_XRAY on draw.
+      new HotKey('Z', ['alt'], () => {
+        this.drawmode = this.drawmode === DrawModes.WIRE ? DrawModes.SOLID : DrawModes.WIRE
+        window.redraw_viewport(true)
+      }),
+
+      // Blender T / N: toggle Toolbar (left) and Sidebar (right).
+      new HotKey('T', [], () => {
+        this.panels?.toggleEdge('left')
+      }),
+      new HotKey('N', [], () => {
+        this.panels?.toggleEdge('right')
+      }),
+
+      // Blender O: toggle proportional editing.
+      new HotKey('O', [], () => {
+        const scene = this.ctx?.scene as any
+        if (!scene) return
+        scene.propEnabled = !scene.propEnabled
+        window.redraw_viewport(true)
       }),
     ])
 
@@ -874,8 +983,18 @@ View3D {
       this.header.remove()
     }
 
-    this.makeHeader(this.container)
+    const flags = this.flag
+    try {
+      this.flag |= AreaFlags.NO_SWITCHER
+      this.makeHeader(this.container, false)
+    } finally {
+      this.flag = flags
+    }
+    this.helppicker?.remove()
     const header = this.header!
+    header.noMarginsOrPadding()
+    header.style.cssText += ';height:30px;min-height:30px;max-height:30px;flex:0 0 30px;box-sizing:border-box;overflow-x:auto;overflow-y:hidden;background:#303030;align-items:center;gap:4px'
+
 
     //this.header.inherit_packflag |= PackFlags.SMALL_ICON;
     header.useIcons()
@@ -890,7 +1009,8 @@ View3D {
     the viewport. `addHeaderRow()` now targets the docked "Viewport Tools" panel
     (see definePanels), which is where Blender keeps the same controls.
     */
-    const row = header.row()
+    const row = header
+    row.inherit_packflag |= PackFlags.SMALL_ICON
     const toolmode = this.ctx.toolmode
 
     if (toolmode === undefined) {
@@ -918,41 +1038,128 @@ View3D {
 
     let strip
 
+    // Blender header: Object/Edit/Sculpt mode switcher first.
     strip = row.strip()
     strip.inherit_packflag |= PackFlags.HIDE_CHECK_MARKS
     strip.useIcons(true)
-    strip.prop('scene.toolmode')
+    const choices = getAvailableToolModes(this.ctx)
+    const currentMode = toolmode.constructor.toolModeDefine()
+    strip.menu(
+      currentMode.uiname,
+      choices.map((def) => [
+        def.uiname,
+        () => {
+          // Recheck context because selection may change while a popup is open.
+          if (!getAvailableToolModes(this.ctx).some((mode) => mode.name === def.name)) return
+          this.ctx.scene.switchToolMode(def.name)
+          window.redraw_viewport(true)
+        },
+      ])
+    )
 
+    // Blender 3D Viewport header menus (View / Select / Add / Object).
     strip = row.strip()
-    strip.iconbutton(Icons.UNDO, 'Undo', () => {
-      this.ctx.toolstack.undo()
-      window.redraw_viewport()
-    })
-
-    strip.iconbutton(Icons.REDO, 'Redo', () => {
-      this.ctx.toolstack.redo()
-      window.redraw_viewport()
-    })
+    strip.useIcons(false)
+    strip.menu('View', [
+      'view3d.view_selected()|Frame Selected',
+      Menu.SEP,
+      ['Front', () => this.viewAxis(1, 1), 'Numpad 1'],
+      ['Right', () => this.viewAxis(0, 1), 'Numpad 3'],
+      ['Top', () => this.viewAxis(2, 1), 'Numpad 7'],
+      [
+        'Toggle Perspective/Orthographic',
+        () => {
+          this.cameraMode ^= 1
+          window.redraw_viewport(true)
+        },
+        'Numpad 5',
+      ],
+      Menu.SEP,
+      [
+        'Toggle Grid Floor',
+        () => {
+          this.flag ^= View3DFlags.SHOW_GRID
+          window.redraw_viewport(true)
+        },
+        'Shift+Z',
+      ],
+      [
+        'Toggle 3D Cursor',
+        () => {
+          this.flag ^= View3DFlags.SHOW_CURSOR
+          window.redraw_viewport(true)
+        },
+      ],
+      ['Toggle Toolbar', () => this.panels?.toggleEdge('left'), 'T'],
+      ['Toggle Sidebar', () => this.panels?.toggleEdge('right'), 'N'],
+    ])
+    strip.menu('Select', toolmode.constructor.buildSelectMenu())
+    strip.menu('Add', [['Add…', () => spawnAddMenu(this.ctx), 'Shift+A']])
+    const modeActions = toolmode.constructor.buildEditMenu()
+    if (currentMode.editMenuLabel && modeActions.length) {
+      strip.menu(currentMode.editMenuLabel, modeActions)
+    } else {
+      strip.menu('Object', [
+        'object.delete_selected()|Delete',
+        Menu.SEP,
+        [
+          'Hide Selected',
+          () => {
+            const scene = this.ctx?.scene as any
+            if (!scene?.objects) return
+            for (const ob of scene.objects.selected) ob.flag |= 2
+            window.redraw_viewport(true)
+          },
+          'H',
+        ],
+        [
+          'Show Hidden',
+          () => {
+            const scene = this.ctx?.scene as any
+            if (!scene?.objects) return
+            for (const ob of scene.objects) ob.flag &= ~2
+            window.redraw_viewport(true)
+          },
+          'Alt+H',
+        ],
+      ])
+    }
 
     /*
-    The gizmo picker. `ToolMode.getTransformProp()` builds this enum from the
-    active mode's `transWidgets`, so a mode listing move/rotate/scale gets
-    Blender's three gizmo buttons here, and a mode listing none renders only the
-    "off" member rather than an empty control.
+    Blender T-toolbar: Move / Rotate / Scale (and Off) as a vertical icon rail.
+    `ToolMode.getTransformProp()` builds the enum from the active mode's
+    `transWidgets`.
     */
+    const toolStrip = toolHost.col()
+    toolStrip.useIcons(true)
+    toolStrip.inherit_packflag |= PackFlags.USE_ICONS | PackFlags.SMALL_ICON
+    toolStrip.packflag |= PackFlags.USE_ICONS | PackFlags.SMALL_ICON
+    toolStrip.style.alignItems = 'center'
+    toolStrip.prop('scene.tool.transformWidget')
+
+    // Mode-specific header chips (brush, radius, …) stay in the header strip;
+    // addHeaderRow() targets the narrow T-toolbar below the gizmo icons.
+    if (currentMode.name !== 'object') toolmode.constructor.buildHeader(row, this._makeToolmodeRow)
+
+    const spacer = row.row()
+    spacer.style.flex = '1 1 auto'
+    spacer.style.minWidth = '8px'
+
+    // Blender viewport shading buttons (Wire / Solid / Material).
     strip = row.strip()
     strip.useIcons(true)
-    strip.prop('scene.tool.transformWidget')
+    for (const mode of ['WIRE', 'SOLID', 'TEXTURED']) strip.prop(`view3d.drawmode[${mode}]`)
 
-    toolmode.constructor.buildHeader(row, this._makeToolmodeRow)
-
+    // Overlays strip — Blender header: grid, cursor, render preview.
     strip = row.strip()
+    strip.useIcons(true)
     strip.prop('view3d.flag[SHOW_GRID]')
+    strip.prop('view3d.flag[SHOW_CURSOR]')
     strip.prop('view3d.flag[SHOW_RENDER]')
+    strip.prop('view3d.flag[SHOW_CAMERA_VIEW]')
 
     strip = row.strip()
     strip.prop('scene.propEnabled')
-    strip.listenum('scene.propMode')
 
     this.setCSS()
     this.flushUpdate()
@@ -1068,49 +1275,105 @@ View3D {
   /** Dockable-panel catalog (path.ux dock system, see makePanels in init). */
   definePanels(panels: PanelManager<ViewContext>) {
     /*
-    Left-docked home for the active toolmode's `addHeaderRow()` rows — the
-    equivalent of Blender's tool/properties sidebar.
-
-    Those rows used to be appended to the header itself, so sculpt mode stacked
-    five of them and covered the top ~180px of the viewport with a wall of
-    unlabelled icons. The header is now one row (see `rebuildHeader`) and this
-    panel is where "everything else the mode needs" goes.
-
-    `build` is called eagerly by `applyDefaultLayout()` during `makePanels()`,
-    so `_toolmodeHost` is set before the first `rebuildHeader()` runs.
+    Blender's T-toolbar: a narrow icon rail on the left of the 3D View.
+    Tool *settings* (radius, strength, brush details) live in the header /
+    Properties → Active Tool — not in a 320px side panel that eats the viewport.
     */
     panels.panel({
       id     : 'viewport_tools',
-      title  : 'Viewport Tools',
+      title  : 'Toolbar',
       icon   : Icons.EDITOR_VIEW3D,
       dock   : 'left',
-      minSize: [320, undefined],
-      build  : (c) => {
+      minSize: [48, undefined],
+      flags  : PanelFlags.NO_FLOAT,
+      build: (c) => {
         const col = c.col()
-        // A toolmode row is a horizontal strip of icons; wrapping keeps a long
-        // one (sculptcore's mesh-operator set) inside the panel's width instead
-        // of overflowing it. `wrap()` is the typed setter for `flex-wrap`.
-        col.wrap()
-        col.inherit_packflag |= PackFlags.USE_ICONS
+        col.style['width'] = '40px'
+        col.style.maxWidth = '40px'
+        col.style.alignItems = 'center'
+        col.style['gap'] = '1px'
+        col.style['padding'] = '4px 0'
+        // Icon-only rail like Blender's T-toolbar (no text labels).
+        col.inherit_packflag |= PackFlags.USE_ICONS | PackFlags.SMALL_ICON
+        col.packflag |= PackFlags.USE_ICONS | PackFlags.SMALL_ICON
         this._toolmodeHost = col
       },
     })
 
-    // Wide enough for a slider or a labelled pair of buttons in a toolrow; the
-    // 225px region default clipped them mid-control. `definePanels` runs before
-    // `PanelManager.build()`, which is where a region's size is applied.
-    panels.regions.left.size = 320
+    panels.regions.left.size = 48
+
+    /*
+     * Blender Sidebar (N): Item / Tool / View (+ Adjust Last Operation).
+     * Rail mode shows one panel at a time via the right-edge icons — same
+     * muscle memory as Blender's vertical N-panel tabs.
+     * docs.blender.org → Editors → 3D Viewport → Sidebar
+     */
+    panels.panel({
+      id     : 'n_item',
+      title  : 'Item',
+      icon   : Icons.TRANSLATE,
+      dock   : 'right',
+      minSize: [240, undefined],
+      build: (c) => {
+        c.label('Transform')
+        c.prop('object.inputs["loc"].value')
+        c.prop('object.inputs["rot"].value')
+        c.prop('object.inputs["rotOrder"].value')
+        c.prop('object.inputs["scale"].value')
+        c.tool('object.apply_transform()')
+        c.pathlabel('object.name', 'Object')
+      },
+    })
+
+    panels.panel({
+      id     : 'n_tool',
+      title  : 'Tool',
+      icon   : Icons.EDITOR_VIEW3D,
+      dock   : 'right',
+      minSize: [240, undefined],
+      build: (c) => {
+        c.label('Active Tool')
+        c.button('Choose mode…', () => spawnModeSwitchMenu(this.ctx))
+        c.prop('scene.tool.transformWidget')
+        c.prop('scene.propEnabled')
+        c.prop('scene.propMode')
+        c.label('More tool settings: Properties → Active Tool.')
+      },
+    })
+
+    panels.panel({
+      id     : 'n_view',
+      title  : 'View',
+      icon   : Icons.VIEW_RAW,
+      dock   : 'right',
+      minSize: [240, undefined],
+      build: (c) => {
+        c.label('Viewport Display')
+        c.prop('view3d.drawmode')
+        c.prop('view3d.cameraMode')
+        c.label('Overlays')
+        c.prop('view3d.flag[SHOW_GRID]')
+        c.prop('view3d.flag[SHOW_CURSOR]')
+        c.prop('view3d.flag[SHOW_RENDER]')
+        c.prop('view3d.flag[SHOW_CAMERA_VIEW]')
+        c.label('Z cycles Wire → Solid → Material → Rendered')
+      },
+    })
 
     panels.panel({
       id     : 'last_command',
-      title  : 'Last Command',
+      title  : 'Last',
+      icon   : Icons.REDO,
       dock   : 'right',
-      minSize: [225, undefined],
+      minSize: [240, undefined],
       build: (c) => {
+        c.label('Adjust Last Operation')
         const last = document.createElement('last-tool-panel-x') as LastToolPanel<ViewContext>
         c.add(last)
       },
     })
+
+    panels.regions.right.size = 240
   }
 
   /** True when node is one of the empty dock-frame skeleton containers
@@ -1143,6 +1406,17 @@ View3D {
     super.init()
 
     this.makePanels(this.container)
+    this._navigation = new ViewportNavigation(this)
+
+    // Blender N-panel: edge rail, collapsed until opened (Last Command / Adjust Last).
+    try {
+      this.panels?.setEdgeMode('right', RegionMode.RAIL)
+      if (this.panels?.regions?.right) {
+        if (!this.panels.regions.right.railCollapsed) this.panels.toggleEdge('right')
+      }
+    } catch {
+      // older panel manager builds without rail helpers
+    }
 
     /* Prevent pinch zooming. */
     this.addEventListener('pointerdown', (e) => {
@@ -1177,6 +1451,12 @@ View3D {
     this.doOnce(this.rebuildHeader)
 
     const on_mousewheel = (e: WheelEvent) => {
+      if (this.header && e.composedPath().includes(this.header)) {
+        this.header.scrollLeft += e.deltaX || e.deltaY
+        e.preventDefault()
+        return
+      }
+      if (uiHasFocus(e)) return
       e.preventDefault()
 
       let df = e.deltaY / 100.0
@@ -1197,7 +1477,7 @@ View3D {
 
     this.addEventListener('wheel', on_mousewheel)
 
-    const uiHasFocus = (e: PointerEvent | TouchEvent) => {
+    const uiHasFocus = (e: PointerEvent | TouchEvent | WheelEvent) => {
       if (haveModal()) {
         return true
       }
@@ -1205,8 +1485,8 @@ View3D {
         return false
       }
 
-      const x = e instanceof PointerEvent ? e.x : e.touches[0].pageX
-      const y = e instanceof PointerEvent ? e.y : e.touches[0].pageY
+      const x = e instanceof TouchEvent ? e.touches[0].pageX : e.clientX
+      const y = e instanceof TouchEvent ? e.touches[0].pageY : e.clientY
       const node = this.pickElement(x, y)
 
       if (node === this || node === this.overdraw) {
@@ -1429,8 +1709,21 @@ View3D {
       this.ctx.screen.regenBorders()
     }
 
+    const modes = getAvailableToolModes(this.ctx)
+    const scene = this.ctx.scene
+    if (scene && !modes.some((def) => def.name === scene.toolmode?.constructor.toolModeDefine().name)) {
+      scene.switchToolMode('object')
+    }
+    const modeKey = modes.map((def) => def.name).join(':')
+    if (modeKey !== this._modeContextKey) {
+      this._modeContextKey = modeKey
+      this.rebuildHeader()
+    }
+
     this.busSubscribe()
     this.checkCamera()
+
+    this._navigation?.update()
 
     // Keep the ground grid covering the view as the camera orbits and zooms.
     this.updateGridExtent()
@@ -1459,11 +1752,10 @@ View3D {
   /**
    * Preferred world-space cell size, in scene units.
    *
-   * 0.5 is what the shipped fixed grid used, so the default camera keeps the
-   * exact lattice it had. Coverage is grown by adding lines, not by coarsening
-   * this, which is what keeps a 1-unit primitive readable when zoomed out.
+   * One scene unit gives the startup cube a readable modeling grid. Coverage
+   * grows by adding lines, with bounded coarsening at large orbit distances.
    */
-  static GRID_CELL = 0.5
+  static GRID_CELL = 1.0
 
   /**
    * Upper bound on lines per direction.
@@ -1475,6 +1767,8 @@ View3D {
   static GRID_MAX_STEPS = 192
 
   /** Half-extent the current `grid` mesh was built for; 0 until first built. */
+  private _navigation?: ViewportNavigation
+
   _gridRadius = 0
 
   /** Cell size the current `grid` mesh was built with; 0 until first built. */
@@ -1542,17 +1836,18 @@ View3D {
     for (let i = 0; i <= steps * 2; i++) {
       const t = -half + i * cell
 
-      let d = 0.8
-      if (i % 8 == 0) d = 0.3
-      else if (i % 4 == 0.0) d = 0.6
-      else if (i % 2 == 0.0) d = 0.7
+      // Subtle grid hierarchy on a neutral viewport; axes carry the color.
+      let d = 0.71
+      if (i % 8 === 0) d = 0.62
+      else if (i % 4 === 0) d = 0.66
+      else if (i % 2 === 0) d = 0.69
 
       const clr = new Vector4([1.0 - d, 1.0 - d, 1.0 - d, 1.0])
       const onAxis = i === steps
 
       if (onAxis) {
         clr[1] = clr[2] = 0.0
-        clr[0] = 1.0
+        clr[0] = 0.55
       }
       let line = mesh.line(new Vector3([-half, t, 0.0]), new Vector3([half, t, 0.0]))
       line.colors(clr, clr)
@@ -1560,7 +1855,7 @@ View3D {
 
       if (onAxis) {
         clr[0] = clr[2] = 0.0
-        clr[1] = 1.0
+        clr[1] = 0.45
       }
       line = mesh.line(new Vector3([t, -half, 0.0]), new Vector3([t, half, 0.0]))
       line.colors(clr, clr)
@@ -1693,7 +1988,7 @@ View3D {
       return
     }
 
-    if (this.flag & View3DFlags.USE_CTX_CAMERA) {
+    if (this.flag & (View3DFlags.USE_CTX_CAMERA | View3DFlags.SHOW_CAMERA_VIEW)) {
       this.activeCamera = this.ctx.camera || this.camera
     } else {
       this.activeCamera = this.camera
@@ -1711,7 +2006,7 @@ View3D {
     startedThis.push_ctx_active()
     startedThis.viewportDraw_intern()
 
-    if (startedThis.flag & View3DFlags.SHOW_CAMERA_VIEW) {
+    if (!isWebGPU() && startedThis.flag & View3DFlags.SHOW_CAMERA_VIEW) {
       startedThis.drawCameraView()
     }
 
@@ -1846,7 +2141,9 @@ View3D {
       }
     }
 
-    if (!drewGpu) {
+    // An initializing WebGPU canvas has no WebGL context to fall back to.
+    // primeWebGpuViewport schedules a redraw once its device is ready.
+    if (!isWebGPU() && !drewGpu) {
       try {
         this.drawViewportWebGl()
       } catch (err) {
@@ -1870,12 +2167,12 @@ View3D {
     gl.depthMask(true)
 
     // Clear viewport background (graphite palette #08080a)
-    gl.clearColor(0.031, 0.031, 0.039, 1.0)
+    gl.clearColor(0.224, 0.224, 0.224, 1.0)
     gl.clearDepth(1.0)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
     // 1. Ground Grid
-    if ((this.flag & View3DFlags.SHOW_GRID) && this.grid) {
+    if (this.flag & View3DFlags.SHOW_GRID && this.grid) {
       const lineProg = view3d_shaders.Shaders.BasicLineShader
       if (lineProg) {
         const uniforms = {
@@ -2104,14 +2401,34 @@ View3D {
     }
 
     vstruct.flags('flag', 'flag', View3DFlags, 'View3D Flags').on('change', onchange).icons({
-      SHOW_RENDER: Icons.RENDER,
-      SHOW_GRID  : Icons.SHOW_GRID_FLOOR,
+      SHOW_RENDER     : Icons.RENDER,
+      SHOW_GRID       : Icons.SHOW_GRID_FLOOR,
+      SHOW_CURSOR     : Icons.CURSOR_ARROW,
+      SHOW_CAMERA_VIEW: Icons.VIEW_RAW,
     })
 
     vstruct.enum('cameraMode', 'cameraMode', CameraModes, 'Camera Modes').on('change', onchange).icons({
       PERSPECTIVE : Icons.PERSPECTIVE,
       ORTHOGRAPHIC: Icons.ORTHOGRAPHIC,
     })
+
+    // Blender viewport shading (Wireframe / Solid / Material Preview).
+    vstruct
+      .enum('drawmode', 'drawmode', {BOUNDS: DrawModes.BOUNDS, WIRE: DrawModes.WIRE, SOLID: DrawModes.SOLID, TEXTURED: DrawModes.TEXTURED}, 'Shading')
+      .uiNames({
+        WIRE    : 'Wireframe',
+        SOLID   : 'Solid',
+        TEXTURED: 'Material Preview',
+        BOUNDS  : 'Bounds',
+      })
+      .icons({
+        WIRE    : Icons.DRAW_SCULPT_WIREFRAME,
+        SOLID   : Icons.DRAW_SCULPT_FLAT,
+        TEXTURED: Icons.RENDER,
+        BOUNDS  : Icons.BOX_MODEL,
+      })
+      .on('change', onchange)
+
     return vstruct
   }
 

@@ -1,3 +1,4 @@
+import {buildStudioIconSvg} from './voidspace/studio_icons.js'
 import cconst2 from './path.ux/scripts/config/const.js'
 import {default as config, loadConfigLocal} from './config/config.js'
 import {IconManager, setBaseUnit, setIconManager, setMetric, UIBase} from './path.ux/scripts/pathux.js'
@@ -14,7 +15,7 @@ export var iconmanager
  *        The NW.js shell needs the markup: its window.html sits one directory
  *        down, so resolvePath() would aim at `nwjs/assets/`.
  */
-export function setupIconsSvg(iconSheetUrl) {
+export async function setupIconsSvg(iconSheetUrl) {
   const existingSheet = document.querySelector('#iconsheet')
   let iconsheet
 
@@ -28,11 +29,30 @@ export function setupIconsSvg(iconSheetUrl) {
     iconsheet.src = resolvePath('assets/iconsheet.svg')
   }
 
+  // Resolve and decode the sheet before any widgets paint their first frame.
+  // Explicit host-provided sheets retain their artwork.
+  if (iconSheetUrl === undefined) {
+    try {
+      const response = await fetch(iconsheet.src)
+      if (!response.ok) throw new Error(`Icon sheet: ${response.status}`)
+      const source = buildStudioIconSvg(await response.text())
+      const image = new Image()
+      image.src = URL.createObjectURL(new Blob([source], {type: 'image/svg+xml'}))
+      await image.decode()
+      iconsheet = image
+    } catch (error) {
+      console.warn('Using the original editor icons', error)
+      await iconsheet.decode()
+    }
+  } else {
+    await iconsheet.decode()
+  }
+
   iconmanager = new IconManager(
     [iconsheet, iconsheet, iconsheet, iconsheet],
     [
-      [32, 22],
-      [32, 25],
+      [32, 18],
+      [32, 20],
       [32, 38],
       [32, 55],
     ],
@@ -67,5 +87,5 @@ export async function setupPathux(options = {}) {
   setBaseUnit('meter')
   setMetric(true)
 
-  setupIconsSvg(options.iconSheetUrl)
+  await setupIconsSvg(options.iconSheetUrl)
 }

@@ -23,11 +23,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { parseBody } from '../../lib/http';
 import { answerLessonQuestion } from './mentor';
 import type { ApiEnv } from '../../env';
-import {
-  generateLessonDraft,
-  generateQuestionsFromNotes,
-  questionsFromNotes,
-} from './generator';
+import { generateLessonDraft, generateQuestionsFromNotes, questionsFromNotes } from './generator';
 import { TextAiError } from '@void-space/studio-ai/text';
 
 const lessonParamsSchema = z.object({ id: z.string().uuid() });
@@ -108,7 +104,9 @@ function subjectDraft(title: string, source: string) {
     .split(/(?<=[.!?])\s+|\n+/)
     .map((line) => line.trim())
     .filter((line) => line.length >= 12);
-  const outline = (sentences.length > 0 ? sentences : [notes]).slice(0, 6).map((line) => line.slice(0, 1000));
+  const outline = (sentences.length > 0 ? sentences : [notes])
+    .slice(0, 6)
+    .map((line) => line.slice(0, 1000));
   const recalled = (outline[0] ?? notes).slice(0, 280);
   return {
     title: title.slice(0, 200),
@@ -226,7 +224,8 @@ export async function learningRoutes(
           generated = result.content;
           generation = result.generation;
         } catch {
-          if (input.sourceText && input.title) generated = subjectDraft(input.title, input.sourceText);
+          if (input.sourceText && input.title)
+            generated = subjectDraft(input.title, input.sourceText);
           generation = {
             mode: 'template',
             reason:
@@ -728,6 +727,11 @@ export async function learningRoutes(
         score: credential.attempt.score,
         stage: credential.attempt.stage,
         lessonTitle: credential.attempt.lesson.title,
+        mintStatus: credential.mintStatus,
+        tokenId: credential.tokenId?.toString() ?? null,
+        contractAddress: credential.contractAddress,
+        txHash: credential.txHash,
+        mintedAt: credential.mintedAt?.toISOString() ?? null,
       },
     };
   });

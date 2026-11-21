@@ -1,8 +1,16 @@
 # VOID·SPACE platform — resume and remaining work
 
-Last updated: 2026-10-29 (Asia/Kolkata)
+Last updated: 2026-11-19 (Asia/Kolkata)
+
+**New (2026-11-19):** Structured Scene Synthesis — Phases 1–4. See
+[STRUCTURED-SCENE-SYNTHESIS.md](./STRUCTURED-SCENE-SYNTHESIS.md). Copilot:
+**Surface mesh** vs **Structured scene** (intent → rooms/furniture; hybrid Meshy
+shell). Domain packs: house, apartment, product, vehicle, outdoor with library
+kits. Engine: `domain_packs` / `inferSceneIntent` / `assembleStructuredScene`.
 
 ## Current repair status — read this first
+
+Latest follow-up: [21 November Void Space feature integration](./VOID-SPACE-FEATURE-READINESS-2026-11-21.md). Live payments are excluded. Read its feature matrix and current verification results before relying on the historical inventory below.
 
 Latest: [18 November Void Space verification](./VOID-SPACE-VERIFICATION-2026-11-18.md). It supersedes the older repair status below where features have advanced and records current test evidence, responsive checks and unresolved production integration/security work.
 

@@ -102,12 +102,15 @@ export default function CampusPage() {
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                aria-label="Program title"
+                maxLength={200}
                 placeholder="Program title"
                 className="rounded-control border border-hairline bg-surface px-3 py-2 text-sm text-ink"
               />
               <input
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
+                aria-label="Program slug"
                 placeholder="program-slug"
                 className="rounded-control border border-hairline bg-surface px-3 py-2 text-sm text-ink"
               />
@@ -115,6 +118,7 @@ export default function CampusPage() {
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              aria-label="Program description"
               placeholder="What does the learner achieve?"
               className="min-h-20 w-full rounded-control border border-hairline bg-surface p-3 text-sm text-ink"
             />
@@ -177,7 +181,10 @@ export default function CampusPage() {
                 <ol className="space-y-2 text-sm text-ink-dim">
                   {course.lessons.map((lesson, index) => (
                     <li key={lesson.id} className="flex items-baseline justify-between gap-3">
-                      <a className="text-ink hover:text-brand" href={`/console/lessons?lesson=${lesson.id}`}>
+                      <a
+                        className="text-ink hover:text-brand"
+                        href={`/console/lessons?lesson=${lesson.id}`}
+                      >
                         {index + 1}. {lesson.title}
                       </a>
                       <span className="shrink-0 text-xs text-ink-faint">

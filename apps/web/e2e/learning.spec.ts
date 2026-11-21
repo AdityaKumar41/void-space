@@ -80,12 +80,11 @@ test('author reviews a draft, explores its saved model and joins the lesson room
     expect(roomResponse.status()).toBe(201);
     roomId = (await roomResponse.json()).room.id;
     expect((await page.request.post(`/api/v1/spatial/rooms/${roomId}/live`)).status()).toBe(200);
-    await page.getByRole('link', { name: 'Spaces', exact: true }).click();
-    await page
-      .getByRole('heading', { name, exact: true })
-      .locator('..')
-      .getByRole('button', { name: 'Join space' })
-      .click();
+    await page.context().clearCookies();
+    await page.goto(`/console/spaces?room=${roomId}`);
+    await expect(page).toHaveURL(new RegExp(`/login\\?next=`));
+    expect(new URL(page.url()).searchParams.get('next')).toBe(`/console/spaces?room=${roomId}`);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(
       page.getByText('Connected · presence refreshes every 20 seconds', { exact: false }),
     ).toBeVisible();
@@ -109,6 +108,9 @@ test('author reviews a draft, explores its saved model and joins the lesson room
       .toBe(2);
     await page.screenshot({ path: '/tmp/void-learning-room.png', fullPage: true });
     await page.getByRole('button', { name: 'Leave space', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Shared learning spaces' })).toBeVisible();
+    await expect(page).not.toHaveURL(/room=/);
+    await page.reload();
     await expect(page.getByRole('heading', { name: 'Shared learning spaces' })).toBeVisible();
     const room = await page.request.get(`/api/v1/spatial/rooms/${roomId}`);
     expect((await room.json()).room.participants).toHaveLength(0);

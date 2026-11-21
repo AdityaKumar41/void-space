@@ -1,3 +1,4 @@
+import {registerDeformationSource, unregisterDeformationSource, type DeformationProvider} from '../core/deformation_sources'
 import {
   nstructjs,
   util,
@@ -413,6 +414,11 @@ export class AddonAPI<T> {
   }
 
   /** Register the UV source for a data kind. Declared ahead of its implementors; see §11. */
+  registerDeformationSource(provider: DeformationProvider): void {
+    registerDeformationSource(provider)
+    this._undoRegistrations.push(() => unregisterDeformationSource(provider.kindId))
+  }
+
   registerUVSource(provider: IUVSourceProvider): void {
     registerUVSource(provider)
     this._undoRegistrations.push(() => unregisterUVSource(provider.kindId))

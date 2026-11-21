@@ -5,6 +5,7 @@ import { cookieHeader, createTestApp, DEMO, DEMO_TENANT_IDS, login, type TestApp
 let context: TestApp;
 let cookie: string;
 let lessonId: string;
+let answers: Record<string, number>;
 
 beforeAll(async () => {
   context = await createTestApp();
@@ -39,11 +40,12 @@ beforeAll(async () => {
   ).lesson.questions;
   // Generated fixture lessons always use the approved first option; the server
   // computes the score and resulting credential.
+  answers = Object.fromEntries(questions.map((question) => [question.id, 0]));
   await context.app.inject({
     method: 'POST',
     url: `/api/v1/lessons/${lessonId}/attempts`,
     headers: { cookie },
-    payload: { answers: Object.fromEntries(questions.map((question) => [question.id, 0])) },
+    payload: { answers },
   });
 });
 afterAll(async () => {
@@ -64,11 +66,47 @@ describe('Career Compass', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       skills: expect.arrayContaining([
-        expect.objectContaining({ kind: 'lesson', title: 'Career evidence fixture' }),
+        expect.objectContaining({
+          kind: 'lesson',
+          sourceId: lessonId,
+          title: 'Career evidence fixture',
+          credentialId: expect.any(String),
+          mintStatus: expect.any(String),
+        }),
       ]),
       recommendations: expect.arrayContaining([
         expect.objectContaining({ role: 'Digital learning practitioner' }),
       ]),
+    });
+  });
+  it('counts repeat completion records while keeping one skill per lesson and exposes credential status', async () => {
+    const before = (
+      await context.app.inject({ url: '/api/v1/career/profile', headers: { cookie } })
+    ).json();
+    const attempt = await context.app.inject({
+      method: 'POST',
+      url: `/api/v1/lessons/${lessonId}/attempts`,
+      headers: { cookie },
+      payload: { answers },
+    });
+    expect(attempt.statusCode).toBe(201);
+    const after = (
+      await context.app.inject({ url: '/api/v1/career/profile', headers: { cookie } })
+    ).json();
+    expect(after.evidenceCount).toBe(before.evidenceCount + 1);
+    expect(
+      after.skills.filter((skill: { sourceId: string }) => skill.sourceId === lessonId),
+    ).toHaveLength(1);
+    const record = await context.app.inject({
+      url: `/api/v1/credentials/${attempt.json().credential.id}`,
+      headers: { cookie },
+    });
+    expect(record.statusCode).toBe(200);
+    expect(record.json().credential).toMatchObject({
+      mintStatus: expect.any(String),
+      tokenId: null,
+      contractAddress: null,
+      txHash: null,
     });
   });
 });
