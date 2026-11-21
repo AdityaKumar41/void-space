@@ -21,7 +21,7 @@ test('Theme Editor builds its theme panel', async ({page}) => {
   const pageErrors: string[] = []
   page.on('pageerror', (err) => pageErrors.push(String(err)))
 
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any)._appstate?.screen, undefined, {timeout: 90_000})
   await page.setViewportSize({width: 1280, height: 800})
 
@@ -65,7 +65,7 @@ test('PropsEditor Settings tab binds feature flags and addons', async ({page}) =
   const pageErrors: string[] = []
   page.on('pageerror', (err) => pageErrors.push(String(err)))
 
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any)._appstate?.screen, undefined, {timeout: 90_000})
   await page.setViewportSize({width: 1280, height: 800})
 

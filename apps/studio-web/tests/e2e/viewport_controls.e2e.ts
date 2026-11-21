@@ -7,7 +7,7 @@ test('viewport navigation, shading and mode icons stay usable', async ({page}) =
     if (message.type() === 'error' && /\[(webgpu|webgl|overlay)\]|GPUValidationError/.test(message.text()))
       errors.push(message.text())
   })
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).CTX?.scene)
   await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
   const viewport = page.locator('view3d-editor-x').first()
@@ -81,7 +81,7 @@ test('object transforms accept numeric input and undo through the viewport', asy
     if (message.type() === 'error' && /\[(webgpu|webgl|overlay)\]|GPUValidationError/.test(message.text()))
       errors.push(message.text())
   })
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).CTX?.scene)
   await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
   const viewport = page.locator('view3d-editor-x').first()
@@ -121,7 +121,7 @@ test('mesh menu tools change topology and cancel or undo cleanly', async ({page}
     if (message.type() === 'error' && /\[(webgpu|webgl|overlay)\]|GPUValidationError/.test(message.text()))
       errors.push(message.text())
   })
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
   const viewport = page.locator('view3d-editor-x').first()
   const topology = () =>
@@ -178,7 +178,7 @@ test('LeafMesh wire shading uses its edge geometry without renderer errors', asy
     if (message.type() === 'error' && /\[(webgpu|webgl|overlay)\]|GPUValidationError/.test(message.text()))
       errors.push(message.text())
   })
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
   await page.evaluate(async () => {
     const w = window as any,

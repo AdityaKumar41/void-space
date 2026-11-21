@@ -9,7 +9,7 @@ for (const [domain, verticesAfter] of [
   test(`LiteMesh ${domain} deletion preserves the object and supports undo/redo`, async ({page}) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
-    await page.goto('/?renderer=webgpu')
+    await page.goto('./?renderer=webgpu')
     await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
     const before = await page.evaluate(async (domain) => {
       const ctx = (window as any).CTX
@@ -50,7 +50,7 @@ for (const [domain, verticesAfter] of [
 test('loop cut places a cut under the pointer and undoes the topology', async ({page}) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
   const point = await page.evaluate(async () => {
     const ctx = (window as any).CTX
@@ -76,7 +76,7 @@ test('portable file import reads OBJ without the File System Access API', async 
   await page.addInitScript(() => {
     Object.defineProperty(window, 'showOpenFilePicker', {value: undefined, configurable: true})
   })
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
   const chooser = page.waitForEvent('filechooser')
   // Trigger the real import operation and complete its standard browser picker.
@@ -98,7 +98,7 @@ for (const format of ['GLB', 'OBJ', 'STL', 'PLY']) {
   test(`${format} export and import round-trip actual mesh geometry`, async ({page}) => {
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
-    await page.goto('/?renderer=webgpu')
+    await page.goto('./?renderer=webgpu')
     await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
     const result = await page.evaluate(async (format) => {
       const ctx = (window as any).CTX
@@ -127,7 +127,7 @@ for (const format of ['GLB', 'OBJ', 'STL', 'PLY']) {
 }
 
 test('browser sculpt engine deforms, masks, paints and mirrors a mesh', async ({page}) => {
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
   const result = await page.evaluate(async () => {
     const w = window as any,
@@ -152,7 +152,7 @@ test('browser sculpt engine deforms, masks, paints and mirrors a mesh', async ({
 })
 
 test('project save and reload preserve geometry, names and generated UVs', async ({page}) => {
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
   const result = await page.evaluate(async () => {
     const app = (window as any)._appstate

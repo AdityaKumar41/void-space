@@ -1,6 +1,6 @@
 import {expect, test} from '@playwright/test'
 test.beforeEach(async ({page}) => {
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).__webgpuDebug?.viewport)
 })
 test('viewport middle drag orbits, Shift-middle pans and wheel zooms over the scene', async ({

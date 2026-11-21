@@ -29,7 +29,7 @@ test('viewport header is one row and the toolmode rows live in the docked panel'
   const pageErrors: string[] = []
   page.on('pageerror', (err) => pageErrors.push(String(err)))
 
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any)._appstate?.screen, undefined, {timeout: 90_000})
   await page.setViewportSize({width: 1600, height: 1000})
   await page.waitForTimeout(1500)
@@ -81,7 +81,7 @@ test('viewport header is one row and the toolmode rows live in the docked panel'
 })
 
 test('properties rail is icon-only with the category name in a tooltip', async ({page}) => {
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any)._appstate?.screen, undefined, {timeout: 90_000})
   await page.setViewportSize({width: 1600, height: 1000})
 
@@ -140,7 +140,7 @@ test('properties rail is icon-only with the category name in a tooltip', async (
 })
 
 test('property labels are tall enough for their own descenders', async ({page}) => {
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any)._appstate?.screen, undefined, {timeout: 90_000})
   await page.setViewportSize({width: 1600, height: 1000})
   await page.waitForTimeout(2000)
@@ -209,7 +209,7 @@ test('object mode builds a transform gizmo, and Shift-A opens the Add menu', asy
   const pageErrors: string[] = []
   page.on('pageerror', (err) => pageErrors.push(String(err)))
 
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any)._appstate?.screen, undefined, {timeout: 90_000})
   await page.setViewportSize({width: 1600, height: 1000})
   await page.waitForTimeout(1500)
@@ -299,7 +299,7 @@ test('the properties panel fills its column, in the units each quantity has', as
   const pageErrors: string[] = []
   page.on('pageerror', (err) => pageErrors.push(String(err)))
 
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any)._appstate?.screen, undefined, {timeout: 90_000})
   await page.setViewportSize({width: 1600, height: 1000})
   await page.waitForTimeout(1500)
@@ -451,7 +451,7 @@ test('every properties category opens without an uncaught error', async ({page})
   const pageErrors: string[] = []
   page.on('pageerror', (err) => pageErrors.push(String(err)))
 
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any)._appstate?.screen, undefined, {timeout: 90_000})
   await page.setViewportSize({width: 1600, height: 1000})
   await page.waitForTimeout(1500)

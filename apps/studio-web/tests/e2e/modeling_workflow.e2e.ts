@@ -3,7 +3,7 @@ import {expect, test} from '@playwright/test'
 test('context modes drive mesh selection, topology editing and undo', async ({page}) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.setViewportSize({width: 1600, height: 1000})
   await page.waitForFunction(() => !!(window as any).CTX?.scene && !!(window as any)._appstate?.screen)
   const before = await page.evaluate(async () => {
@@ -61,7 +61,7 @@ test('context modes drive mesh selection, topology editing and undo', async ({pa
 })
 
 test('properties expose object, data, material, world and render contexts without stale selection', async ({page}) => {
-  await page.goto('/?renderer=webgpu')
+  await page.goto('./?renderer=webgpu')
   await page.waitForFunction(() => !!(window as any).CTX?.scene)
   const contexts = await page.evaluate(() => {
     const find = (root: any): any => {
