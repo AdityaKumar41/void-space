@@ -83,7 +83,7 @@ export function openSketchfabDialog(transfer?: SketchfabTransfer) {
     <label style="display:block;margin-top:12px">Import downloaded editable GLB<input data-role="file" type="file" accept=".glb,model/gltf-binary" style="display:block;margin-top:6px"></label>
     <p data-role="status" role="status" style="white-space:pre-wrap"></p>`
   for (const field of dialog.querySelectorAll<HTMLElement>('button,input,textarea')) field.style.cssText += ';background:#33363b;color:#fff;border:1px solid #666;border-radius:4px;padding:8px;font:inherit'
-  for (const anchor of dialog.querySelectorAll<HTMLAnchorElement>('a')) anchor.style.cssText = 'color:#a8ceff;text-decoration:underline;display:inline-block;margin:4px 0'
+  for (const anchor of dialog.querySelectorAll<HTMLAnchorElement>('a')) anchor.style.cssText = 'color:#a8ceff;text-decoration:underline'
   const link = dialog.querySelector<HTMLInputElement>('[data-role="link"]')!
   const credit = dialog.querySelector<HTMLTextAreaElement>('[data-role="credit"]')!
   const status = dialog.querySelector<HTMLElement>('[data-role="status"]')!

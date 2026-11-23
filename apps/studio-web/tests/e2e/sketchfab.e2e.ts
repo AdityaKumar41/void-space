@@ -13,6 +13,7 @@ test('Sketchfab menu validates model links, previews, imports with attribution a
   await page.locator('menu-x').getByText('Sketchfab Models...', {exact: true}).click()
   const dialog = page.getByRole('dialog', {name: 'Sketchfab models', exact: true})
   await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('Original model, author and license', {exact: true})).toBeHidden()
   await dialog.getByRole('textbox', {name: 'Model link or ID'}).fill('https://evil.example/models/0123456789abcdef0123456789abcdef')
   await dialog.getByRole('button', {name: 'Preview model', exact: true}).click()
   await expect(dialog.getByRole('status')).toContainText('Use a full Sketchfab model link')
