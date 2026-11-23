@@ -1,4 +1,5 @@
 'use client';
+import { SketchfabWorkbench } from '../../../components/sketchfab-workbench';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ConsoleThumb } from '../../../components/console-kit';
@@ -70,6 +71,7 @@ export default function SimulationsPage() {
         </div>
         {manage ? <Button onClick={() => setEditing(null)}>Build an experience</Button> : null}
       </header>
+      <details className="rounded-card border border-hairline p-4"><summary className="cursor-pointer font-semibold text-ink">Free model exploration with Sketchfab and a study guide</summary><div className="mt-4"><SketchfabWorkbench /></div></details>
       {!interactive.length ? (
         <div className="grid items-center gap-8 border-y border-hairline py-12 lg:grid-cols-[1.5fr_1fr]">
           <div>

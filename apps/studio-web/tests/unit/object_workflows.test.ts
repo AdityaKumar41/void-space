@@ -1,5 +1,8 @@
 import {
   autoWeights,
+  newWorkflow,
+  readWorkflow,
+  writeWorkflow,
   bakeBoxBodies,
   deformPositions,
   poseBones,
@@ -132,4 +135,15 @@ test('physics refuses non-finite inputs and duplicate bodies', () => {
   expect(() => bakeBoxBodies([body(1, 5), body(1, 8)], 10, 24, -9.81)).toThrow(
     'unique'
   )
+})
+
+test('workflow attribution is serialized as ASCII JSON and retains Unicode and spacing', () => {
+  const credit = 'Modèle by 作者 · CC BY · https://sketchfab.com/3d-models/example'
+  const workflow = {...newWorkflow(), sourceAttribution: credit}
+  const serialized = writeWorkflow(workflow)
+  expect(serialized).toMatch(/^[\x20-\x7e]+$/)
+  expect(readWorkflow(serialized).sourceAttribution).toBe(credit)
+  const edited = readWorkflow(serialized)
+  edited.modifiers.push({type: 'TWIST', amount: 1, axis: 2, enabled: true})
+  expect(readWorkflow(writeWorkflow(edited)).sourceAttribution).toBe(credit)
 })

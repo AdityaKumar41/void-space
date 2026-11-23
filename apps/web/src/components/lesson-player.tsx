@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { LessonSketchfabReferences } from './sketchfab-workbench';
 import { ModelStage } from './model-stage';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -269,6 +270,11 @@ export function LessonPlayer({
               </div>
             ) : null}
           </fieldset>
+          {!assessment && (
+            <LessonSketchfabReferences
+              text={[lesson.summary, lesson.narration, ...lesson.outline].join('\n')}
+            />
+          )}
           <Card className="space-y-3 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-semibold text-ink">Reading</h2>

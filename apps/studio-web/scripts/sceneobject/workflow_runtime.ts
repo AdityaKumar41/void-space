@@ -1,6 +1,7 @@
 import {deformationSource} from '../core/deformation_sources'
 import {
   readWorkflow,
+  writeWorkflow,
   deformPositions,
   skinPositions,
   sampleKeys,
@@ -72,7 +73,7 @@ export function evaluateWorkflow(
       state.rig.bones.forEach((bone, i) => {
         bone.rotation = key.pose![i]
       })
-      ob.workflow = JSON.stringify(state)
+      ob.workflow = writeWorkflow(state)
     }
     ob.graphUpdate()
   }
@@ -92,7 +93,7 @@ export function storeWorkflow(
   state: ObjectWorkflow,
   frame: number
 ): void {
-  ob.workflow = JSON.stringify(state)
+  ob.workflow = writeWorkflow(state)
   evaluateWorkflow(ob, frame, true, false)
   ob.graphUpdate()
   window.updateDataGraph?.(true)
@@ -161,7 +162,7 @@ export function bakeScenePhysics(scene: Scene, gravity: number): void {
         ) as V3,
       })
     }
-    ob.workflow = JSON.stringify(state)
+    ob.workflow = writeWorkflow(state)
   }
   scene.changeTime(start)
 }

@@ -6,6 +6,7 @@ import {
 } from '../path.ux/scripts/pathux'
 import {
   readWorkflow,
+  writeWorkflow,
   putKey,
   autoWeights,
   skinPositions,
@@ -189,7 +190,7 @@ export class ObjectWorkflowOp extends ToolOp<{
         ctx.scene.switchToolMode('object')
       if (!state.modifiers.length && !state.rig && state.base) {
         delete state.base
-        ob.workflow = JSON.stringify(state)
+        ob.workflow = writeWorkflow(state)
       }
     } catch (error) {
       ctx.error((error as Error).message)

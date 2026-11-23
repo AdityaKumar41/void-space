@@ -38,6 +38,7 @@ import { publicRoutes } from './modules/public/routes';
 import { socialRoutes } from './modules/social/routes';
 import { reviewRoutes } from './modules/review/routes';
 import { toolsRoutes } from './modules/tools/routes';
+import { sketchfabRoutes } from './modules/tools/sketchfab';
 import { authRoutes } from './modules/auth/routes';
 import { googleRoutes } from './modules/auth/google-routes';
 import { siweRoutes } from './modules/auth/siwe-routes';
@@ -329,6 +330,7 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   // resolve, because nothing else can see an unregistered module: it typechecks, lints and passes
   // its unit tests whether or not it is reachable.
   await app.register(toolsRoutes, { prefix: '/api/v1', env, producer });
+  await app.register(sketchfabRoutes, { prefix: '/api/v1', env });
   await app.register(reviewRoutes, { prefix: '/api/v1', env, producer });
   await app.register(licensingRoutes, { prefix: '/api/v1', env, producer });
   await app.register(notificationRoutes, { prefix: '/api/v1' });

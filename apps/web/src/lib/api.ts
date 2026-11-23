@@ -155,6 +155,16 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
   });
 }
 
+/** Download a binary through the same cookie refresh and error handling as JSON requests. */
+export async function apiDownload(path: string): Promise<Blob> {
+  let response = await send(path, {});
+  if (response.status === 401 && typeof window !== 'undefined' && (await refreshSession())) {
+    response = await send(path, {});
+  }
+  if (!response.ok) return parse<never>(response, path);
+  return response.blob();
+}
+
 /** Uploads multipart form data (asset binaries, FR-3.1) with progress reporting. */
 export async function apiUpload<T>(
   path: string,

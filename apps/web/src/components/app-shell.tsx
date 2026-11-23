@@ -57,6 +57,7 @@ const GROUPS: readonly { label: string; items: NavItem[] }[] = [
         icon: GraduationCap,
       },
       { href: '/console/lessons', label: 'Lessons', permission: 'catalog:view', icon: BookOpen },
+      { href: '/console/models', label: '3D references', permission: 'catalog:view', icon: Boxes },
       {
         href: '/console/simulations',
         label: 'Practice',

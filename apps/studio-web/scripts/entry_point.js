@@ -37,6 +37,7 @@ import {getAppArgv} from './core/app_argv.js'
 import {runTestHarness} from './core/test_harness.js'
 import {mountVoidStudio} from './mount.js'
 import {mountVoidSpacePanel} from './voidspace/bridge_panel.js'
+import {receiveSketchfabTransfer} from './voidspace/sketchfab.js'
 
 // The embedding surface. `mountVoidStudio` is a page-level entry, not an addon
 // one, so it ships from the bundle entry rather than @framework/api.
@@ -59,6 +60,7 @@ export function handleNodeArguments() {
 
 export async function init() {
   const handle = await mountVoidStudio(document.body, {distribution})
+  receiveSketchfabTransfer()
 
   /*
    * The VOID·SPACE panel (SRS §3.5.2). Mounted *here* rather than inside mountVoidStudio, because

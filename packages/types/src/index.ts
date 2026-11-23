@@ -7,3 +7,4 @@ export * from './assets';
 export * from './queues';
 export * from './dto';
 export * from './contracts';
+export * from './sketchfab';

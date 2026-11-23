@@ -84,6 +84,11 @@ export const envSchema = z.object({
    * returns no results, rather than inventing listings. See `modules/tools/service.ts`.
    */
   SKETCHFAB_API_TOKEN: optionalString,
+  SKETCHFAB_CLIENT_ID: optionalString,
+  SKETCHFAB_CLIENT_SECRET: optionalString,
+  SKETCHFAB_REDIRECT_URI: optionalUrl,
+  SKETCHFAB_WEB_ORIGIN: optionalUrl,
+  SKETCHFAB_STUDIO_URL: optionalUrl,
   POLY_PIZZA_API_KEY: optionalString,
   MESHY_API_KEY: optionalString,
   /** The headless Blender runner on the Compose network (FR-6.3). */

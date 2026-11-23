@@ -329,6 +329,7 @@ MenuBarEditor {
       'app.save(forceDialog=true)|Save As',
       Menu.SEP,
       'app.import_file()|Import 3D Asset...',
+      'voidspace.sketchfab()|Sketchfab Models...',
       Menu.SEP,
       'app.export_glb()|Export glTF 2.0 (.glb)',
       'app.export_obj()|Export Wavefront (.obj)',

@@ -36,6 +36,8 @@ export interface BodySettings {
 }
 export interface ObjectWorkflow {
   version: 1
+  /** Attribution attached to an imported model, preserved by project save/load. */
+  sourceAttribution?: string
   modifiers: DeformModifier[]
   keys: TransformKey[]
   interpolation: 'LINEAR' | 'CONSTANT'
@@ -59,6 +61,12 @@ export function readWorkflow(json: string | undefined): ObjectWorkflow {
   )
     throw new Error('Unsupported object authoring data')
   return data
+}
+/** Keep authoring JSON lossless through legacy project string serialization. */
+export function writeWorkflow(workflow: ObjectWorkflow): string {
+  return JSON.stringify(workflow).replace(/[\u007f-\uffff]/g, (character) =>
+    '\\u' + character.charCodeAt(0).toString(16).padStart(4, '0')
+  )
 }
 export function putKey(
   keys: TransformKey[],

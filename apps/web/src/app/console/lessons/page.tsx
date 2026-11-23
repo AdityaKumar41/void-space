@@ -408,6 +408,7 @@ function LessonEditor({
           ))}
           <label className="block space-y-2 text-sm text-ink">
             <span>Study steps, one per line</span>
+            <p className="text-xs text-ink-dim">Add a full Sketchfab model link to a study step to include an interactive reference in this lesson, its program and shared learning rooms.</p>
             <textarea
               className={`${field} min-h-32`}
               value={draft.outline.join('\n')}
