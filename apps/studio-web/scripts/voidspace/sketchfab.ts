@@ -149,7 +149,11 @@ export function openSketchfabDialog(transfer?: SketchfabTransfer) {
         await importGlb(bytes, credit.value.trim() || transfer.credit)
         status.textContent = 'Linked model imported. Attribution is saved with its objects. Undo restores the previous scene.'
         action.remove()
-      } catch (error) { status.textContent = error instanceof Error ? error.message : 'Linked model import failed.' }
+      } catch (error) {
+        status.textContent = error instanceof TypeError
+          ? 'The model transfer failed or expired because Void Space could not be reached. Open Void Space and start a fresh import. The API must use reachable HTTPS and allow this Studio origin in CORS_ORIGINS.'
+          : error instanceof Error ? error.message : 'Linked model import failed. Open Void Space and start a fresh import.'
+      }
       finally { file.disabled = false }
     })
   }

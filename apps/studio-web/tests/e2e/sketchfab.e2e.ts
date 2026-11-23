@@ -53,21 +53,27 @@ test('Sketchfab menu validates model links, previews, imports with attribution a
   expect(errors).toEqual([])
 })
 
-test('single-use Space handoff removes its ticket from the URL and imports only after confirmation', async ({page}) => {
+test('single-use Space handoff removes its ticket from the URL and imports only after confirmation', async ({page, baseURL}) => {
   const ticket = 'a'.repeat(64)
-  const hash = '#' + new URLSearchParams({sketchfabTransfer: ticket, sketchfabApi: 'http://localhost:3000/api/v1', sketchfabCredit: 'Creator · CC BY · Sketchfab'}).toString()
+  const hash = '#' + new URLSearchParams({sketchfabTransfer: ticket, sketchfabApi: 'https://void-space.invalid/api/v1', sketchfabCredit: 'Creator · CC BY · Sketchfab'}).toString()
   let received = 0
-  await page.route('**/api/v1/tools/sketchfab/receive', async route => {
+  await page.context().route('**/api/v1/tools/sketchfab/receive', async route => {
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({status: 204, headers: {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type'}})
+      return
+    }
     received++
     expect(route.request().postDataJSON()).toEqual({ticket})
-    await route.fulfill({status: 403, contentType: 'application/json', body: JSON.stringify({message: 'Expired'})})
+    await route.fulfill({status: 403, headers: {'Access-Control-Allow-Origin': '*'}, contentType: 'application/json', body: JSON.stringify({message: 'Expired'})})
   })
   await boot(page, hash)
   const dialog = page.getByRole('dialog', {name: 'Sketchfab models', exact: true})
   await expect(dialog).toBeVisible()
   expect(page.url()).not.toContain(ticket)
   expect(received).toBe(0)
-  await dialog.getByRole('button', {name: 'Import linked model from http://localhost:3000'}).click()
+  await dialog.getByRole('button', {name: 'Import linked model from https://void-space.invalid'}).click()
   await expect(dialog.getByRole('status')).toContainText('failed or expired')
-  expect(received).toBe(1)
+  // Pages isolation uses a service worker; a worker-owned fetch may bypass routing.
+  // The local regression verifies HTTP rejection; the live check also verifies actionable network failure.
+  if (baseURL?.startsWith('http:')) expect(received).toBe(1)
 })
