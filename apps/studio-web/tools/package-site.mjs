@@ -18,7 +18,7 @@ for (const file of ['build/entry_point.js', 'build/sculptcore-browser.wasm', 'bu
 }
 await rm(out, {recursive: true, force: true})
 await mkdir(out, {recursive: true})
-for (const name of ['build', 'assets', 'resources', 'LICENSE.txt', 'sso.html']) {
+for (const name of ['build', 'assets', 'resources', 'LICENSE.txt', 'sso.html', 'manual.html']) {
   await cp(Path.join(root, name), Path.join(out, name), {recursive: true})
 }
 // These libraries are deliberately external to the bundle.

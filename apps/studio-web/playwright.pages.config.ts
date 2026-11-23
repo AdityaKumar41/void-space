@@ -8,6 +8,7 @@ const remote = process.env.STUDIO_E2E_URL
 export default defineConfig({
   ...base,
   testMatch: [
+    '**/feature_audit.e2e.ts',
     '**/void_studio_boot.e2e.ts', '**/void_studio_pages.e2e.ts',
     '**/modeling_remaining.e2e.ts', '**/modeling_workflow.e2e.ts',
     '**/object_workflows.e2e.ts', '**/viewport_controls.e2e.ts',

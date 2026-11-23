@@ -76,6 +76,8 @@ OutlinerEditor {
 
   listHost!: HTMLDivElement
   _lastKey = ''
+  _rowStructureKey = ''
+  _rows = new Map<number, {object: SceneObject; row: HTMLDivElement; name: HTMLDivElement; glyph: HTMLSpanElement}>()
   keymap!: KeyMap
   /** Visible row order for Shift-range select (Blender Outliner). */
   _visibleOrder: SceneObject[] = []
@@ -153,15 +155,7 @@ OutlinerEditor {
   selectAll(state: boolean) {
     const scene = this.ctx?.scene
     if (!scene?.objects) return
-    if (!state) {
-      scene.objects.clearSelection()
-    } else {
-      for (const ob of scene.objects) {
-        if (ob.flag & ObjectFlags.INTERNAL) continue
-        if (ob.flag & ObjectFlags.LOCKED) continue
-        scene.objects.setSelect(ob, true)
-      }
-    }
+    void this.ctx.api.execTool(this.ctx, `object.toggle_select_all(mode=${state ? 'ADD' : 'SUB'})`)
     window.redraw_viewport?.(true)
     this._lastKey = ''
     this.rebuild()
@@ -170,10 +164,8 @@ OutlinerEditor {
   hideSelected(hide: boolean) {
     const scene = this.ctx?.scene
     if (!scene?.objects) return
-    for (const ob of scene.objects.selected) {
-      if (hide) ob.flag |= ObjectFlags.HIDE
-      else ob.flag &= ~ObjectFlags.HIDE
-    }
+    void this.ctx.api.execTool(this.ctx,
+      `object.set_restriction(restriction=HIDE value=${hide})`)
     window.redraw_viewport?.(true)
     this._lastKey = ''
     this.rebuild()
@@ -244,7 +236,24 @@ OutlinerEditor {
 
     if (key === this._lastKey) return
     this._lastKey = key
-
+    const structureKey = objects.map((ob) =>
+      `${ob.lib_id}:${ob.flag & (ObjectFlags.HIDE | ObjectFlags.LOCKED | ObjectFlags.INTERNAL)}:${ob.name}:${ob.data?.lib_id}`,
+    ).join('|')
+    if (structureKey === this._rowStructureKey && objects.every((ob) =>
+      ob.flag & ObjectFlags.INTERNAL || this._rows.get(ob.lib_id)?.object === ob,
+    )) {
+      for (const {object, row, name, glyph} of this._rows.values()) {
+        const active = object.lib_id === activeId
+        const selected = !!(object.flag & ObjectFlags.SELECT)
+        row.style.background = active ? p.accent : selected ? 'rgba(86, 128, 194, 0.35)' : 'transparent'
+        name.style.color = active ? '#ffffff' : p.fg
+        name.style.fontWeight = active || selected ? '600' : '400'
+        glyph.style.color = active ? '#fff' : p.fgDim
+      }
+      return
+    }
+    this._rowStructureKey = structureKey
+    this._rows.clear()
     this.listHost.replaceChildren()
 
     // Collection header
@@ -351,8 +360,8 @@ OutlinerEditor {
 
     row.appendChild(
       makeToggle(hidden ? 'Show' : 'Hide', hidden ? 'Show object' : 'Hide object', hidden, () => {
-        if (ob.flag & ObjectFlags.HIDE) ob.flag &= ~ObjectFlags.HIDE
-        else ob.flag |= ObjectFlags.HIDE
+        void this.ctx.api.execTool(this.ctx,
+          `object.set_restriction(objectId=${ob.lib_id} restriction=HIDE value=${!hidden})`)
         window.redraw_viewport?.(true)
         this._lastKey = ''
         this.rebuild()
@@ -361,8 +370,8 @@ OutlinerEditor {
 
     row.appendChild(
       makeToggle(locked ? 'Unlock' : 'Lock', locked ? 'Unlock object' : 'Lock (not selectable)', locked, () => {
-        if (ob.flag & ObjectFlags.LOCKED) ob.flag &= ~ObjectFlags.LOCKED
-        else ob.flag |= ObjectFlags.LOCKED
+        void this.ctx.api.execTool(this.ctx,
+          `object.set_restriction(objectId=${ob.lib_id} restriction=LOCKED value=${!locked})`)
         this._lastKey = ''
         this.rebuild()
       }),
@@ -397,6 +406,7 @@ OutlinerEditor {
       this.renameObject(ob)
     })
 
+    this._rows.set(ob.lib_id, {object: ob, row, name: nameEl, glyph})
     return row
   }
 
@@ -406,7 +416,8 @@ OutlinerEditor {
     if (next == null) return
     const trimmed = next.trim()
     if (!trimmed || trimmed === ob.name) return
-    ob.name = trimmed
+    void this.ctx.api.execTool(this.ctx,
+      `object.rename(objectId=${ob.lib_id} name=${JSON.stringify(trimmed)})`)
     this._lastKey = ''
     this.rebuild()
   }

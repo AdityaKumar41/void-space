@@ -823,22 +823,8 @@ View3D {
       }),
 
       // Blender: H hides selected objects; Alt+H unhides all.
-      new HotKey('H', [], () => {
-        const scene = this.ctx?.scene as any
-        if (!scene?.objects) return
-        for (const ob of scene.objects.selected?.editable ?? scene.objects) {
-          if (ob.flag & 1 /* SELECT */) ob.flag |= 2 /* HIDE */
-        }
-        window.redraw_viewport(true)
-      }),
-      new HotKey('H', ['alt'], () => {
-        const scene = this.ctx?.scene as any
-        if (!scene?.objects) return
-        for (const ob of scene.objects) {
-          ob.flag &= ~2 /* HIDE */
-        }
-        window.redraw_viewport(true)
-      }),
+      new HotKey('H', [], 'object.set_restriction(restriction=HIDE value=true)'),
+      new HotKey('H', ['alt'], 'object.set_restriction(restriction=HIDE value=false all=true)'),
 
       // Blender Z shading cycle: Wire → Solid → Material → Rendered → Wire.
       // Rendered is View3DFlags.SHOW_RENDER (realtime engine), not a DrawModes value.
@@ -1102,26 +1088,8 @@ View3D {
       strip.menu('Object', [
         'object.delete_selected()|Delete',
         Menu.SEP,
-        [
-          'Hide Selected',
-          () => {
-            const scene = this.ctx?.scene as any
-            if (!scene?.objects) return
-            for (const ob of scene.objects.selected) ob.flag |= 2
-            window.redraw_viewport(true)
-          },
-          'H',
-        ],
-        [
-          'Show Hidden',
-          () => {
-            const scene = this.ctx?.scene as any
-            if (!scene?.objects) return
-            for (const ob of scene.objects) ob.flag &= ~2
-            window.redraw_viewport(true)
-          },
-          'Alt+H',
-        ],
+        'object.set_restriction(restriction=HIDE value=true)|Hide Selected',
+        'object.set_restriction(restriction=HIDE value=false all=true)|Show Hidden',
       ])
     }
 

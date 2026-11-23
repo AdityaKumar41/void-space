@@ -1,5 +1,12 @@
 import {Vector3, Matrix4} from '../util/vectormath.js'
-import {FlagProperty, ToolOp} from '../path.ux/scripts/pathux.js'
+import {
+  BoolProperty,
+  EnumProperty,
+  IntProperty,
+  StringProperty,
+  FlagProperty,
+  ToolOp,
+} from '../path.ux/scripts/pathux.js'
 import {SelMask} from '../core/select_types.js'
 
 import {StandardTools} from './stdtools.js'
@@ -75,6 +82,83 @@ export class DeleteObjectOp extends SceneObjectOp {
 }
 
 ToolOp.register(DeleteObjectOp)
+
+/** Small object edits share the toolstack so undo and autosave see every change. */
+export class ObjectRestrictionOp extends SceneObjectOp {
+  static tooldef() {
+    return {
+      toolpath: 'object.set_restriction',
+      uiname  : 'Object Visibility / Selection Lock',
+      inputs: {
+        objectId   : new IntProperty(-1),
+        restriction: new EnumProperty('HIDE', {HIDE: ObjectFlags.HIDE, LOCKED: ObjectFlags.LOCKED}),
+        value      : new BoolProperty(true),
+        all        : new BoolProperty(false),
+      },
+    }
+  }
+
+  undoPre(ctx) {
+    this._flags = []
+    const id = this.inputs.objectId.getValue()
+    for (const ob of ctx.scene.objects) {
+      if (ob.flag & ObjectFlags.INTERNAL) continue
+      if (id >= 0 ? ob.lib_id !== id : !this.inputs.all.getValue() && !(ob.flag & ObjectFlags.SELECT)) continue
+      this._flags.push([ob.lib_id, ob.flag])
+    }
+  }
+
+  calcUndoMem() {
+    return this._flags.length * 16
+  }
+
+  exec(ctx) {
+    const bit = this.inputs.restriction.getValue()
+    for (const [id] of this._flags) {
+      const ob = ctx.datalib.get(id)
+      if (ob) ob.flag = this.inputs.value.getValue() ? ob.flag | bit : ob.flag & ~bit
+    }
+  }
+
+  undo(ctx) {
+    for (const [id, flag] of this._flags) {
+      const ob = ctx.datalib.get(id)
+      if (ob) ob.flag = flag
+    }
+    window.redraw_viewport?.(true)
+  }
+}
+ToolOp.register(ObjectRestrictionOp)
+
+export class RenameObjectOp extends SceneObjectOp {
+  static tooldef() {
+    return {
+      toolpath: 'object.rename',
+      uiname: 'Rename Object',
+      inputs  : {
+        objectId: new IntProperty(-1),
+        name: new StringProperty(''),
+      },
+    }
+  }
+  undoPre(ctx) {
+    this._name = ctx.datalib.get(this.inputs.objectId.getValue())?.name
+  }
+  calcUndoMem() {
+    return (this._name?.length ?? 0) * 2 + 32
+  }
+  exec(ctx) {
+    const ob = ctx.datalib.get(this.inputs.objectId.getValue())
+    const name = this.inputs.name.getValue().trim()
+    if (ob && name) ob.name = name
+  }
+  undo(ctx) {
+    const ob = ctx.datalib.get(this.inputs.objectId.getValue())
+    if (ob && this._name !== undefined) ob.name = this._name
+    window.redraw_viewport?.(true)
+  }
+}
+ToolOp.register(RenameObjectOp)
 
 //
 export class ObjectTools extends StandardTools {

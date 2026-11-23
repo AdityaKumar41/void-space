@@ -497,7 +497,7 @@ MenuBarEditor {
       [
         'Manual',
         () => {
-          window.open('/docs', '_blank', 'noopener')
+          window.open(new URL('manual.html', document.baseURI).href, '_blank', 'noopener')
         },
         'F1',
       ],

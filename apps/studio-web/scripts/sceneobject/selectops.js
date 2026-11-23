@@ -28,7 +28,7 @@ export class ObjectSelectOpBase extends ToolOp {
 
     let scene = ctx.scene
 
-    for (let ob in scene.objects) {
+    for (let ob of scene.objects) {
       ud.flags[ob.lib_id] = ob.flag
     }
 
@@ -43,7 +43,7 @@ export class ObjectSelectOpBase extends ToolOp {
     let scene = ctx.scene
 
     for (let k in flags) {
-      let ob = datalib.get(k)
+      let ob = datalib.get(Number(k))
 
       if (ob === undefined) {
         // eslint-disable-next-line no-console
@@ -57,11 +57,8 @@ export class ObjectSelectOpBase extends ToolOp {
       ob.flag = flag
     }
 
-    ud.active = datalib.get(ud.active)
-    ud.highlight = datalib.get(ud.highlight)
-
-    scene.objects.setActive(ud.active)
-    scene.objects.setHighlight(ud.highlight)
+    scene.objects.setActive(datalib.get(ud.active))
+    scene.objects.setHighlight(datalib.get(ud.highlight))
 
     window.updateDataGraph()
     window.redraw_all()
