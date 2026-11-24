@@ -9,6 +9,7 @@ import {
   lessonTemplate,
   initialLessonActivityState,
   type LessonPlan,
+  type LearningActivity,
 } from '@void-space/types';
 import { API_PUBLIC_BASE, apiFetch } from '../lib/api';
 import { useSession } from '../lib/session';
@@ -18,6 +19,11 @@ import { LessonSources } from './lesson-sources';
 import { LessonSectionEditor } from './lesson-section-editor';
 import { SketchfabWorkbench } from './sketchfab-workbench';
 import { LessonActivity } from './lesson-activity';
+function visualSourceUrl(activity?: LearningActivity) {
+  return activity?.scene.kind === 'diagram' && activity.scene.imageSourceId
+    ? `${API_PUBLIC_BASE}/learning/sources/${activity.scene.imageSourceId}/file`
+    : undefined;
+}
 interface Draft {
   id: string;
   revision: number;
@@ -257,6 +263,9 @@ export function LessonEditor({ id }: { id?: string }) {
     setDirty(true);
     setMessage('Editable structure created. Add reviewed subject content before sharing.');
   }
+  const companionSection = draft?.sections.find(
+    (x) => x.kind !== 'quiz' && x.activity && x.activity.scene.kind !== 'none',
+  );
   const selected = draft?.sections.find((s) => s.id === sectionId) ?? draft?.sections[0];
   const proposal = task.data?.task.result?.proposal ? task.data.task.result.definition : null;
   const sum = draft?.sections.reduce((n, s) => n + s.minutes, 0) ?? 0;
@@ -477,8 +486,8 @@ export function LessonEditor({ id }: { id?: string }) {
               </>
             )}
           </div>
-          <div className="grid items-start gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
-            <aside className="space-y-2 lg:sticky lg:top-20" aria-label="Lesson outline">
+          <div className="lesson-session-grid">
+            <aside className="lesson-session-steps" aria-label="Lesson outline">
               {draft.sections.map((s, i) => (
                 <button
                   key={s.id}
@@ -502,20 +511,21 @@ export function LessonEditor({ id }: { id?: string }) {
                 <Panel>
                   <h2 className="text-2xl font-semibold">{selected.title}</h2>
                   <p className="whitespace-pre-wrap leading-relaxed">{selected.body}</p>
-                  {selected.activity && (
+                  {(selected.activity || companionSection?.activity) && (
                     <LessonActivity
                       key={`${selected.id}:${revision}`}
-                      activity={selected.activity}
-                      visualUrl={
-                        selected.activity.scene.kind === 'diagram' &&
-                        selected.activity.scene.imageSourceId
-                          ? `${API_PUBLIC_BASE}/learning/sources/${selected.activity.scene.imageSourceId}/file`
+                      activity={selected.activity ?? companionSection!.activity!}
+                      companion={
+                        selected.activity?.scene.kind === 'none'
+                          ? companionSection?.activity
                           : undefined
                       }
+                      visualUrl={visualSourceUrl(selected.activity ?? companionSection?.activity)}
+                      companionVisualUrl={visualSourceUrl(companionSection?.activity)}
                       state={initialLessonActivityState()}
                       onAction={() => {}}
                       preview
-                      exploreOnly={selected.kind === 'exploration'}
+                      exploreOnly={!selected.activity || selected.kind === 'exploration'}
                     />
                   )}
                   {draft.sketchfabUrl && selected.kind === 'exploration' && (

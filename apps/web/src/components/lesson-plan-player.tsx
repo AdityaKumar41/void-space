@@ -52,6 +52,8 @@ export function LessonPlanPlayer({ id }: { id: string }) {
     [shareId, setShareId] = useState(''),
     [question, setQuestion] = useState(''),
     [answer, setAnswer] = useState(''),
+    [answerTarget, setAnswerTarget] = useState(''),
+    [coachBusy, setCoachBusy] = useState(false),
     [taskId, setTaskId] = useState(''),
     [remaining, setRemaining] = useState(0),
     [timerOn, setTimerOn] = useState(false),
@@ -109,6 +111,7 @@ export function LessonPlanPlayer({ id }: { id: string }) {
     setTimerOn(false);
     setShowAnswers(false);
     setAnswer('');
+    setAnswerTarget('');
   }, [s?.id, s?.minutes]);
   useEffect(() => {
     if (!timerOn) return;
@@ -158,6 +161,12 @@ export function LessonPlanPlayer({ id }: { id: string }) {
       throw e;
     }
   }
+  const companionSection = def?.sections.find(
+    (x) => x.kind !== 'quiz' && x.activity && x.activity.scene.kind !== 'none',
+  );
+  const companionUrl = companionSection
+    ? `${API_PUBLIC_BASE}/learning/lesson-plans/releases/${id}/visual?tenant=${tenant}&section=${companionSection.id}`
+    : undefined;
   const completed = progress?.state.completed.length ?? 0,
     done = !!def && completed === def.sections.length;
   const state = s
@@ -251,20 +260,20 @@ export function LessonPlanPlayer({ id }: { id: string }) {
           </div>
           <div
             className={
-              'grid items-start gap-6 ' +
+              'lesson-session-grid ' +
               (present
                 ? 'lg:grid-cols-[12rem_minmax(0,1fr)]'
                 : 'lg:grid-cols-[15rem_minmax(0,1fr)]')
             }
           >
-            <nav aria-label="Lesson sections" className="space-y-2 lg:sticky lg:top-20">
+            <nav aria-label="Lesson sections" className="lesson-session-steps">
               {def.sections.map((x, i) => (
                 <button
                   key={x.id}
                   disabled={busy || !!pending.current}
                   className={
                     action +
-                    ' flex w-full justify-between gap-2 text-left ' +
+                    ' lesson-step flex w-full justify-between gap-2 text-left ' +
                     (s.id === x.id ? 'bg-veil-6' : '')
                   }
                   aria-current={s.id === x.id ? 'step' : undefined}
@@ -312,10 +321,15 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                 >
                   {s.body}
                 </p>
-                {s.activity && (
+                {(s.activity || companionSection?.activity) && (
                   <LessonActivity
                     key={s.id}
-                    activity={s.activity}
+                    activity={s.activity ?? companionSection!.activity!}
+                    companion={
+                      s.activity?.scene.kind === 'none' ? companionSection?.activity : undefined
+                    }
+                    companionVisualUrl={companionUrl}
+                    coaching={{ targetId: answerTarget, answer, busy: coachBusy }}
                     state={present ? initialLessonActivityState() : state}
                     busy={busy || !!pending.current}
                     onAction={(a) =>
@@ -323,27 +337,41 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                         await event('activity', a);
                       })
                     }
-                    preview={present && r.owner}
-                    exploreOnly={s.kind === 'exploration'}
-                    visualUrl={`${API_PUBLIC_BASE}/learning/lesson-plans/releases/${id}/visual?tenant=${tenant}&section=${s.id}`}
+                    preview={!s.activity || (present && r.owner)}
+                    exploreOnly={!s.activity || s.kind === 'exploration'}
+                    visualUrl={
+                      s.activity
+                        ? `${API_PUBLIC_BASE}/learning/lesson-plans/releases/${id}/visual?tenant=${tenant}&section=${s.id}`
+                        : companionUrl
+                    }
                     onAsk={
                       (s.kind === 'quiz' && state.status !== 'completed') || present
                         ? undefined
                         : (targetId) =>
                             void work(async () => {
-                              const value = await apiFetch<{ answer: string }>(
-                                `/learning/lesson-plans/releases/${id}/mentor?tenant=${tenant}`,
-                                {
-                                  method: 'POST',
-                                  body: {
-                                    sectionId: s.id,
-                                    targetId,
-                                    question:
-                                      'Explain this component using the reviewed lesson material.',
+                              setAnswerTarget(targetId);
+                              setAnswer('');
+                              setCoachBusy(true);
+                              try {
+                                const value = await apiFetch<{ answer: string }>(
+                                  `/learning/lesson-plans/releases/${id}/mentor?tenant=${tenant}`,
+                                  {
+                                    method: 'POST',
+                                    body: {
+                                      sectionId:
+                                        s.activity?.scene.kind !== 'none' && s.activity
+                                          ? s.id
+                                          : companionSection!.id,
+                                      targetId,
+                                      question:
+                                        'Explain this component using the reviewed lesson material.',
+                                    },
                                   },
-                                },
-                              );
-                              setAnswer(value.answer);
+                                );
+                                setAnswer(value.answer);
+                              } finally {
+                                setCoachBusy(false);
+                              }
                             })
                     }
                   />
@@ -467,6 +495,7 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                     disabled={busy || question.trim().length < 3}
                     onClick={() =>
                       void work(async () => {
+                        setAnswerTarget('');
                         const value = await apiFetch<{ answer: string }>(
                           `/learning/lesson-plans/releases/${id}/mentor?tenant=${tenant}`,
                           { method: 'POST', body: { sectionId: s.id, question } },
@@ -481,7 +510,7 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                     Uses reviewed lesson material. If AI is unavailable, source-based help remains
                     available.
                   </p>
-                  {answer && <Notice>{answer}</Notice>}
+                  {answer && !answerTarget && <Notice>{answer}</Notice>}
                 </Panel>
               )}
             </div>
@@ -511,140 +540,143 @@ export function LessonPlanPlayer({ id }: { id: string }) {
               </p>
             </Panel>
           )}
-          <Panel>
-            <h2 className="text-lg font-semibold">Keep or share this lesson</h2>
-            {r.owner && r.reviewed && (
-              <label className="grid max-w-xl gap-2">
-                Lesson visibility
-                <select
-                  className={control}
-                  value={r.visibility}
-                  disabled={busy}
-                  onChange={(e) =>
-                    void work(async () => {
-                      await apiFetch(`/learning/lesson-plans/releases/${id}/visibility`, {
-                        method: 'PATCH',
-                        body: { visibility: e.target.value },
-                      });
-                      await q.refetch();
-                    })
-                  }
-                >
-                  <option value="private">Private · explicit invitations only</option>
-                  <option value="institution">Institution-only · workspace members</option>
-                  <option value="public">Public to everyone</option>
-                </select>
-              </label>
-            )}
+          <details className="lesson-options" open={done || s.kind === 'recap'}>
+            <summary>Export and sharing</summary>
+            <div className="space-y-4 pt-4">
+              <h2 className="text-lg font-semibold">Keep or share this lesson</h2>
+              {r.owner && r.reviewed && (
+                <label className="grid max-w-xl gap-2">
+                  Lesson visibility
+                  <select
+                    className={control}
+                    value={r.visibility}
+                    disabled={busy}
+                    onChange={(e) =>
+                      void work(async () => {
+                        await apiFetch(`/learning/lesson-plans/releases/${id}/visibility`, {
+                          method: 'PATCH',
+                          body: { visibility: e.target.value },
+                        });
+                        await q.refetch();
+                      })
+                    }
+                  >
+                    <option value="private">Private · explicit invitations only</option>
+                    <option value="institution">Institution-only · workspace members</option>
+                    <option value="public">Public to everyone</option>
+                  </select>
+                </label>
+              )}
 
-            <div className="flex flex-wrap gap-3">
-              {[
-                ['pdf', 'student', 'Download personal PDF'],
-                ...(r.owner
-                  ? [
-                      ['pdf', 'teacher', 'Export teacher PDF'],
-                      ['pptx', 'teacher', 'Export editable PPTX'],
-                    ]
-                  : []),
-              ].map(([format, audience, label]) => (
-                <button
-                  className={action}
-                  key={`${format}-${audience}`}
-                  disabled={busy || ['queued', 'active'].includes(task.data?.task.status ?? '')}
-                  onClick={() =>
-                    void work(async () => {
-                      const value = await apiFetch<{ task: Task }>(
-                        `/learning/lesson-plans/releases/${id}/exports?tenant=${tenant}`,
-                        { method: 'POST', body: { format, audience } },
-                      );
-                      setTaskId(value.task.id);
-                    })
-                  }
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {taskId && (
-              <Notice>
-                {task.data?.task.status === 'completed' ? (
-                  <button className={action} onClick={() => void work(download)}>
-                    Save export file
+              <div className="flex flex-wrap gap-3">
+                {[
+                  ['pdf', 'student', 'Download personal PDF'],
+                  ...(r.owner
+                    ? [
+                        ['pdf', 'teacher', 'Export teacher PDF'],
+                        ['pptx', 'teacher', 'Export editable PPTX'],
+                      ]
+                    : []),
+                ].map(([format, audience, label]) => (
+                  <button
+                    className={action}
+                    key={`${format}-${audience}`}
+                    disabled={busy || ['queued', 'active'].includes(task.data?.task.status ?? '')}
+                    onClick={() =>
+                      void work(async () => {
+                        const value = await apiFetch<{ task: Task }>(
+                          `/learning/lesson-plans/releases/${id}/exports?tenant=${tenant}`,
+                          { method: 'POST', body: { format, audience } },
+                        );
+                        setTaskId(value.task.id);
+                      })
+                    }
+                  >
+                    {label}
                   </button>
-                ) : task.data?.task.status === 'failed' ? (
-                  task.data.task.error
-                ) : (
-                  'Preparing your file in the background…'
-                )}
-              </Notice>
-            )}
-            {r.owner && r.reviewed && (
-              <div className="space-y-3 border-t border-hairline pt-4">
-                <p className="text-sm text-ink-dim">
-                  Students sign in and open this code. It grants only lesson access; their answers
-                  stay private.
-                </p>
-                <button
-                  className={action}
-                  disabled={busy}
-                  onClick={() =>
-                    void work(async () => {
-                      const value = await apiFetch<{ code: string; shareId: string }>(
-                        `/learning/lesson-plans/releases/${id}/shares`,
-                        { method: 'POST' },
-                      );
-                      setCode(value.code);
-                      setShareId(value.shareId);
-                      await shares.refetch();
-                    })
-                  }
-                >
-                  Create lesson link
-                </button>
-                {code && (
-                  <div className="space-y-3">
-                    <label className="grid gap-2">
-                      Lesson sharing link
-                      <input
-                        readOnly
-                        className={control}
-                        value={`${location.origin}/learn/join?code=${code}`}
-                      />
-                    </label>
-                    <label className="grid gap-2">
-                      Lesson code
-                      <input readOnly className={control} value={code} />
-                    </label>
-                  </div>
-                )}
-                {shares.data?.shares
-                  .filter((x) => !x.revokedAt)
-                  .map((x) => (
-                    <button
-                      key={x.id}
-                      className={action}
-                      disabled={busy}
-                      onClick={() =>
-                        void work(async () => {
-                          await apiFetch(`/learning/lesson-plans/shares/${x.id}`, {
-                            method: 'DELETE',
-                          });
-                          if (x.id === shareId) setCode('');
-                          await shares.refetch();
-                        })
-                      }
-                    >
-                      Revoke {x.id === shareId ? 'this link' : `link ${x.id.slice(0, 6)}`}
-                    </button>
-                  ))}
+                ))}
               </div>
-            )}
-            {def.attribution && (
-              <p className="whitespace-pre-wrap text-sm text-ink-dim">
-                Attribution: {def.attribution}
-              </p>
-            )}
-          </Panel>
+              {taskId && (
+                <Notice>
+                  {task.data?.task.status === 'completed' ? (
+                    <button className={action} onClick={() => void work(download)}>
+                      Save export file
+                    </button>
+                  ) : task.data?.task.status === 'failed' ? (
+                    task.data.task.error
+                  ) : (
+                    'Preparing your file in the background…'
+                  )}
+                </Notice>
+              )}
+              {r.owner && r.reviewed && (
+                <div className="space-y-3 border-t border-hairline pt-4">
+                  <p className="text-sm text-ink-dim">
+                    Students sign in and open this code. It grants only lesson access; their answers
+                    stay private.
+                  </p>
+                  <button
+                    className={action}
+                    disabled={busy}
+                    onClick={() =>
+                      void work(async () => {
+                        const value = await apiFetch<{ code: string; shareId: string }>(
+                          `/learning/lesson-plans/releases/${id}/shares`,
+                          { method: 'POST' },
+                        );
+                        setCode(value.code);
+                        setShareId(value.shareId);
+                        await shares.refetch();
+                      })
+                    }
+                  >
+                    Create lesson link
+                  </button>
+                  {code && (
+                    <div className="space-y-3">
+                      <label className="grid gap-2">
+                        Lesson sharing link
+                        <input
+                          readOnly
+                          className={control}
+                          value={`${location.origin}/learn/join?code=${code}`}
+                        />
+                      </label>
+                      <label className="grid gap-2">
+                        Lesson code
+                        <input readOnly className={control} value={code} />
+                      </label>
+                    </div>
+                  )}
+                  {shares.data?.shares
+                    .filter((x) => !x.revokedAt)
+                    .map((x) => (
+                      <button
+                        key={x.id}
+                        className={action}
+                        disabled={busy}
+                        onClick={() =>
+                          void work(async () => {
+                            await apiFetch(`/learning/lesson-plans/shares/${x.id}`, {
+                              method: 'DELETE',
+                            });
+                            if (x.id === shareId) setCode('');
+                            await shares.refetch();
+                          })
+                        }
+                      >
+                        Revoke {x.id === shareId ? 'this link' : `link ${x.id.slice(0, 6)}`}
+                      </button>
+                    ))}
+                </div>
+              )}
+              {def.attribution && (
+                <p className="whitespace-pre-wrap text-sm text-ink-dim">
+                  Attribution: {def.attribution}
+                </p>
+              )}
+            </div>
+          </details>
         </>
       )}
     </LearningLayout>

@@ -1,7 +1,7 @@
 'use client';
+import { useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
-import { useState } from 'react';
+import { OrbitControls, Html } from '@react-three/drei';
 import type { LearningActivity, LearningTarget } from '@void-space/types';
 import { ModelStage } from './model-stage';
 import { API_PUBLIC_BASE } from '../lib/api';
@@ -13,6 +13,8 @@ export default function LearningVisual({
   isolated,
   onMeshCount,
   visualUrl,
+  showLabels = true,
+  onSurfacePick,
 }: {
   activity: LearningActivity;
   selected: string | null;
@@ -21,13 +23,33 @@ export default function LearningVisual({
   isolated: string | null;
   onMeshCount?: (n: number) => void;
   visualUrl?: string;
+  showLabels?: boolean;
+  onSurfacePick?: (position: [number, number, number], meshKey: string) => void;
 }) {
+  const [labelElement, setLabelElement] = useState<HTMLDivElement | null>(null);
+  const labelPortal = useMemo(
+    () => (labelElement ? { current: labelElement } : undefined),
+    [labelElement],
+  );
   const scene = activity.scene;
+  const pickSurface = (position: [number, number, number], meshKey: string) => {
+    if (onSurfacePick) {
+      onSurfacePick(position, meshKey);
+      return;
+    }
+    const candidates = activity.targets.filter((t) => t.meshKey === meshKey);
+    const nearest = [...candidates].sort(
+      (a, b) =>
+        a.position.reduce((n, x, i) => n + (x - position[i]!) ** 2, 0) -
+        b.position.reduce((n, x, i) => n + (x - position[i]!) ** 2, 0),
+    )[0];
+    if (nearest) onSelect(nearest.id);
+  };
   if (scene.kind === 'none') return null;
   if (scene.kind === 'model' && scene.builtin)
     return (
       <div
-        className="h-80 rounded-xl border border-hairline bg-[#19222b]"
+        className="learning-model-canvas"
         aria-label="Interactive 3D components. Drag to orbit, scroll to zoom; use the component buttons for keyboard access."
       >
         <Canvas camera={{ position: [0, 2, 5], fov: 45 }}>
@@ -55,31 +77,71 @@ export default function LearningVisual({
                     color={selected === target.id ? '#e8be7d' : '#84a6b0'}
                     roughness={0.55}
                   />
+                  {labelPortal && (
+                    <Html portal={labelPortal} position={[0, 0.75, 0]} center zIndexRange={[15, 0]}>
+                      <button
+                        type="button"
+                        className="learning-scene-label"
+                        aria-label={`Scene target ${showLabels ? target.label : i + 1}`}
+                        aria-pressed={selected === target.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelect(target.id);
+                        }}
+                      >
+                        <span>{i + 1}</span>
+                        {showLabels && target.label}
+                      </button>
+                    </Html>
+                  )}
                 </mesh>
               ),
           )}
           <gridHelper args={[10, 10, '#50616e', '#2c3944']} />
           <OrbitControls makeDefault enableDamping />
         </Canvas>
+        <div ref={setLabelElement} className="learning-label-portal" />
       </div>
     );
-  if(scene.kind==='model'&&scene.privateModelId) return <ModelStage cid={null} sourceUrl={visualUrl??`${API_PUBLIC_BASE}/learning/library/${scene.privateModelId}/file`} format="glb" name={activity.title} polycount={null} onGeometryDecoded={g=>onMeshCount?.(g.meshes)} interaction={{hotspots:activity.targets,selectedId:selected,exploded,isolatedId:isolated,onSelect,showLabels:true}}/>;
+  if (scene.kind === 'model' && scene.privateModelId)
+    return (
+      <ModelStage
+        presentation
+        cid={null}
+        sourceUrl={visualUrl ?? `${API_PUBLIC_BASE}/learning/library/${scene.privateModelId}/file`}
+        format="glb"
+        name={activity.title}
+        polycount={null}
+        onGeometryDecoded={(g) => onMeshCount?.(g.meshes)}
+        interaction={{
+          hotspots: onSurfacePick ? [] : activity.targets,
+          selectedId: selected,
+          exploded,
+          isolatedId: isolated,
+          onSelect,
+          showLabels,
+          onSurfacePick: pickSurface,
+        }}
+      />
+    );
   if (scene.kind === 'model' && scene.media) {
     const m = scene.media;
     return (
       <ModelStage
+        presentation
         cid={m.cid}
         format={m.format}
         name={m.name}
         polycount={m.polycount}
         onGeometryDecoded={(g, summary) => onMeshCount?.(g.meshes)}
         interaction={{
-          hotspots: activity.targets,
+          hotspots: onSurfacePick ? [] : activity.targets,
           selectedId: selected,
           exploded,
           isolatedId: isolated,
           onSelect,
-          showLabels: true,
+          showLabels,
+          onSurfacePick: pickSurface,
         }}
       />
     );

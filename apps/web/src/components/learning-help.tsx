@@ -28,7 +28,7 @@ const steps = [
 ];
 export default function HelpPage() {
   return (
-    <main className="mx-auto max-w-4xl space-y-8 px-5 py-10">
+    <div className="mx-auto max-w-4xl space-y-8 px-5 py-10">
       <header>
         <p className="text-sm text-ink-dim">A little guidance</p>
         <h1 className="mt-3 text-3xl font-semibold">From a question to understanding.</h1>
@@ -58,11 +58,11 @@ export default function HelpPage() {
       <p className="text-sm text-ink-dim">
         Models and source documents start private. Switching workspace changes which institution’s
         content you can access.{' '}
-        <Link href="/console/account" className="underline">
+        <Link href="/console/learn/settings" className="underline">
           Manage your account
         </Link>
         .
       </p>
-    </main>
+    </div>
   );
 }

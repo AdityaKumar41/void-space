@@ -63,3 +63,29 @@ Two recovery findings were fixed: UUID activity links redirect to current Lesson
 ### Spec review
 
 The saved-lesson import path and stale preview state after AI changes were fixed. A second review verified the fixes, protected visual preview URLs, Sketchfab preview and account/workspace/draft-scoped task recovery. No further actionable P1/P2 issue was found in the reviewed changes. Live Qwen reliability remains explicitly unresolved as described above.
+
+## Model-led learning and navigation audit — 24 November 2026
+
+The model is now visible from the first section of a visual lesson, including introduction and explanations. A companion scene stays available during text and quiz sections without adding graded actions. The current section's server-authoritative activity remains separate: free isolation, separation and reset never manufacture progress. Component inspection sits beside the scene with reviewed explanations and contextual coaching. Quiz coaching remains unavailable until completion. Models without mappings do not invent labels; single-mesh and unmapped targets do not advertise unavailable isolation.
+
+Session steps form a compact strip above the exploration surface. Lessons and examples use lightweight format artwork, duration and component/step counts; listings do not eagerly download models or return full source/answer definitions. Author previews and learner study use the same interaction surface. Existing review, immutable publication, sharing, presentation, resume, recap and exports remain available, with export/sharing controls disclosed deliberately.
+
+Notifications, settings and help now have canonical learning routes and use the learning shell. Their old page implementations are removed and old URLs redirect centrally. Inbox updates have working read/unread actions, loading, empty and failure recovery. Settings starts with profile and workspace; wallet options are secondary. Professional asset workspace and marketplace remain separate functional destinations.
+
+The manual private-model lesson path creates a valid editable exploration immediately without an AI call. Component authoring edits one selected label at a time and supports clicking a model surface to place it. Placement assembles the model and disables separation/isolation until it ends. Default zero-offset labels anchor at the actual mesh centre, and separated labels use world-space displacement. Built-in scene overlays now use a dedicated stable DOM portal; browser tests reproduced and then verified resolution of the previous removeChild/label disappearance failure during section changes.
+
+### Verification
+
+BrowserOS Neo hands-on checks used a fresh individual account: signup, lesson examples, component selection/isolation/reset, notifications, settings, help, progress, discovery, private GLB upload, component explanation editing, surface label placement, reviewed-label persistence, immediate editable model lesson, and source-note creation. Temporary fixture content is removed after verification. Automated desktop/touch tests additionally cover publication/presentation, lesson sharing/revocation, source privacy, learning resume, incorrect/correct interactions, recap/PDF, Sketchfab reference isolation, marketplace checkout/download, telemetry and real worker/IPFS upload.
+
+The API regression suite passed 199 tests across 35 files. Web unit tests passed 30 tests across five files, including mesh-centre and transformed-world-offset label placement. Production build and API/web type validation passed. Exact failing viewer journeys were rerun after fixes; keyboard checks now wait for the actual saved section transition rather than the canvas, which remains visible by design. Final browser totals are recorded with the commit.
+
+### Standards review
+
+Review found an invalid empty-task manual lesson and label displacement while placing on separated parts. Both were fixed; the manual path now has desktop/touch end-to-end coverage, and transforms are disabled during placement.
+
+### Spec review
+
+Review additionally found that annotations without mesh mappings could misleadingly enable isolation. The control now requires a mapped target. No new provider was added. The previously observed Qwen latency/timeouts remain an external limitation; live AI generation is not claimed to be reliable. Animation, live payments and public Void Space deployment remain outside this change.
+
+Final release verification: 14/14 browser journeys passed together in 50.2 seconds on the production build, including read/unread inbox behavior, every learning navigation destination and the no-AI private-model path on desktop and touch. The focused label-overlay reproduction also passed after the explicit portal fix. API 199/199 and web 30/30 tests passed; production build and source typechecks passed. Surface placement now disables component transforms for the whole placement session, closing the review edge case. The manual Neo walkthrough verified label positioning, reviewed persistence and immediate private-model lesson creation. These checks establish the tested paths, not a claim of full Blender functionality or verified anatomy recognition.

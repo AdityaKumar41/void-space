@@ -118,7 +118,12 @@ const LEARNING_GROUPS: readonly { label: string; items: NavItem[] }[] = [
         permission: 'catalog:view',
         icon: FolderOpen,
       },
-      { href: '/console/account', label: 'Settings', permission: 'catalog:view', icon: Settings },
+      {
+        href: '/console/learn/settings',
+        label: 'Settings',
+        permission: 'catalog:view',
+        icon: Settings,
+      },
     ],
   },
 ];
@@ -183,7 +188,7 @@ function NotificationBell() {
 
   return (
     <Link
-      href="/console/notifications"
+      href="/console/learn/notifications"
       aria-label={count > 0 ? `${count} unread notifications` : 'Notifications'}
       title="Notifications"
       className="relative inline-flex h-9 w-9 items-center justify-center rounded-control border border-hairline bg-surface text-ink-dim transition-colors duration-150 ease-standard hover:border-hairline-strong hover:bg-surface-raised hover:text-ink"
@@ -367,9 +372,9 @@ function AccountMenu() {
 
             <div className="py-1.5">
               {[
-                { href: '/console/account', label: 'Account and wallets' },
+                { href: '/console/learn/settings', label: 'Account and wallets' },
                 { href: '/console/help', label: 'Void Space help' },
-                { href: '/console/notifications', label: 'Notifications' },
+                { href: '/console/learn/notifications', label: 'Notifications' },
                 { href: '/docs', label: 'Studio guide' },
                 { href: '/catalog', label: 'Public catalogue' },
               ].map((entry) => (
@@ -543,7 +548,7 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
         </nav>
         <div className="border-t border-hairline p-4">
           <Link
-            href="/console/help"
+            href="/console/learn/help"
             onClick={close}
             className="flex items-center gap-3 rounded-lg px-2 py-2 text-xs text-ink-dim hover:text-ink"
           >

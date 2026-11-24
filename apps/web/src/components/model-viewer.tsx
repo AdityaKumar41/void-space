@@ -28,6 +28,7 @@
  * browser decoded from the bytes in the gateway. Those are different claims and the difference is
  * the point.
  */
+import { hotspotAnchor } from '../lib/model-hotspots';
 import {
   ContactShadows,
   Grid,
@@ -476,7 +477,13 @@ function ModelScene({
     const span = Math.max(size.x, size.y, size.z, 0.00001);
     const parts = new Map<
       THREE.Mesh,
-      { key: string; position: THREE.Vector3; offset: THREE.Vector3 }
+      {
+        key: string;
+        position: THREE.Vector3;
+        offset: THREE.Vector3;
+        labelCenter: THREE.Vector3;
+        worldOffset: THREE.Vector3;
+      }
     >();
     let partIndex = 0;
     root.updateMatrixWorld(true);
@@ -494,7 +501,13 @@ function ModelScene({
             .worldToLocal(at.clone().add(direction))
             .sub(mesh.parent.worldToLocal(at.clone()))
         : direction;
-      parts.set(mesh, { key: `mesh-${partIndex++}`, position: mesh.position.clone(), offset });
+      parts.set(mesh, {
+        key: `mesh-${partIndex++}`,
+        position: mesh.position.clone(),
+        offset,
+        labelCenter: at.clone(),
+        worldOffset: direction.clone(),
+      });
     });
     return { root, originals, center, span, parts };
   }, [scene, legacyDemoFaces]);
@@ -581,13 +594,16 @@ function ModelScene({
       <primitive object={prepared.root} onClick={pick} />
       {interaction?.hotspots.map((hotspot, index) => {
         if (interaction.isolatedId && hotspot.id !== interaction.isolatedId) return null;
-        const position = prepared.center
-          .clone()
-          .add(new THREE.Vector3(...hotspot.position).multiplyScalar(prepared.span));
         const part = Array.from(prepared.parts.values()).find(
           (part) => part.key === hotspot.meshKey,
         );
-        if (interaction.exploded && part) position.add(part.offset);
+        const position = hotspotAnchor(
+          hotspot.position,
+          prepared.center,
+          prepared.span,
+          part,
+          !!interaction.exploded,
+        );
         const selected = interaction.selectedId === hotspot.id;
         return (
           <Html key={hotspot.id} position={position} center zIndexRange={[20, 0]}>

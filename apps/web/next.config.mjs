@@ -35,6 +35,13 @@ const nextConfig = {
    */
   async redirects() {
     return [
+      {
+        source: '/console/notifications',
+        destination: '/console/learn/notifications',
+        permanent: false,
+      },
+      { source: '/console/account', destination: '/console/learn/settings', permanent: false },
+      { source: '/console/help', destination: '/console/learn/help', permanent: false },
       ...[
         'classes',
         'campus',

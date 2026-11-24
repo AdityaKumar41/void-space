@@ -81,6 +81,7 @@ for (const mobile of [false, true])
       await teacher.getByRole('button', { name: 'Start timer', exact: true }).click();
       await teacher.getByRole('button', { name: 'Pause timer', exact: true }).click();
       await teacher.getByRole('link', { name: 'Switch to study', exact: true }).click();
+      await teacher.getByText('Export and sharing', { exact: true }).click();
       await teacher.getByRole('button', { name: 'Create lesson link', exact: true }).click();
       const code = await teacher.getByLabel('Lesson code', { exact: true }).inputValue();
       expect(code.split('.')).toHaveLength(3);
@@ -112,6 +113,9 @@ for (const mobile of [false, true])
         page.getByRole('heading', { name: 'Build understanding', exact: true }),
       ).toBeVisible();
       await use(page.getByRole('button', { name: 'Save and continue', exact: true }));
+      await expect(
+        page.getByRole('heading', { name: 'Explore and practise', exact: true }),
+      ).toBeVisible();
       await expect(page.locator('canvas')).toHaveCount(1);
       await use(page.getByRole('button', { name: 'Sphere', exact: true }));
       await use(page.getByRole('button', { name: 'Check selected component', exact: true }));

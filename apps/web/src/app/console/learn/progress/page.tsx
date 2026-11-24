@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { Route, ArrowUpRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../../../lib/api';
 import { LearningLayout, Notice } from '../../../../components/learning-ui';
@@ -23,6 +24,7 @@ export default function Page() {
       title="My progress"
       description="Your own learning history, saved across sessions. Practice feedback is formative, not a professional qualification."
     >
+      {q.isPending && <Notice>Loading your learning journey…</Notice>}
       {q.error && <Notice error>{q.error.message}</Notice>}
       <div className="space-y-3">
         {q.data?.lessons.map((l) => (
@@ -48,7 +50,14 @@ export default function Page() {
         ))}
       </div>
       {q.data && !q.data.lessons.length && (
-        <Notice>Your progress will appear here when you study a lesson.</Notice>
+        <div className="learning-empty">
+          <Route size={38} />
+          <h2>Your journey starts with one lesson.</h2>
+          <p>Explore a model, try a question and come back here to pick up where you stopped.</p>
+          <Link href="/console/learn">
+            Find your first lesson <ArrowUpRight size={16} />
+          </Link>
+        </div>
       )}
     </LearningLayout>
   );

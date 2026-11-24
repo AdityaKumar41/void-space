@@ -1,5 +1,7 @@
 'use client';
 import Link from 'next/link';
+import { Box, Clock3, ArrowUpRight, Plus, Sparkles, CheckCircle2 } from 'lucide-react';
+import { LessonCover, type LessonVisualKind } from './lesson-cover';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
@@ -11,12 +13,20 @@ interface Listing {
     id: string;
     title: string;
     revision: number;
+    preview?: {
+      kind: LessonVisualKind;
+      durationMinutes: number;
+      sectionCount: number;
+      componentCount: number;
+      summary: string;
+    };
     releases: { id: string; revision: number; visibility?: string; reviewed: boolean }[];
   }[];
   shared: {
     id: string;
     tenantId: string;
     title: string;
+    preview?: { kind: LessonVisualKind; summary: string };
     completed: number;
     total: number;
     durationMinutes: number;
@@ -58,11 +68,24 @@ export function LessonHome() {
       title="Lessons"
       description="Create a lesson around an asset or an idea. Teach it, study it, and keep what you learn."
     >
+      <div className="learning-start-bar">
+        <div>
+          <Box size={25} />
+          <span>
+            <strong>Learn by exploring.</strong>
+            <small>Choose a model, then turn it into a session.</small>
+          </span>
+        </div>
+        <Link className="learning-primary" href="/console/learn/library">
+          Choose a 3D model <ArrowUpRight size={16} />
+        </Link>
+      </div>
       <div className="flex flex-wrap gap-3">
         <Link
           className={action + ' bg-brand text-[#172832]'}
           href="/console/learn/agent?intent=lesson"
         >
+          <Sparkles className="inline mr-2" size={15} />
           Create lesson
         </Link>
         <Link className={action} href="/console/learn/join">
@@ -99,60 +122,90 @@ export function LessonHome() {
       {filter !== 'drafts' && filter !== 'published' && !!q.data?.shared.length && (
         <section className="space-y-3">
           <h2 className="text-xl font-semibold">Continue learning</h2>
-          {q.data.shared
-            .filter((s) => s.title.toLowerCase().includes(search.toLowerCase()))
-            .map((s) => (
-              <Link
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-hairline p-5 hover:bg-veil-6"
-                key={s.id}
-                href={`/console/learn/lessons/${s.id}?tenant=${s.tenantId}`}
-              >
-                <span className="font-semibold">{s.title}</span>
-                <span className="text-sm text-ink-dim">
-                  {s.completed === s.total ? 'Recap ready' : `${s.completed}/${s.total} sections`} ·{' '}
-                  {s.durationMinutes} min
-                </span>
-              </Link>
-            ))}
+          <div className="learning-lesson-grid">
+            {q.data.shared
+              .filter((s) => s.title.toLowerCase().includes(search.toLowerCase()))
+              .map((s) => (
+                <Link
+                  className="learning-lesson-card"
+                  key={s.id}
+                  href={`/console/learn/lessons/${s.id}?tenant=${s.tenantId}`}
+                >
+                  <LessonCover kind={s.preview?.kind} />
+                  <div className="learning-lesson-card-copy">
+                    <span className="font-semibold">{s.title}</span>
+                    <span className="text-sm text-ink-dim">
+                      {s.completed === s.total
+                        ? 'Recap ready'
+                        : `${s.completed}/${s.total} sections`}{' '}
+                      · {s.durationMinutes} min
+                    </span>
+                    <progress
+                      aria-label={`${s.title} completion`}
+                      value={s.completed}
+                      max={s.total}
+                    />
+                    <span className="learning-card-action">
+                      Continue learning <ArrowUpRight size={16} />
+                    </span>
+                  </div>
+                </Link>
+              ))}
+          </div>
         </section>
       )}
       {filter !== 'shared' && (
         <section className="space-y-3">
           <h2 className="text-xl font-semibold">My lessons</h2>
-          {q.data?.plans
-            .filter(
-              (p) =>
-                p.title.toLowerCase().includes(search.toLowerCase()) &&
-                (filter !== 'drafts' ||
-                  !p.releases.length ||
-                  p.releases[0]!.revision !== p.revision) &&
-                (filter !== 'published' || p.releases.some((r) => r.reviewed)),
-            )
-            .map((p) => (
-              <article
-                key={p.id}
-                className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-hairline p-5"
-              >
-                <div>
-                  <h3 className="font-semibold">{p.title}</h3>
-                  <span className="text-xs text-ink-dim">
-                    {p.releases.find((r) => r.reviewed)?.visibility === 'public'
-                      ? 'Public to everyone'
-                      : p.releases.find((r) => r.reviewed)?.visibility === 'institution'
-                        ? 'Institution-only'
-                        : 'Private'}
-                  </span>
-                  <p className="mt-1 text-sm text-ink-dim">
-                    {p.releases.some((r) => r.reviewed)
-                      ? `Published${p.releases[0]!.revision !== p.revision ? ' · newer draft' : ''}`
-                      : 'Private lesson'}
-                  </p>
-                </div>
-                <Link href={`/console/learn/drafts/${p.id}`} className={action}>
-                  Open lesson
-                </Link>
-              </article>
-            ))}
+          <div className="learning-lesson-grid">
+            {q.data?.plans
+              .filter(
+                (p) =>
+                  p.title.toLowerCase().includes(search.toLowerCase()) &&
+                  (filter !== 'drafts' ||
+                    !p.releases.some((r) => r.reviewed && r.revision === p.revision)) &&
+                  (filter !== 'published' || p.releases.some((r) => r.reviewed)),
+              )
+              .map((p) => (
+                <article key={p.id} className="learning-lesson-card">
+                  <LessonCover kind={p.preview?.kind} />
+                  <div className="learning-lesson-card-copy">
+                    <h3 className="font-semibold">{p.title}</h3>
+                    {p.preview && <p className="learning-card-summary">{p.preview.summary}</p>}
+                    <span className="text-xs text-ink-dim">
+                      {p.releases.find((r) => r.reviewed)?.visibility === 'public'
+                        ? 'Public to everyone'
+                        : p.releases.find((r) => r.reviewed)?.visibility === 'institution'
+                          ? 'Institution-only'
+                          : 'Private'}
+                    </span>
+                    <p className="mt-1 text-sm text-ink-dim">
+                      {p.releases.some((r) => r.reviewed)
+                        ? `Published${p.releases[0]!.revision !== p.revision ? ' · newer draft' : ''}`
+                        : 'Private lesson'}
+                    </p>
+                    <div className="learning-card-meta">
+                      {p.preview && (
+                        <>
+                          <span>
+                            <Clock3 size={14} />
+                            {p.preview.durationMinutes} min
+                          </span>
+                          <span>
+                            {p.preview.componentCount
+                              ? `${p.preview.componentCount} components`
+                              : `${p.preview.sectionCount} steps`}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <Link href={`/console/learn/drafts/${p.id}`} className="learning-card-action">
+                      Open lesson <ArrowUpRight size={16} />
+                    </Link>
+                  </div>
+                </article>
+              ))}
+          </div>
           {q.data && !q.data.plans.length && (
             <Panel>
               <h3 className="font-semibold">Start with something you want to explain</h3>
@@ -207,25 +260,44 @@ export function LessonHome() {
           </div>
         </details>
       )}
-      <details className="rounded-xl border border-hairline p-5">
-        <summary className="cursor-pointer font-semibold">Try a complete example</summary>
-        <div className="mt-4 flex flex-wrap gap-3">
+      <section className="learning-examples" aria-label="Explore examples">
+        <div>
+          <h2>Try a complete example</h2>
+          <p>Start exploring now. No setup or AI generation needed.</p>
+        </div>
+        <div className="learning-lesson-grid">
           {[
-            ['geometry', '3D components'],
-            ['diagram', 'An educational diagram'],
-            ['process', 'A process and sequence'],
-          ].map(([key, label]) => (
+            ['geometry', '3D components', 'model', 'Select, isolate and understand each part.'],
+            [
+              'diagram',
+              'An educational diagram',
+              'diagram',
+              'Follow connections and match components.',
+            ],
+            [
+              'process',
+              'A process and sequence',
+              'process',
+              'Put a workflow in order and test a decision.',
+            ],
+          ].map(([key, label, kind, description]) => (
             <button
-              className={action}
               key={key}
+              className="learning-example-card"
               disabled={!ready || !!busy}
               onClick={() => void example(key!)}
+              aria-label={label}
             >
-              {busy === key ? 'Opening…' : label}
+              <LessonCover kind={kind as LessonVisualKind} />
+              <span>
+                <strong>{busy === key ? 'Opening…' : label}</strong>
+                <small>{description}</small>
+                <ArrowUpRight size={17} />
+              </span>
             </button>
           ))}
         </div>
-      </details>
+      </section>
     </LearningLayout>
   );
 }

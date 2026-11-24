@@ -73,6 +73,20 @@ describe('asset-led lesson releases, access and personal study', () => {
       ).toBe(404);
     }
   });
+  it('returns visual preview metadata without loading models or sending full definitions in listings', async () => {
+    const listed = (await call('GET', '/learning/lesson-plans')).json();
+    const preview = listed.plans.find((p: { id: string }) => p.id === planId);
+    expect(preview.preview).toMatchObject({
+      kind: 'model',
+      componentCount: 3,
+      durationMinutes: 30,
+      sectionCount: 5,
+    });
+    expect(preview).not.toHaveProperty('definition');
+    expect(
+      (await call('GET', '/learning/lesson-plans', undefined, learner)).json().plans,
+    ).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: planId })]));
+  });
   it('publishes only after explicit review, pins excerpts and hides instructor material', async () => {
     const s = await call('POST', '/learning/sources', {
       title: 'Private teacher source',

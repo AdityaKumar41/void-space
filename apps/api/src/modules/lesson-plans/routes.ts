@@ -1,3 +1,4 @@
+import { lessonPreview } from './preview';
 import { syncLessonListing } from './public';
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -76,6 +77,7 @@ export async function lessonPlanRoutes(
             title: true,
             revision: true,
             updatedAt: true,
+            definition: true,
             releases: {
               select: { id: true, revision: true, reviewed: true, visibility: true },
               orderBy: [{ reviewed: 'desc' }, { revision: 'desc' }],
@@ -109,6 +111,7 @@ export async function lessonPlanRoutes(
           tenantId: r.tenantId,
           title: def.title,
           durationMinutes: def.durationMinutes,
+          preview: lessonPreview(def),
           completed: (study?.state as unknown as StudyState)?.completed.length ?? 0,
           total: def.sections.length,
         });
@@ -124,7 +127,14 @@ export async function lessonPlanRoutes(
         take: 100,
       }),
     );
-    return { plans, shared, legacyLessons };
+    return {
+      plans: plans.map(({ definition, ...p }) => ({
+        ...p,
+        preview: lessonPreview(parsePlan(definition)),
+      })),
+      shared,
+      legacyLessons,
+    };
   });
   app.post('/learning/lesson-plans/from-lesson/:id', auth, async (request, reply) => {
     const p = request.principal!,

@@ -46,7 +46,7 @@ const groups = [
     title: 'Manage',
     items: [
       { href: '/console/learn/institution', label: 'Institution', icon: ShieldCheck },
-      { href: '/console/account', label: 'Settings', icon: Settings },
+      { href: '/console/learn/settings', label: 'Settings', icon: Settings },
     ],
   },
 ];
@@ -96,11 +96,17 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
   }, [open]);
   const selected =
     groups.flatMap((g) => g.items).find((i) => i.href === pathname)?.label ??
-    (pathname.includes('/drafts/')
-      ? 'Lesson workspace'
-      : pathname.includes('/lessons/')
-        ? 'Learning session'
-        : 'Ask AI');
+    (pathname.includes('/notifications')
+      ? 'Notifications'
+      : pathname.includes('/settings')
+        ? 'Settings'
+        : pathname.includes('/help')
+          ? 'Help'
+          : pathname.includes('/drafts/')
+            ? 'Lesson workspace'
+            : pathname.includes('/lessons/')
+              ? 'Learning session'
+              : 'Ask AI');
   return (
     <div className={'agent-workspace ' + (collapsed ? 'agent-sidebar-collapsed' : '')}>
       {open && (
@@ -172,7 +178,13 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
               <span>Marketplace</span>
               <ArrowUpRight size={14} />
             </Link>
-            <Link href="/console/library">
+            <Link
+              href="/console/library"
+              onClick={() => {
+                localStorage.setItem('void-workspace-mode', 'assets');
+                window.dispatchEvent(new Event('void-workspace-mode'));
+              }}
+            >
               <FolderOpen size={18} strokeWidth={1.5} />
               <span>Asset workspace</span>
               <ArrowUpRight size={14} />
@@ -236,10 +248,10 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
           <span aria-hidden>/</span>
           <strong>{selected}</strong>
           <div className="agent-topbar-actions">
-            <Link href="/console/notifications" aria-label="Notifications">
+            <Link href="/console/learn/notifications" aria-label="Notifications">
               <Bell size={18} />
             </Link>
-            <Link href="/console/help" aria-label="Help and support">
+            <Link href="/console/learn/help" aria-label="Help and support">
               <CircleHelp size={18} />
             </Link>
           </div>

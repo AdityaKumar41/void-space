@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Compass, ArrowUpRight } from 'lucide-react';
+import { LessonCover } from './lesson-cover';
 import { apiFetch } from '../lib/api';
 import { LearningLayout, Notice, action, control } from './learning-ui';
 export function LessonDiscovery() {
@@ -43,51 +45,58 @@ export function LessonDiscovery() {
         <input className={control} value={search} onChange={(e) => setSearch(e.target.value)} />
       </label>
       {error && <Notice error>{error}</Notice>}
+      {q.isPending && <Notice>Finding public lessons…</Notice>}
       {q.error && <Notice error>{q.error.message}</Notice>}
-      <section className="divide-y divide-hairline">
+      <section className="learning-lesson-grid">
         {q.data?.lessons
           .filter((l) => `${l.title} ${l.summary}`.toLowerCase().includes(search.toLowerCase()))
           .map((l) => (
-            <article key={l.id} className="grid gap-4 py-6 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <div>
+            <article key={l.id} className="learning-lesson-card">
+              <LessonCover />
+              <div className="learning-lesson-card-copy">
                 <h2 className="text-xl font-semibold">{l.title}</h2>
                 <p className="mt-2 max-w-prose text-sm text-ink-dim">{l.summary}</p>
                 <p className="mt-3 text-xs text-ink-dim">
                   {l.durationMinutes} min · {l.audience} · {l.authorLabel}
                 </p>
-              </div>
-              <button
-                className={action + ' self-start'}
-                disabled={!!busy}
-                onClick={() => {
-                  setBusy(l.id);
-                  setError('');
-                  void apiFetch<{ releaseId: string; tenantId: string }>(
-                    `/learning/public-lessons/${l.id}/open`,
-                    { method: 'POST' },
-                  )
-                    .then((r) =>
-                      router.push(`/console/learn/lessons/${r.releaseId}?tenant=${r.tenantId}`),
+                <button
+                  className={action + ' self-start'}
+                  disabled={!!busy}
+                  onClick={() => {
+                    setBusy(l.id);
+                    setError('');
+                    void apiFetch<{ releaseId: string; tenantId: string }>(
+                      `/learning/public-lessons/${l.id}/open`,
+                      { method: 'POST' },
                     )
-                    .catch((e) => {
-                      setError(e.message);
-                      setBusy('');
-                    });
-                }}
-              >
-                {busy === l.id ? 'Opening…' : 'Study lesson'}
-              </button>
+                      .then((r) =>
+                        router.push(`/console/learn/lessons/${r.releaseId}?tenant=${r.tenantId}`),
+                      )
+                      .catch((e) => {
+                        setError(e.message);
+                        setBusy('');
+                      });
+                  }}
+                >
+                  {busy === l.id ? 'Opening…' : 'Study lesson'}
+                </button>
+              </div>
             </article>
           ))}
       </section>
       {q.data && !q.data.lessons.length && (
-        <Notice>
-          No public lessons yet. Create a lesson with your agent, review it and choose Public to
-          everyone when publishing.{' '}
-          <Link className="underline" href="/console/learn/agent">
-            Start with your agent
+        <div className="learning-empty">
+          <Compass size={38} />
+          <h2>Your next discovery is ahead.</h2>
+          <p>
+            No public lessons have been shared yet. You can explore a complete example or open a
+            lesson code.
+          </p>
+          <Link href="/console/learn">
+            Try an interactive lesson <ArrowUpRight size={16} />
           </Link>
-        </Notice>
+          <Link href="/console/learn/join">Open a lesson code</Link>
+        </div>
       )}
     </LearningLayout>
   );

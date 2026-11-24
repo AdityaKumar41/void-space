@@ -120,6 +120,11 @@ for (const mobile of [false, true])
       } finally {
         await anonymous.close();
       }
+      await page.getByRole('button', { name: 'Start an editable lesson', exact: true }).click();
+      await expect(page).toHaveURL(/\/drafts\//);
+      await expect(page.locator('canvas')).toHaveCount(1);
+      await expect(page.getByRole('button', { name: 'Learning cube', exact: true })).toBeVisible();
+      await page.goto(`/console/learn/library?model=${models[0].id}`);
       await page
         .getByRole('link', { name: 'Create a lesson with this model', exact: true })
         .click();

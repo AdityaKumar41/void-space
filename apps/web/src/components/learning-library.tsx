@@ -3,7 +3,8 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import type { LearningActivity } from '@void-space/types';
+import { useRouter } from 'next/navigation';
+import { lessonTemplate, type LearningActivity } from '@void-space/types';
 import { apiFetch, API_PUBLIC_BASE } from '../lib/api';
 import { LearningLayout, Panel, Notice, action, control } from './learning-ui';
 const Visual = dynamic(() => import('./learning-visual'), {
@@ -32,6 +33,7 @@ interface Model {
   };
 }
 export function LearningLibrary() {
+  const router = useRouter();
   const [id, setId] = useState(''),
     [selected, setSelected] = useState<string | null>(null),
     [labels, setLabels] = useState<Label[]>([]),
@@ -41,6 +43,7 @@ export function LearningLibrary() {
     [message, setMessage] = useState(''),
     [proposal, setProposal] = useState(''),
     [exploded, setExploded] = useState(false),
+    [placing, setPlacing] = useState(false),
     [isolated, setIsolated] = useState<string | null>(null);
   const q = useQuery({
     queryKey: ['learning-library'],
@@ -68,6 +71,7 @@ export function LearningLibrary() {
     setReviewed(proposed ? false : model.metadata.labelsReviewed);
     setSelected(null);
     setExploded(false);
+    setPlacing(false);
     setIsolated(null);
     if (proposed)
       setMessage(
@@ -104,7 +108,19 @@ export function LearningLibrary() {
         ],
         scene: { kind: 'model', privateModelId: model.id },
         targets: labels.map(({ confidence, ...l }) => ({ ...l, sourceRefs: [] })),
-        steps: [],
+        steps: [
+          {
+            id: 'observe',
+            kind: 'reflection',
+            title: 'What do you notice?',
+            instruction:
+              'Describe one visible feature and check its explanation against your sources.',
+            explanation: 'Review your observations against approved material.',
+            objectiveId: 'explore',
+            weight: 0,
+            sourceRefs: [],
+          },
+        ],
         passingScore: 80,
         reviewed: false,
       }
@@ -190,6 +206,22 @@ export function LearningLibrary() {
                 onSelect={setSelected}
                 exploded={exploded}
                 isolated={isolated}
+                onSurfacePick={
+                  placing
+                    ? (position, meshKey) => {
+                        const targetId = selected ?? labels[0]?.id;
+                        if (!targetId) return;
+                        setLabels(
+                          labels.map((l) => (l.id === targetId ? { ...l, position, meshKey } : l)),
+                        );
+                        setReviewed(false);
+                        setPlacing(false);
+                        setMessage(
+                          'Label placed on the selected surface. Review the mapping before saving.',
+                        );
+                      }
+                    : undefined
+                }
               />
               <div className="flex flex-wrap gap-2">
                 {labels.map((l) => (
@@ -207,14 +239,14 @@ export function LearningLibrary() {
               <div className="flex flex-wrap gap-2">
                 <button
                   className={action}
-                  disabled={model.metadata.parts.length < 2}
+                  disabled={placing || model.metadata.parts.length < 2}
                   onClick={() => setExploded(!exploded)}
                 >
                   {exploded ? 'Assemble model' : 'Separate components'}
                 </button>
                 <button
                   className={action}
-                  disabled={!selected || model.metadata.parts.length < 2}
+                  disabled={placing || !selected || model.metadata.parts.length < 2}
                   onClick={() => setIsolated(isolated ? null : selected)}
                 >
                   {isolated ? 'Show all components' : 'Isolate selected component'}
@@ -222,6 +254,32 @@ export function LearningLibrary() {
                 <Link className={action} href={`/console/learn/agent?model=${model.id}`}>
                   Create a lesson with this model
                 </Link>
+                <button
+                  className={action}
+                  disabled={busy}
+                  onClick={() =>
+                    void work(async () => {
+                      const definition = lessonTemplate(
+                        {
+                          topic: model.title,
+                          audience: 'Learners aged 13+',
+                          durationMinutes: 30,
+                          instructions: '',
+                          sourceIds: [],
+                        },
+                        visual,
+                      );
+                      definition.privateModelId = model.id;
+                      const result = await apiFetch<{ plan: { id: string } }>(
+                        '/learning/lesson-plans',
+                        { method: 'POST', body: definition },
+                      );
+                      router.push(`/console/learn/drafts/${result.plan.id}`);
+                    })
+                  }
+                >
+                  Start an editable lesson
+                </button>
                 <Link
                   className={action}
                   href={`/console/learn/agent?model=${model.id}&intent=labels`}
@@ -262,12 +320,29 @@ export function LearningLibrary() {
                   Start from model component names
                 </button>
               )}
+              {placing && <Notice>Select the model surface where this label belongs.</Notice>}
               {labels.map((l, i) => (
-                <fieldset key={l.id} className="space-y-3 rounded-lg border border-hairline p-3">
+                <fieldset
+                  hidden={selected ? selected !== l.id : i !== 0}
+                  key={l.id}
+                  className="space-y-3 rounded-lg border border-hairline p-3"
+                >
                   <legend>
                     {l.meshKey}
                     {l.confidence === 'uncertain' ? ' · uncertain' : ''}
                   </legend>
+                  <button
+                    className={action}
+                    aria-pressed={placing}
+                    onClick={() => {
+                      setSelected(l.id);
+                      setPlacing(!placing);
+                      setIsolated(null);
+                      setExploded(false);
+                    }}
+                  >
+                    {placing ? 'Cancel label placement' : 'Place label on model'}
+                  </button>
                   <label className="grid gap-2">
                     Component name
                     <input
