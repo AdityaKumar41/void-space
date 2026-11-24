@@ -271,6 +271,7 @@ export async function processLearningAgent(
         .strict();
       const output = await generateText(textAi, {
         maxTokens: 4500,
+        json: true,
         temperature: 0.1,
         messages: [
           {

@@ -20,13 +20,17 @@ const server = createServer((req, res) => {
   let body = '';
   req.on('data', (c) => (body += c));
   req.on('end', () => {
-    requests.push(JSON.parse(body));
+    const payload = JSON.parse(body);
+    requests.push(payload);
+    const next = responses.shift();
+    const content =
+      next && typeof next === 'object' && 'labels' in next && !payload.response_format
+        ? `Here are the proposed labels:\n\`\`\`json\n${JSON.stringify(next)}\n\`\`\``
+        : JSON.stringify(next);
     res.setHeader('content-type', 'application/json');
     res.end(
       JSON.stringify({
-        choices: [
-          { message: { content: JSON.stringify(responses.shift()) }, finish_reason: 'stop' },
-        ],
+        choices: [{ message: { content }, finish_reason: 'stop' }],
         model: 'local-agent-test',
       }),
     );
@@ -108,6 +112,42 @@ async function fixture(sourceIds: string[] = []) {
   };
 }
 describe('personal agent invokes bounded learning tools', () => {
+  it('requests machine-readable label proposals rather than accepting fenced prose', async () => {
+    const f = await fixture();
+    const modelId = randomUUID();
+    const input = {
+      ...f.input,
+      context: {
+        ...f.input.context,
+        privateModelId: modelId,
+        model: {
+          id: modelId,
+          title: 'Synthetic sphere',
+          metadata: { parts: [{ key: 'mesh-0', name: 'Sphere' }] },
+        },
+      },
+    };
+    responses.push(
+      { message: 'I will propose labels.', action: 'label_model' },
+      {
+        labels: [
+          {
+            id: 'surface',
+            meshKey: 'mesh-0',
+            label: 'Sphere surface',
+            explanation: 'Confirm this geometric surface before sharing.',
+            position: [0, 0, 0],
+            confidence: 'named',
+          },
+        ],
+      },
+    );
+    const result = await processLearningAgent(tenant, f.taskId, owner, input, config());
+    expect(result.labels).toHaveLength(1);
+    expect(result.modelId).toBe(modelId);
+    expect(requests.at(-1)).toMatchObject({ response_format: { type: 'json_object' } });
+  });
+
   it('creates a real private lesson from chat exactly once', async () => {
     const f = await fixture();
     responses.push(

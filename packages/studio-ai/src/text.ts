@@ -4,6 +4,13 @@ import { z } from 'zod';
 const unset = (value: unknown) => (typeof value === 'string' && !value.trim() ? undefined : value);
 const optionalString = z.preprocess(unset, z.string().trim().min(1).optional());
 const optionalUrl = z.preprocess(unset, z.string().url().optional());
+const optionalBoolean = z.preprocess(
+  unset,
+  z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .default('false'),
+);
 export const textAiEnvSchema = z.object({
   AI_BASE_URL: optionalUrl,
   AI_TEXT_BASE_URL: optionalUrl,
@@ -15,6 +22,9 @@ export const textAiEnvSchema = z.object({
     unset,
     z.coerce.number().int().min(100).max(120000).default(30000),
   ),
+  OPENROUTER_PREFERRED: optionalBoolean,
+  OPENROUTER_FREE_ONLY: optionalBoolean,
+  OPENROUTER_DISABLE_REASONING: optionalBoolean,
   OPENROUTER_API_KEY: optionalString,
   OPENROUTER_MODEL: optionalString,
   OPENROUTER_BASE_URL: optionalUrl,
@@ -27,6 +37,9 @@ export interface TextAiConfig {
   AI_TEXT_PROTOCOL?: 'auto' | 'ollama' | 'openai' | undefined;
   AI_TEXT_API_KEY?: string | undefined;
   AI_TEXT_TIMEOUT_MS?: number | undefined;
+  OPENROUTER_PREFERRED?: boolean | undefined;
+  OPENROUTER_FREE_ONLY?: boolean | undefined;
+  OPENROUTER_DISABLE_REASONING?: boolean | undefined;
   OPENROUTER_API_KEY?: string | undefined;
   OPENROUTER_MODEL?: string | undefined;
   OPENROUTER_BASE_URL?: string | undefined;
@@ -127,14 +140,25 @@ export function textProviders(config: TextAiConfig): Provider[] {
       });
   }
   // Both are explicit: no implicit paid model or unexpected fallback destination.
-  if (config.OPENROUTER_API_KEY?.trim() && config.OPENROUTER_MODEL?.trim())
-    providers.push({
+  if (config.OPENROUTER_API_KEY?.trim() && config.OPENROUTER_MODEL?.trim()) {
+    if (
+      config.OPENROUTER_FREE_ONLY &&
+      config.OPENROUTER_MODEL !== 'openrouter/free' &&
+      !config.OPENROUTER_MODEL.endsWith(':free')
+    )
+      throw new Error(
+        'OpenRouter free-only configuration requires openrouter/free or a :free model',
+      );
+    const router: Provider = {
       url: endpoint(config.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1'),
       protocol: 'openai',
       model: config.OPENROUTER_MODEL,
       key: config.OPENROUTER_API_KEY,
       name: 'openrouter',
-    });
+    };
+    if (config.OPENROUTER_PREFERRED) providers.unshift(router);
+    else providers.push(router);
+  }
   return providers;
 }
 export function isTextAiConfigured(config: TextAiConfig): boolean {
@@ -259,6 +283,12 @@ export async function generateText(
               stream: false,
               max_tokens: request.maxTokens ?? 1024,
               temperature: request.temperature ?? 0.2,
+              ...(provider.name === 'openrouter' && config.OPENROUTER_DISABLE_REASONING
+                ? { reasoning: { enabled: false } }
+                : {}),
+              ...(provider.name === 'openrouter' && config.OPENROUTER_FREE_ONLY
+                ? { provider: { max_price: { prompt: 0, completion: 0, request: 0 } } }
+                : {}),
               ...(request.json ? { response_format: { type: 'json_object' } } : {}),
               ...(request.tools?.length ? { tools: request.tools } : {}),
             };

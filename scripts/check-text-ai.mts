@@ -16,8 +16,12 @@ if (!textProviders(config).length) {
   const started = Date.now();
   try {
     const result = await generateText(config, {
-      messages: [{ role: 'user', content: 'Reply with only OK.' }],
-      maxTokens: 16,
+      messages: [{ role: 'user', content: 'Return only a JSON object: {"ready":true}.' }],
+      maxTokens: 100,
+      json: true,
+      validate: (text) => {
+        if (JSON.parse(text).ready !== true) throw new Error('Invalid readiness result');
+      },
     });
     console.log(
       JSON.stringify({
@@ -25,7 +29,7 @@ if (!textProviders(config).length) {
         provider: result.provider,
         model: result.model,
         elapsedMs: Date.now() - started,
-        answer: result.text,
+        freeOnly: config.OPENROUTER_FREE_ONLY,
       }),
     );
   } catch (error) {

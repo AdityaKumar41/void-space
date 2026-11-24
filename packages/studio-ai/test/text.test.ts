@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { generateText, isTextAiConfigured, textProviders } from '../src/text';
+import { generateText, isTextAiConfigured, textProviders, textAiEnvSchema } from '../src/text';
 const config = {
   AI_TEXT_BASE_URL: 'https://qwen.example/api/generate',
   AI_TEXT_MODEL: 'qwen2.5-coder:32b',
@@ -174,4 +174,85 @@ describe('Text provider routing', () => {
     expect(f.mock.calls[1]![0]).toBe('https://qwen.example/api/generate');
     expect(JSON.parse(String(f.mock.calls[1]![1]!.body)).model).toBe('mistral:7b');
   });
+});
+
+describe('Explicit free OpenRouter deployment', () => {
+  it('prefers the configured router without waiting for the unavailable local host', () => {
+    expect(
+      textProviders({
+        ...config,
+        OPENROUTER_API_KEY: 'router-key',
+        OPENROUTER_MODEL: 'openrouter/free',
+        OPENROUTER_PREFERRED: true,
+      })[0],
+    ).toMatchObject({ name: 'openrouter', model: 'openrouter/free' });
+  });
+  it('refuses paid model selection when free-only is enabled', () => {
+    expect(() =>
+      textProviders({
+        OPENROUTER_API_KEY: 'router-key',
+        OPENROUTER_MODEL: 'paid/model',
+        OPENROUTER_FREE_ONLY: true,
+      }),
+    ).toThrow('free');
+  });
+  it('sends a zero-price ceiling only to the free router', async () => {
+    const f = vi.fn<typeof fetch>().mockResolvedValue(chat('{"ready":true}'));
+    await generateText(
+      {
+        OPENROUTER_API_KEY: 'router-key',
+        OPENROUTER_MODEL: 'openrouter/free',
+        OPENROUTER_FREE_ONLY: true,
+      },
+      { ...request, json: true },
+      f,
+    );
+    expect(JSON.parse(String(f.mock.calls[0]![1]!.body))).toMatchObject({
+      provider: { max_price: { prompt: 0, completion: 0, request: 0 } },
+      model: 'openrouter/free',
+    });
+  });
+});
+
+it('parses free-only booleans without treating false as true', () => {
+  const parsed = textAiEnvSchema.parse({
+    OPENROUTER_PREFERRED: 'false',
+    OPENROUTER_FREE_ONLY: 'true',
+  });
+  expect(parsed.OPENROUTER_PREFERRED).toBe(false);
+  expect(parsed.OPENROUTER_FREE_ONLY).toBe(true);
+  expect(() => textAiEnvSchema.parse({ OPENROUTER_FREE_ONLY: 'yes' })).toThrow();
+});
+
+it('can disable optional OpenRouter reasoning without changing compatible requests', async () => {
+  const f = vi.fn<typeof fetch>().mockResolvedValue(chat());
+  await generateText(
+    {
+      OPENROUTER_API_KEY: 'router-key',
+      OPENROUTER_MODEL: 'inclusionai/ling-3.2-flash:free',
+      OPENROUTER_DISABLE_REASONING: true,
+    },
+    request,
+    f,
+  );
+  expect(JSON.parse(String(f.mock.calls[0]![1]!.body))).toHaveProperty('reasoning.enabled', false);
+});
+
+it('rejects reasoning-only output instead of treating it as a completed lesson', async () => {
+  const f = vi
+    .fn<typeof fetch>()
+    .mockResolvedValue(
+      Response.json({
+        choices: [
+          { message: { content: null, reasoning: 'internal reasoning' }, finish_reason: 'length' },
+        ],
+      }),
+    );
+  await expect(
+    generateText(
+      { OPENROUTER_API_KEY: 'router-key', OPENROUTER_MODEL: 'openrouter/free' },
+      { ...request, json: true },
+      f,
+    ),
+  ).rejects.toThrow('No configured text provider');
 });
