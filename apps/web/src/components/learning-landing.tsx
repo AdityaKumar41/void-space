@@ -1,22 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
-import { ArrowUp, ArrowUpRight, Plus, Sparkles, BookOpen, Box, Users, Check } from 'lucide-react';
-function Mark() {
-  return (
-    <svg width="35" height="35" viewBox="0 0 40 40" aria-hidden="true">
-      {Array.from({ length: 8 }, (_, i) => (
-        <path
-          key={i}
-          d="M18 0h4l-1 14h-2z"
-          fill="currentColor"
-          transform={`rotate(${i * 45} 20 20)`}
-        />
-      ))}
-      <circle cx="20" cy="20" r="3" fill="currentColor" />
-    </svg>
-  );
-}
+import { ArrowUp, ArrowUpRight, Plus, Sparkles } from 'lucide-react';
+import { MarketHeader, MarketFooter } from './market-shell';
 export function LearningLanding() {
   const [prompt, setPrompt] = useState('');
   function start(attach = false) {
@@ -27,25 +13,7 @@ export function LearningLanding() {
   return (
     <main id="main" className="learning-site">
       <div className="learning-site-sheet">
-        <nav className="learning-site-nav" aria-label="Main navigation">
-          <Link href="/" className="learning-site-brand">
-            <Mark />
-            <span>/</span>void space
-          </Link>
-          <div className="learning-site-links">
-            <a href="#platform">Platform</a>
-            <span>·</span>
-            <a href="#how-it-works">How it works</a>
-            <span>·</span>
-            <Link href="/learn/discover">Explore lessons</Link>
-            <span>·</span>
-            <Link href="/catalog">Marketplace</Link>
-          </div>
-          <Link className="learning-outline" href="/login?next=/console/learn/agent">
-            Open workspace
-            <ArrowUpRight size={17} />
-          </Link>
-        </nav>
+        <MarketHeader current="product" />
         <section className="learning-site-intro" id="platform">
           <h1>
             Ask.
@@ -178,18 +146,7 @@ export function LearningLanding() {
             </Link>
           </div>
         </section>
-        <footer className="learning-site-footer">
-          <Link href="/" className="learning-site-brand">
-            <Mark />
-            void space
-          </Link>
-          <div>
-            <Link href="/learn/discover">Public lessons</Link>
-            <Link href="/catalog">Marketplace</Link>
-            <Link href="/console/learn/agent">Workspace</Link>
-          </div>
-          <span>Learn through exploration.</span>
-        </footer>
+        <MarketFooter />
       </div>
     </main>
   );

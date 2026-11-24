@@ -23,9 +23,9 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        /* The one loud control on a view: solid heat, a white label, and the stacked warm shadow. */
+        /* The one loud control on a view: solid heat with a readable dark label. */
         primary:
-          'border-brand bg-brand text-white shadow-heat hover:-translate-y-px hover:bg-brand-warm hover:border-brand-warm active:translate-y-0 active:scale-[0.995] active:bg-brand-dim',
+          'border-brand bg-brand text-[#262626] shadow-none hover:-translate-y-px hover:bg-brand-warm hover:border-brand-warm active:translate-y-0 active:scale-[0.995] active:bg-brand-dim',
         /* Filled but neutral: a supporting action beside a primary one. */
         secondary: 'border-veil-8 bg-veil-6 text-ink hover:bg-veil-12',
         /* Outlined: present, quiet, and used for the second option in a pair. */
@@ -58,8 +58,7 @@ export const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, selected, type = 'button', ...props }, ref) => (

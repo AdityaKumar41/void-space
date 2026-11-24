@@ -1,39 +1,14 @@
 'use client';
 
-/**
- * The workspace marketplace — the staff view of every module (SRS §6.1).
- *
- * Laid out as a collection page, because that is what it is: a banner with the totals, a filter rail
- * on the left, a toolbar, and a grid of items. The rules the earlier table-based version already
- * followed are kept, because they are about honesty rather than layout:
- *
- * - **Nothing heavy loads unasked.** Cards carry metadata and a badge; the 3D model is fetched only
- *   when someone opens the preview, one at a time. A grid of live canvases would be a slideshow, and
- *   the bundled whale skeleton alone is 13.6 MB with 28 textures.
- * - **Filtering is instant and local.** The catalogue is small enough to filter in the browser, so a
- *   keystroke does not wait on a round trip. A deliberate contrast with the *public* catalogue, which
- *   re-queries the server because its facet counts must describe the whole collection rather than the
- *   page in hand.
- * - **The licence is the headline.** This is a licensed marketplace, not a file list: token id and
- *   licence state sit at the same level as the name.
- * - **Counts say what they count.** The API returns a true `total`; anything derived from the loaded
- *   page says "in view", because a sum over the first hundred rows is not a total.
- */
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import Link from 'next/link';
+import { ShoppingBag, ArrowUpRight, Box, Search } from 'lucide-react';
 
 import { apiFetch } from '../../../lib/api';
 import { formatBytes, formatNumber, formatRelative } from '../../../lib/format';
 import { AssetQuickLook, type QuickLookAsset } from '../../../components/asset-quick-look';
-import {
-  ConsoleBanner,
-  EmptyBlock,
-  FilterRail,
-  ItemCard,
-  StatCell,
-  Toolbar,
-  type RailGroup,
-} from '../../../components/console-kit';
+import { ItemCard } from '../../../components/console-kit';
 import { Reveal } from '../../../components/reveal';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
 
@@ -77,6 +52,9 @@ function bandOf(polycount: number | null | undefined): Band {
 
 export default function ConsoleCatalogPage() {
   const [query, setQuery] = useState('');
+  useEffect(() => {
+    setQuery(new URLSearchParams(location.search).get('q') ?? '');
+  }, []);
   const [category, setCategory] = useState('');
   const [licence, setLicence] = useState('');
   const [band, setBand] = useState<Band>('');
@@ -95,13 +73,11 @@ export default function ConsoleCatalogPage() {
 
   const categories = useMemo(
     () =>
-      [...new Set(items.map((item) => item.category))]
-        .sort()
-        .map((value) => ({
-          value,
-          label: value,
-          count: items.filter((item) => item.category === value).length,
-        })),
+      [...new Set(items.map((item) => item.category))].sort().map((value) => ({
+        value,
+        label: value,
+        count: items.filter((item) => item.category === value).length,
+      })),
     [items],
   );
 
@@ -131,171 +107,173 @@ export default function ConsoleCatalogPage() {
     });
   }, [items, query, category, licence, band, sort]);
 
-  const activeLicences = items.filter((item) => item.license?.status === 'active').length;
-  const revokedLicences = items.filter((item) => item.license?.status === 'revoked').length;
-  // Counted once and reused, so the figure and its hint cannot disagree — the hint is the sentence
-  // "1 needs decimation" / "3 need decimation", and a plural computed separately from the number it
-  // describes is how a counter starts reading "1 need".
-  const heavyCount = items.filter(
-    (item) => bandOf(item.currentVersion?.polycount) === 'heavy',
-  ).length;
   const filtering = Boolean(query || category || licence || band);
-
-  const groups: readonly RailGroup[] = [
-    { title: 'Category', value: category, onChange: setCategory, options: categories },
-    {
-      title: 'Licence',
-      value: licence,
-      onChange: setLicence,
-      options: [
-        { value: 'active', label: 'Active', count: activeLicences },
-        { value: 'revoked', label: 'Revoked', count: revokedLicences },
-        {
-          value: 'none',
-          label: 'Not licensed',
-          count: items.length - activeLicences - revokedLicences,
-        },
-      ],
-    },
-    {
-      title: 'Complexity',
-      value: band,
-      onChange: (next) => setBand(next as Band),
-      options: [
-        { value: 'light', label: 'Under 50k tris' },
-        { value: 'medium', label: '50k – 150k tris' },
-        { value: 'heavy', label: 'Over 150k tris' },
-      ],
-    },
-  ];
-
-  if (catalog.isLoading) return <LoadingBlock label="Loading the marketplace" />;
+  if (catalog.isLoading)
+    return (
+      <div className="learning-marketplace">
+        <LoadingBlock label="Loading the marketplace" />
+      </div>
+    );
   if (catalog.error || !catalog.data) {
-    return <ErrorNote message={(catalog.error as Error)?.message ?? 'The marketplace is unavailable'} />;
+    return (
+      <div className="learning-marketplace">
+        <ErrorNote
+          message={(catalog.error as Error)?.message ?? 'The marketplace is unavailable'}
+        />
+        <button className="agent-pill" onClick={() => void catalog.refetch()}>
+          Try again
+        </button>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-7">
-      <ConsoleBanner
-        eyebrow={`Marketplace · ERC-721 · ${
-          catalog.data.total > items.length
-            ? `showing the first ${items.length} of ${catalog.data.total}`
-            : 'all published modules'
-        }`}
-        title="Published modules"
-        description="Every asset here has passed review and had its licence minted on chain. Open the preview to stream the model from IPFS — nothing is downloaded until you ask for it."
-        stats={
-          <>
-            <StatCell label="Published" value={formatNumber(catalog.data.total)} />
-            <StatCell
-              label="Licences active"
-              value={formatNumber(activeLicences)}
-              hint={revokedLicences > 0 ? `${revokedLicences} revoked` : 'none revoked'}
-              tone="forest"
-            />
-            <StatCell
-              label="Categories in view"
-              value={formatNumber(categories.length)}
-              hint={`${items.length} modules loaded`}
-            />
-            <StatCell
-              label="Heavy for XR"
-              value={formatNumber(heavyCount)}
-              hint={`need${heavyCount === 1 ? 's' : ''} decimation`}
-              tone="honey"
-            />
-          </>
-        }
-      />
-
-      <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <FilterRail groups={groups} />
-
+    <div className="learning-marketplace">
+      <header className="marketplace-heading">
         <div>
-          <Toolbar
-            search={query}
-            onSearch={setQuery}
-            placeholder="Search by name, category or tag"
-            count={
-              filtering
-                ? `${visible.length} of ${items.length} shown`
-                : `${formatNumber(items.length)} modules`
-            }
-          >
-            <label className="w-auto">
-              <span className="sr-only">Sort by</span>
-              <select
-                value={sort}
-                onChange={(event) => setSort(event.target.value as SortKey)}
-                aria-label="Sort the marketplace"
-              >
-                {SORTS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </Toolbar>
-
-          {visible.length === 0 ? (
-            <div className="relative overflow-hidden rounded-card border border-hairline bg-surface shadow-panel mt-6">
-              <EmptyBlock
-                title="Nothing matches those filters"
-                hint="Try a broader search, or click the selected row in the rail to switch that filter off."
-                action={
-                  filtering ? (
-                    <button
-                      type="button"
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12"
-                      onClick={() => {
-                        setQuery('');
-                        setCategory('');
-                        setLicence('');
-                        setBand('');
-                      }}
-                    >
-                      Clear filters
-                    </button>
-                  ) : null
-                }
-              />
-            </div>
+          <p className="marketplace-eyebrow">
+            <ShoppingBag size={16} />
+            Marketplace
+          </p>
+          <h1>Find your next learning model.</h1>
+          <p>
+            Explore published workspace assets. Preview a model, check its licence, or use it in a
+            lesson.
+          </p>
+        </div>
+        <Link className="agent-pill" href="/catalog">
+          Public marketplace
+          <ArrowUpRight size={16} />
+        </Link>
+      </header>
+      <div className="marketplace-search-row">
+        <label className="marketplace-search">
+          <Search size={18} />
+          <input
+            type="search"
+            aria-label="Search by name, category or tag"
+            placeholder="Find a model…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </label>
+        <select
+          aria-label="Sort the marketplace"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortKey)}
+        >
+          {SORTS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="marketplace-filter-row">
+        <select
+          aria-label="Category"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        >
+          <option value="">All categories</option>
+          {categories.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+        <select aria-label="Licence" value={licence} onChange={(e) => setLicence(e.target.value)}>
+          <option value="">All licences</option>
+          <option value="active">Active licence</option>
+          <option value="revoked">Revoked licence</option>
+          <option value="none">Not licensed</option>
+        </select>
+        <select
+          aria-label="Model complexity"
+          value={band}
+          onChange={(e) => setBand(e.target.value as Band)}
+        >
+          <option value="">All sizes</option>
+          <option value="light">Under 50k triangles</option>
+          <option value="medium">50k–150k triangles</option>
+          <option value="heavy">Over 150k triangles</option>
+        </select>
+        <span role="status">
+          {visible.length} {visible.length === 1 ? 'model' : 'models'}
+          {catalog.data.total > items.length
+            ? ` · first ${items.length} of ${catalog.data.total}`
+            : ''}
+        </span>
+      </div>
+      {visible.length === 0 ? (
+        <div className="marketplace-empty">
+          <Box size={42} strokeWidth={1} />
+          <h2>{filtering ? 'No models match your search' : 'Your model collection starts here'}</h2>
+          <p>
+            {filtering
+              ? 'Try another name or clear the filters.'
+              : 'Published workspace models appear here. You can also browse the public marketplace or add a private model to your library.'}
+          </p>
+          {filtering ? (
+            <button
+              className="agent-pill"
+              onClick={() => {
+                setQuery('');
+                setCategory('');
+                setLicence('');
+                setBand('');
+              }}
+            >
+              Clear filters
+            </button>
           ) : (
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {visible.map((item, position) => {
-                const version = item.currentVersion;
-                const heavy = bandOf(version?.polycount) === 'heavy';
-
-                return (
-                  <Reveal key={item.id} delay={(position % 3) * 60}>
-                    <ItemCard
-                      assetId={item.id}
-                      name={item.name}
-                      href={`/console/assets/${item.id}`}
-                      collection={item.category}
-                      cid={version?.ipfsCid ?? null}
-                      polycount={version?.polycount ?? null}
-                      sizeBytes={version?.sizeBytes ?? null}
-                      badge={item.license ? `#${item.license.tokenId}` : undefined}
-                      figure={`${formatNumber(version?.polycount ?? null)} tris`}
-                      figureSub={`${formatBytes(version?.sizeBytes ?? 0)} · ${formatRelative(item.updatedAt)}${
-                        heavy ? ' · heavy for XR' : ''
-                      }`}
-                      action={
-                        // A button, not a link: the preview opens in place rather than navigating.
-                        <button type="button" className="rounded-control border border-veil-8 bg-veil-6 px-3 py-1.5 text-[13px] font-semibold text-ink transition-colors duration-150 ease-standard hover:bg-veil-12" onClick={() => setPreview(item)}>
-                          Preview
-                        </button>
-                      }
-                    />
-                  </Reveal>
-                );
-              })}
+            <div>
+              <Link className="agent-pill primary" href="/catalog">
+                Browse public models
+              </Link>
+              <Link className="agent-pill" href="/console/learn/library">
+                Open my library
+              </Link>
             </div>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {visible.map((item, position) => {
+            const version = item.currentVersion;
+            const heavy = bandOf(version?.polycount) === 'heavy';
+
+            return (
+              <Reveal key={item.id} delay={(position % 3) * 60}>
+                <ItemCard
+                  assetId={item.id}
+                  name={item.name}
+                  href={`/console/assets/${item.id}`}
+                  collection={item.category}
+                  cid={version?.ipfsCid ?? null}
+                  polycount={version?.polycount ?? null}
+                  sizeBytes={version?.sizeBytes ?? null}
+                  badge={item.license ? `#${item.license.tokenId}` : undefined}
+                  figure={`${formatNumber(version?.polycount ?? null)} tris`}
+                  figureSub={`${formatBytes(version?.sizeBytes ?? 0)} · ${formatRelative(item.updatedAt)}${
+                    heavy ? ' · heavy for XR' : ''
+                  }`}
+                  action={
+                    // A button, not a link: the preview opens in place rather than navigating.
+                    <button
+                      type="button"
+                      className="rounded-control border border-veil-8 bg-veil-6 px-3 py-1.5 text-[13px] font-semibold text-ink transition-colors duration-150 ease-standard hover:bg-veil-12"
+                      onClick={() => setPreview(item)}
+                    >
+                      Preview
+                    </button>
+                  }
+                />
+              </Reveal>
+            );
+          })}
+        </div>
+      )}
 
       {preview ? <AssetQuickLook asset={preview} onClose={() => setPreview(null)} /> : null}
     </div>

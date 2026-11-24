@@ -16,11 +16,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
-import type {
-  PublicCatalogFacets,
-  PublicCatalogPage,
-  PublicCatalogSort,
-} from '@void-space/types';
+import type { PublicCatalogFacets, PublicCatalogPage, PublicCatalogSort } from '@void-space/types';
 
 import { apiFetch } from '../lib/api';
 import { formatNumber } from '../lib/format';
@@ -28,7 +24,7 @@ import { SORT_OPTIONS } from '../lib/public-api';
 import { buttonVariants } from './ui/button';
 import { FilterChip } from './ui/chip';
 import { SearchField, Select } from './ui/field';
-import { EmptyState, LoadingBlock } from './ui/feedback';
+import { EmptyState, LoadingBlock, ErrorNote } from './ui/feedback';
 import { MarketCard } from './market-card';
 import { Reveal } from './reveal';
 
@@ -183,12 +179,27 @@ export function MarketplaceBrowser({
           <span className="text-[13px] text-ink-faint">
             {activeFilters} filter{activeFilters === 1 ? '' : 's'} applied
           </span>
-          <button type="button" onClick={clearAll} className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+          <button
+            type="button"
+            onClick={clearAll}
+            className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+          >
             Clear all
           </button>
         </div>
       ) : null}
 
+      {query.error && (
+        <div className="mt-5">
+          <ErrorNote
+            message="Models could not be refreshed."
+            hint="Your filters are kept. Check your connection and try again."
+          />
+          <button className="agent-pill mt-3" onClick={() => void query.refetch()}>
+            Try again
+          </button>
+        </div>
+      )}
       {/* ------------------------------------------------------------------------- grid */}
       <div className="mt-8">
         {query.isLoading ? (
@@ -224,4 +235,3 @@ export function MarketplaceBrowser({
     </div>
   );
 }
-

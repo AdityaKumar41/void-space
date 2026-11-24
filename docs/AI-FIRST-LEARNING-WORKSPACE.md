@@ -109,3 +109,17 @@ Review caught a remaining navy primary-button override and loss of model context
 ### Spec review
 
 Review caught workspace-asset fallback losing its selected asset. Recovery now preserves that asset ID. The actual external AI failure is recorded above; these checks do not establish that every feature or external service is error-free.
+
+## Marketplace and remaining legacy frame — 24 November 2026
+
+### Catalogue and landing checks
+
+The exact `/console/catalog` path previously bypassed the agent shell. All authenticated destinations now use one shell; asset routes retain permission-filtered review, licences, operations, team and Studio controls. The old workspace frame, its unused stylesheet section, the unused rotating marketplace hero and the old public marketing header/footer implementations were removed. Saved links to previously retired learning routes continue to redirect.
+
+The workspace marketplace now has a plain-language introduction, compact category/licence/complexity filters, deliberate empty and retry states, and links to the public marketplace and private library. Public catalogue and listing navigation use the same brand, neutral surfaces and fonts. Landing uses that shared header/footer and a smaller hero so the lesson composer is visible sooner. Public catalogue searches now survive reload using the filter URL already written by the browser. Marketplace cards still avoid eager WebGL loading and checkout/licensing behavior is retained.
+
+### Verification
+
+BrowserOS Neo inspected the exact localhost catalogue, landing, public marketplace and permission-bearing asset library. Removing an unused module exposed a stale Next.js development dependency; restarting only the web frontend cleared it and the exact localhost desktop/touch journeys then passed. The initial broader run against the development API hit HTTP 429 signup protection; regression runs use a separate test API rather than weakening development limits. Production build and web unit tests passed; final browser totals accompany this change.
+
+Final validation: 19/19 production browser journeys passed in 57.4 seconds against the isolated test API; 30/30 web unit tests and web type validation passed. The competing root palettes were consolidated into a single shared light token set. Focused layout/marketplace checks were repeated after that stylesheet cleanup. No API, Studio or paid-service implementation was changed.

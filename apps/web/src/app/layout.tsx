@@ -10,8 +10,8 @@
  * type rules in `DESIGN.md`), JetBrains Mono for the identifiers and figures this product is made of,
  * so columns of hashes, CIDs and triangle counts line up.
  *
- * The asset marketplace keeps its existing dark theme. Learning uses a scoped light workspace
- * matching the approved AI-agent reference; its variables do not change marketplace styling.
+ * Learning, marketplace and asset tools share the light agent workspace theme.
+ * Model stages keep their own rendering controls and materials.
  */
 import type { Metadata, Viewport } from 'next';
 
@@ -25,7 +25,8 @@ export const metadata: Metadata = {
     'Create interactive lessons with your personal learning agent. Explore models, practise, and study independently or with your institution.',
   openGraph: {
     title: 'Void Space — your personal learning agent',
-    description: 'Personal learning agents, interactive lessons and private model libraries for individuals and institutions.',
+    description:
+      'Personal learning agents, interactive lessons and private model libraries for individuals and institutions.',
     type: 'website',
   },
 };

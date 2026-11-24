@@ -1,4 +1,4 @@
-/* Learning workspace: the supplied light reference, scoped away from the marketplace. */
+/* Shared workspace frame, based on the supplied light agent reference. */
 .agent-workspace {
   --fc-bg: #fff;
   --fc-bg-lighter: #f5f5f7;
@@ -2347,5 +2347,276 @@
   }
   .learning-settings-profile p {
     max-width: 100%;
+  }
+}
+
+/* One product theme, including marketplace, account overlays and asset tools. */
+
+.workspace-session {
+  min-height: 100dvh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  padding: 24px;
+  gap: 20px;
+}
+.agent-asset-page {
+  padding: 30px;
+}
+.learning-marketplace {
+  padding: 34px;
+  max-width: 1440px;
+  margin: auto;
+}
+.marketplace-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 36px;
+}
+.marketplace-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 16px;
+}
+.marketplace-heading h1 {
+  font-size: clamp(28px, 3vw, 44px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -1.6px;
+  max-width: 760px;
+  text-wrap: balance;
+}
+.marketplace-heading div > p:last-child {
+  max-width: 60ch;
+  margin-top: 16px;
+  color: #62646d;
+  line-height: 1.75;
+}
+.marketplace-heading > a {
+  flex-shrink: 0;
+}
+.marketplace-search-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.marketplace-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  background: #f5f5f5;
+  border: 1px solid #e5e5e9;
+  border-radius: 14px;
+  padding: 13px 16px;
+}
+.marketplace-search input {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  outline: none;
+}
+.marketplace-search:focus-within {
+  outline: 2px solid #fa5d19;
+  outline-offset: 2px;
+}
+.marketplace-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 0;
+  border-bottom: 1px solid #e5e5e9;
+}
+.marketplace-filter-row > span {
+  margin-left: auto;
+  font-size: 12px;
+  color: #62646d;
+}
+.learning-marketplace select {
+  background-color: #fff;
+  border: 1px solid #dedee2;
+  border-radius: 10px;
+  padding: 10px 32px 10px 12px;
+  font-size: 13px;
+  max-width: 100%;
+}
+.marketplace-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 72px 20px;
+  gap: 16px;
+  background: #f7f7f7;
+  border-radius: 20px;
+  margin-top: 24px;
+}
+.marketplace-empty svg {
+  color: #777;
+}
+.marketplace-empty h2 {
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+}
+.marketplace-empty p {
+  color: #62646d;
+  max-width: 52ch;
+}
+.marketplace-empty > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+.public-marketplace {
+  min-height: 100dvh;
+  background: #fff;
+  color: #17181d;
+}
+.public-site-header {
+  max-width: 1440px;
+  margin: auto;
+  padding: 28px 40px;
+  border-bottom: 1px solid #eee;
+}
+.public-site-header .learning-site-links {
+  gap: 24px;
+}
+.public-site-header [aria-current='page'] {
+  color: #ad3f0e;
+}
+.public-marketplace-main {
+  max-width: 1280px;
+  margin: auto;
+  padding: 56px 40px 80px;
+  min-height: 65dvh;
+}
+.public-site-footer {
+  max-width: 1360px;
+  margin: auto;
+  padding: 30px 40px;
+  border-top: 1px solid #eee;
+}
+.public-site-footer nav {
+  display: flex;
+  gap: 24px;
+}
+.learning-site {
+  background: #f5f5f5;
+  padding: 12px;
+}
+.learning-site-sheet {
+  max-width: 1600px;
+  padding: 0 4vw;
+  border-radius: 20px;
+}
+.learning-site .public-site-header {
+  padding: 28px 0;
+}
+.learning-site .public-site-footer {
+  padding-inline: 0;
+}
+.learning-site-intro {
+  padding: 64px 3vw 48px;
+}
+.learning-site-intro h1 {
+  font-size: clamp(54px, 5.8vw, 86px);
+  letter-spacing: -4px;
+}
+.learning-hero-scene {
+  min-height: 400px;
+}
+.learning-hero-scene > img {
+  height: 420px;
+}
+.learning-site-composer {
+  top: 34%;
+}
+.learning-site :where(button, input, textarea, select) {
+  font-family: inherit;
+}
+.public-marketplace .bg-brand {
+  color: #262626;
+}
+@media (max-width: 1000px) {
+  .marketplace-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .learning-site-intro {
+    padding: 48px 0 36px;
+  }
+  .public-site-header .learning-site-links {
+    gap: 14px;
+  }
+}
+@media (max-width: 760px) {
+  .learning-marketplace,
+  .agent-asset-page {
+    padding: 24px 16px;
+  }
+  .marketplace-search-row {
+    flex-wrap: wrap;
+  }
+  .marketplace-search {
+    flex-basis: 100%;
+  }
+  .marketplace-filter-row select {
+    flex: 1;
+    min-width: 130px;
+  }
+  .marketplace-filter-row > span {
+    width: 100%;
+    margin: 4px 0 0;
+  }
+  .public-site-header {
+    padding: 20px 16px;
+  }
+  .public-site-header .learning-site-links {
+    display: none;
+  }
+  .public-marketplace-main {
+    padding: 32px 16px 48px;
+  }
+  .public-site-footer {
+    padding: 24px 16px;
+  }
+  .public-site-footer nav {
+    flex-wrap: wrap;
+    gap: 18px;
+  }
+  .learning-site {
+    padding: 0;
+  }
+  .learning-site-sheet {
+    border-radius: 0;
+    padding-inline: 20px;
+  }
+  .learning-site .public-site-header {
+    padding: 20px 0;
+  }
+  .learning-site-intro {
+    padding-top: 34px;
+  }
+  .learning-site-intro h1 {
+    font-size: 60px;
+    letter-spacing: -3px;
+  }
+  .learning-hero-scene {
+    min-height: 370px;
+  }
+  .learning-hero-scene > img {
+    height: 370px;
+  }
+  .learning-site-composer {
+    top: 30%;
   }
 }
