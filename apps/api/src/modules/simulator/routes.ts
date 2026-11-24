@@ -10,6 +10,7 @@ import {
   scenarioRubricItemSchema,
   submitScenarioAttemptSchema,
   storedExperienceSchema,
+  learningActivitySchema,
 } from '@void-space/types';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -34,13 +35,14 @@ function scenarioView(scenario: {
   updatedAt: Date;
 }) {
   const stored = storedExperienceSchema.safeParse(scenario.experience);
+  const learning = learningActivitySchema.safeParse(scenario.experience);
   return {
     ...scenario,
     experience: undefined,
     interactive: stored.success,
     media: stored.success ? stored.data.media : null,
     taskCount: stored.success ? stored.data.definition.steps.length : 0,
-    rubric: rubricSchema.parse(scenario.rubric),
+    rubric: learning.success ? [] : rubricSchema.parse(scenario.rubric),
   };
 }
 
@@ -141,7 +143,7 @@ export async function simulatorRoutes(app: FastifyInstance): Promise<void> {
       const input = parseBody(createScenarioSchema, request.body);
       const updated = await withTenant(p.tenantId, async (db) => {
         const existing = await db.simulationScenario.findFirst({
-          where: { id, tenantId: p.tenantId },
+          where: { id, tenantId: p.tenantId, learningScope: 'workspace' },
         });
         if (!existing) throw new NotFoundError('Scenario');
         if (existing.status !== 'draft')
@@ -212,7 +214,9 @@ export async function simulatorRoutes(app: FastifyInstance): Promise<void> {
       const { id } = paramsSchema.parse(request.params);
       const p = request.principal!;
       const scenario = await withTenant(p.tenantId, (db) =>
-        db.simulationScenario.findFirst({ where: { id, tenantId: p.tenantId } }),
+        db.simulationScenario.findFirst({
+          where: { id, tenantId: p.tenantId, learningScope: 'workspace' },
+        }),
       );
       if (!scenario) throw new NotFoundError('Scenario');
       return {
@@ -233,7 +237,7 @@ export async function simulatorRoutes(app: FastifyInstance): Promise<void> {
       const { id } = paramsSchema.parse(request.params);
       const scenario = await withTenant(principal.tenantId, async (db) => {
         const existing = await db.simulationScenario.findFirst({
-          where: { id, tenantId: principal.tenantId },
+          where: { id, tenantId: principal.tenantId, learningScope: 'workspace' },
         });
         if (!existing) throw new NotFoundError('Simulation scenario not found');
         // Validate persisted JSON before release too: it protects existing data
@@ -284,12 +288,17 @@ export async function simulatorRoutes(app: FastifyInstance): Promise<void> {
       db.simulationScenario.findMany({
         where: {
           tenantId: principal.tenantId,
+          learningScope: 'workspace',
           ...(!includeDrafts ? { status: 'published' as const } : {}),
         },
         orderBy: { updatedAt: 'desc' },
       }),
     );
-    return { scenarios: scenarios.map(scenarioView) };
+    return {
+      scenarios: scenarios
+        .filter((s) => !learningActivitySchema.safeParse(s.experience).success)
+        .map(scenarioView),
+    };
   });
 
   app.get('/simulations/:id', { preHandler: app.authenticate }, async (request) => {

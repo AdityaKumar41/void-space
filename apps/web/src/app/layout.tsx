@@ -10,22 +10,22 @@
  * type rules in `DESIGN.md`), JetBrains Mono for the identifiers and figures this product is made of,
  * so columns of hashes, CIDs and triangle counts line up.
  *
- * There is no theme toggle. The system is dark-only by design: heat orange against a near-neutral
- * ground is the brand, and a light mode would be a second design to maintain rather than an
- * accessibility win — contrast is held to WCAG AA in the one theme that exists.
+ * The asset marketplace keeps its existing dark theme. Learning uses a scoped light workspace
+ * matching the approved AI-agent reference; its variables do not change marketplace styling.
  */
 import type { Metadata, Viewport } from 'next';
 
 import { Providers } from './providers';
 import './globals.css';
+import './agent-workspace.css';
 
 export const metadata: Metadata = {
-  title: 'VOID·SPACE — Spatial learning workspace',
+  title: 'Void Space — your personal learning agent',
   description:
-    'Explore reviewed 3D content, practise interactive procedures, learn with your team and retain evidence of completed work.',
+    'Create interactive lessons with your personal learning agent. Explore models, practise, and study independently or with your institution.',
   openGraph: {
-    title: 'VOID·SPACE — Spatial learning workspace',
-    description: 'Reviewed 3D content, guided learning, interactive practice and shared spaces.',
+    title: 'Void Space — your personal learning agent',
+    description: 'Personal learning agents, interactive lessons and private model libraries for individuals and institutions.',
     type: 'website',
   },
 };

@@ -224,6 +224,8 @@ function userKeyFor(role: RoleName): string {
       return 'developer';
     case RoleName.Viewer:
       return 'viewer';
+    case RoleName.Learner:
+      return 'learner';
   }
 }
 

@@ -1,3 +1,7 @@
+import { publicLessonRoutes } from './modules/lesson-plans/public';
+import { learningWorkspaceRoutes } from './modules/learning-agent/workspace';
+import { learningAgentRoutes } from './modules/learning-agent/routes';
+import { privateLibraryRoutes } from './modules/learning-agent/library';
 import { isTextAiConfigured, textProviders } from '@void-space/studio-ai/text';
 /**
  * Fastify application factory (SRS §3.1 "API-first").
@@ -50,6 +54,9 @@ import { spatialRoutes } from './modules/spatial/routes';
 import { spatialWebsocketPlugin } from './modules/spatial/ws';
 import { iotRoutes } from './modules/iot/routes';
 import { simulatorRoutes } from './modules/simulator/routes';
+import { learningRoomRoutes } from './modules/learning-hub/rooms';
+import { lessonPlanRoutes } from './modules/lesson-plans/routes';
+import { learningHubRoutes } from './modules/learning-hub/routes';
 import { experienceRoutes } from './modules/experiences/routes';
 import { fieldGuideRoutes } from './modules/field-guides/routes';
 import { careerRoutes } from './modules/career/routes';
@@ -344,6 +351,13 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   await app.register(spatialWebsocketPlugin, { prefix: '/api/v1' });
   await app.register(iotRoutes, { prefix: '/api/v1' });
   await app.register(simulatorRoutes, { prefix: '/api/v1' });
+  await app.register(learningRoomRoutes, { prefix:'/api/v1' });
+  await app.register(learningWorkspaceRoutes, { prefix: '/api/v1' });
+  await app.register(learningAgentRoutes, { prefix: '/api/v1', env, producer });
+  await app.register(privateLibraryRoutes, { prefix: '/api/v1', env });
+  await app.register(publicLessonRoutes, { prefix: '/api/v1', env });
+  await app.register(lessonPlanRoutes, { prefix: '/api/v1', env, producer });
+  await app.register(learningHubRoutes, { prefix: '/api/v1', env, producer });
   await app.register(experienceRoutes, { prefix: '/api/v1' });
   await app.register(fieldGuideRoutes, { prefix: '/api/v1' });
   await app.register(careerRoutes, { prefix: '/api/v1' });

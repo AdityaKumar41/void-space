@@ -123,6 +123,7 @@ export function metadataFromGltfJson(document: GltfDocument): MeshMetadata {
   }
 
   return {
+    meshCount:(document.nodes?.some(n=>n.mesh!==undefined)?document.nodes.filter(n=>n.mesh!==undefined).reduce((sum,n)=>sum+(document.meshes?.[n.mesh!]?.primitives?.length??0),0):document.meshes?.reduce((sum,m)=>sum+(m.primitives?.length??0),0))??0,
     polycount: polycount > 0 ? polycount : null,
     vertices: vertices > 0 ? vertices : null,
     materials: document.materials?.length ?? null,

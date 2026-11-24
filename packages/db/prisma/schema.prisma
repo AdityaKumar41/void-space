@@ -29,6 +29,7 @@ enum TenantStatus {
 
 /// Platform-defined role set (§3.6). Not end-user editable in this release.
 enum RoleName {
+  Learner
   SuperAdmin
   TenantAdmin
   Creator
@@ -94,6 +95,7 @@ enum JobStatus {
 
 /// §3.10 queue names, mirrored offline for the polling API.
 enum JobQueue {
+  learning
   ai_enrichment
   ipfs_pin
   blender_optimize
@@ -136,6 +138,21 @@ enum FieldGuideStatus {
 
 /// §5.1 Tenant — the root of tenant isolation.
 model Tenant {
+  learningThreads LearningThread[]
+  learningFolders LearningFolder[]
+  lessonPlans LessonPlan[]
+  lessonPlanReleases LessonPlanRelease[]
+  lessonShares LessonShare[]
+  lessonGrants LessonGrant[]
+  lessonStudy LessonStudy[]
+  learningSources LearningSource[]
+  learningClasses LearningClass[]
+  learningMemberships LearningClassMember[]
+  learningAssignments LearningAssignment[]
+  learningProgramUnits LearningProgramUnit[]
+  learningJobs LearningTask[]
+  kind String @default("organization") @db.VarChar(20)
+
   id              String       @id @default(uuid()) @db.Uuid
   name            String       @db.VarChar(120)
   slug            String       @unique @db.VarChar(60)
@@ -202,6 +219,19 @@ model Role {
 
 /// §5.1 User — one row per (person, tenant) membership.
 model User {
+  learningThreads LearningThread[]
+  learningFolders LearningFolder[]
+  lessonPlans LessonPlan[]
+  lessonPlanReleases LessonPlanRelease[]
+  lessonShares LessonShare[]
+  lessonGrants LessonGrant[]
+  lessonStudy LessonStudy[]
+  learningSources LearningSource[]
+  learningClasses LearningClass[]
+  learningMemberships LearningClassMember[]
+  learningJobs LearningTask[]
+  learningProfile Json? @map("learning_profile")
+
   id            String     @id @default(uuid()) @db.Uuid
   tenantId      String     @map("tenant_id") @db.Uuid
   email         String     @db.VarChar(254)
@@ -395,6 +425,9 @@ model Asset {
 /// payload is deliberately versioned and immutable after publication: an attempt
 /// must always be gradeable against the questions the learner actually saw.
 model Lesson {
+  learningUnits LearningProgramUnit[]
+  blocks Json?
+
   id            String   @id @default(uuid()) @db.Uuid
   tenantId      String   @map("tenant_id") @db.Uuid
   assetId       String?  @map("asset_id") @db.Uuid
@@ -432,6 +465,9 @@ model Lesson {
 /// A course has its own release lifecycle so an author can build a curriculum
 /// without exposing it to learners until its structure is complete.
 model Course {
+  units LearningProgramUnit[]
+  learningMeta Json? @map("learning_meta")
+
   id          String   @id @default(uuid()) @db.Uuid
   tenantId    String   @map("tenant_id") @db.Uuid
   title       String   @db.VarChar(200)
@@ -497,6 +533,7 @@ model CourseEnrollment {
 /// configuration and annotations; participants are ephemeral rows refreshed by
 /// heartbeats, allowing a web, mobile, or headset client to use the same room.
 model SpatialRoom {
+  learningState Json? @map("learning_state")
   id          String            @id @default(uuid()) @db.Uuid
   tenantId    String            @map("tenant_id") @db.Uuid
   title       String            @db.VarChar(200)
@@ -610,6 +647,9 @@ model DigitalTwin {
 /// so every later assessment can be replayed and explained against its exact
 /// objective criteria.
 model SimulationScenario {
+  learningScope String @default("workspace") @map("learning_scope") @db.VarChar(20)
+  learningUnits LearningProgramUnit[]
+
   id          String         @id @default(uuid()) @db.Uuid
   tenantId    String         @map("tenant_id") @db.Uuid
   title       String         @db.VarChar(200)
@@ -1389,4 +1429,223 @@ model RoyaltyLedger {
   @@index([tenantId, createdAt])
   @@index([orderId])
   @@map("royalty_ledgers")
+}
+
+model LearningSource {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ title String @db.VarChar(200)
+ mime String @db.VarChar(100)
+ status String @default("ready") @db.VarChar(20)
+ metadata Json?
+ storagePath String? @map("storage_path")
+ passages Json @default("[]")
+ error String?
+ createdAt DateTime @default(now()) @map("created_at")
+ tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+ owner User @relation(fields:[ownerId], references:[id], onDelete:Cascade)
+ @@index([tenantId,ownerId])
+ @@map("learning_sources")
+}
+model LearningClass {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ title String @db.VarChar(200)
+ tokenHash String? @unique @map("token_hash") @db.VarChar(64)
+ tokenExpiresAt DateTime? @map("token_expires_at")
+ createdAt DateTime @default(now()) @map("created_at")
+ tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+ owner User @relation(fields:[ownerId], references:[id], onDelete:Restrict)
+ members LearningClassMember[]
+ assignments LearningAssignment[]
+ @@index([tenantId,ownerId])
+ @@map("learning_classes")
+}
+model LearningClassMember {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ classId String @map("class_id") @db.Uuid
+ userId String @map("user_id") @db.Uuid
+ joinedAt DateTime @default(now()) @map("joined_at")
+ tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+ classroom LearningClass @relation(fields:[classId], references:[id], onDelete:Cascade)
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ @@unique([classId,userId])
+ @@index([tenantId,userId])
+ @@map("learning_class_members")
+}
+model LearningAssignment {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ classId String @map("class_id") @db.Uuid
+ title String @db.VarChar(200)
+ kind String @db.VarChar(20)
+ releaseId String @map("release_id") @db.Uuid
+ dueAt DateTime? @map("due_at")
+ createdAt DateTime @default(now()) @map("created_at")
+ tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+ classroom LearningClass @relation(fields:[classId], references:[id], onDelete:Cascade)
+ @@index([tenantId,classId])
+ @@map("learning_assignments")
+}
+model LearningProgramUnit {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ courseId String @map("course_id") @db.Uuid
+ position Int
+ kind String @db.VarChar(20)
+ requirement String @default("pass_assessment") @db.VarChar(30)
+ lessonId String? @map("lesson_id") @db.Uuid
+ scenarioId String? @map("scenario_id") @db.Uuid
+ tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+ course Course @relation(fields:[courseId], references:[id], onDelete:Cascade)
+ lesson Lesson? @relation(fields:[lessonId], references:[id], onDelete:Restrict)
+ scenario SimulationScenario? @relation(fields:[scenarioId], references:[id], onDelete:Restrict)
+ @@unique([courseId,position])
+ @@index([tenantId,courseId])
+ @@map("learning_program_units")
+}
+model LearningTask {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ kind String @db.VarChar(20)
+ status String @default("queued") @db.VarChar(20)
+ input Json
+ result Json?
+ error String?
+ createdAt DateTime @default(now()) @map("created_at")
+ updatedAt DateTime @updatedAt @map("updated_at")
+ tenant Tenant @relation(fields:[tenantId], references:[id], onDelete:Cascade)
+ owner User @relation(fields:[ownerId], references:[id], onDelete:Cascade)
+ @@index([tenantId,ownerId,createdAt])
+ @@map("learning_tasks")
+}
+
+/// Agent-authored drafts. Published releases never change in place.
+model LessonPlan {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ title String @db.VarChar(200)
+ definition Json
+ revision Int @default(0)
+ review Json?
+ updatedAt DateTime @updatedAt @map("updated_at")
+ createdAt DateTime @default(now()) @map("created_at")
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+ releases LessonPlanRelease[]
+ @@index([tenantId,ownerId,updatedAt])
+ @@map("lesson_plans")
+}
+model LessonPlanRelease {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ planId String @map("plan_id") @db.Uuid
+ revision Int
+ definition Json
+ sourceExcerpts Json @map("source_excerpts")
+ reviewed Boolean @default(false)
+ visibility String @default("private") @db.VarChar(20)
+ createdAt DateTime @default(now()) @map("created_at")
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+ plan LessonPlan @relation(fields:[planId],references:[id],onDelete:Cascade)
+ shares LessonShare[]
+ studies LessonStudy[]
+ @@unique([planId,revision])
+ @@index([tenantId,ownerId])
+ @@map("lesson_plan_releases")
+}
+model LessonShare {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ releaseId String @map("release_id") @db.Uuid
+ tokenHash String @map("token_hash") @db.VarChar(64)
+ revokedAt DateTime? @map("revoked_at")
+ createdAt DateTime @default(now()) @map("created_at")
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+ release LessonPlanRelease @relation(fields:[releaseId],references:[id],onDelete:Cascade)
+ @@index([tenantId,releaseId])
+ @@map("lesson_shares")
+}
+/// Stored in the recipient's own tenant; grants no membership or asset rights.
+model LessonGrant {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ releaseTenantId String @map("release_tenant_id") @db.Uuid
+ releaseId String @map("release_id") @db.Uuid
+ shareId String @map("share_id") @db.Uuid
+ createdAt DateTime @default(now()) @map("created_at")
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+ @@unique([ownerId,shareId])
+ @@index([tenantId,ownerId])
+ @@map("lesson_grants")
+}
+/// Individual formative progress; never a classroom grade or certification.
+model LessonStudy {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ releaseId String @map("release_id") @db.Uuid
+ revision Int @default(0)
+ state Json
+ updatedAt DateTime @updatedAt @map("updated_at")
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+ release LessonPlanRelease @relation(fields:[releaseId],references:[id],onDelete:Cascade)
+ @@unique([releaseId,ownerId])
+ @@index([tenantId,ownerId])
+ @@map("lesson_studies")
+}
+
+/// Conversations and folders belong to one authenticated account, including inside an institution.
+model LearningFolder {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ title String @db.VarChar(120)
+ createdAt DateTime @default(now()) @map("created_at")
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+ threads LearningThread[]
+ @@index([tenantId,ownerId])
+ @@map("learning_folders")
+}
+model LearningThread {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ folderId String? @map("folder_id") @db.Uuid
+ title String @db.VarChar(200)
+ messages Json @default("[]")
+ revision Int @default(0)
+ updatedAt DateTime @updatedAt @map("updated_at")
+ createdAt DateTime @default(now()) @map("created_at")
+ tenant Tenant @relation(fields:[tenantId],references:[id],onDelete:Cascade)
+ owner User @relation(fields:[ownerId],references:[id],onDelete:Cascade)
+ folder LearningFolder? @relation(fields:[folderId],references:[id],onDelete:SetNull)
+ @@index([tenantId,ownerId,updatedAt])
+ @@map("learning_threads")
+}
+/// Deliberate public metadata projection. Never includes sources, draft content or answer keys.
+model PublicLessonEntry {
+ id String @id @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ title String @db.VarChar(200)
+ summary String @db.VarChar(2000)
+ audience String @db.VarChar(200)
+ durationMinutes Int @map("duration_minutes")
+ authorLabel String @map("author_label") @db.VarChar(120)
+ createdAt DateTime @default(now()) @map("created_at")
+ @@index([createdAt])
+ @@map("public_lesson_entries")
 }

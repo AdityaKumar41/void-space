@@ -1,3 +1,4 @@
+import { unitProgress } from '../learning-hub/progress';
 /**
  * Virtual Campus: course release, ordered curriculum and evidence-based learner
  * completion.  Course state stays tenant-bound; learner completion can only be
@@ -93,14 +94,29 @@ export async function campusRoutes(app: FastifyInstance): Promise<void> {
       const principal = request.principal!;
       const { id } = paramsSchema.parse(request.params);
       const course = await withTenant(principal.tenantId, async (db) => {
+        await db.$queryRaw`SELECT id FROM courses WHERE id=${id}::uuid FOR UPDATE`;
         const current = await db.course.findFirst({
           where: { id, tenantId: principal.tenantId },
-          include: { lessons: { include: { lesson: { select: { isPublished: true } } } } },
+          include: {
+            units: {
+              include: {
+                lesson: { select: { isPublished: true } },
+                scenario: { select: { status: true, learningScope: true } },
+              },
+            },
+            lessons: { include: { lesson: { select: { isPublished: true } } } },
+          },
         });
         if (!current) throw new NotFoundError('Course not found');
         if (
-          current.lessons.length === 0 ||
-          current.lessons.some((link) => !link.lesson.isPublished)
+          current.units.length
+            ? current.units.some((u) =>
+                u.lesson
+                  ? !u.lesson.isPublished
+                  : u.scenario?.status !== 'published' || u.scenario?.learningScope !== 'workspace',
+              )
+            : current.lessons.length === 0 ||
+              current.lessons.some((link) => !link.lesson.isPublished)
         ) {
           throw new ValidationError(
             'A course can publish only when every ordered lesson is published',
@@ -214,7 +230,11 @@ export async function campusRoutes(app: FastifyInstance): Promise<void> {
     const enrollment = await withTenant(principal.tenantId, async (db) => {
       const course = await db.course.findFirst({
         where: { id, tenantId: principal.tenantId, isPublished: true },
-        select: { id: true, lessons: { select: { lessonId: true } } },
+        select: {
+          id: true,
+          units: { select: { id: true } },
+          lessons: { select: { lessonId: true } },
+        },
       });
       if (!course) throw new NotFoundError('Course not found');
       const passing = await db.lessonAttempt.findMany({
@@ -227,7 +247,10 @@ export async function campusRoutes(app: FastifyInstance): Promise<void> {
         select: { lessonId: true },
         distinct: ['lessonId'],
       });
-      const complete = course.lessons.length > 0 && passing.length === course.lessons.length;
+      const progress = course.units.length ? await unitProgress(db, id, principal.userId) : [];
+      const complete = progress.length
+        ? progress.every((u) => u.completed)
+        : course.lessons.length > 0 && passing.length === course.lessons.length;
       const previous = await db.courseEnrollment.findUnique({
         where: { courseId_learnerId: { courseId: id, learnerId: principal.userId } },
       });

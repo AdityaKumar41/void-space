@@ -317,6 +317,7 @@ export default function AssetConsolePage() {
                     : 'Delete'}
               </Button>
             ) : null}
+            {['approved','published'].includes(asset.status) && <Link className="inline-flex min-h-10 items-center rounded-lg border border-hairline px-3 text-sm" href={`/console/learn/agent?asset=${asset.id}`}>Create lesson with this asset</Link>}
             <VoidStudioLaunchButton
               assetId={asset.id}
               name={asset.name}

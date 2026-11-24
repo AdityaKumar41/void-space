@@ -186,6 +186,7 @@ export interface ReviewCommentSummary {
 
 /** Polycount / format metadata parsed from the uploaded file. */
 export interface MeshMetadata {
+  readonly meshCount?:number;
   readonly polycount: number | null;
   readonly vertices: number | null;
   readonly materials: number | null;

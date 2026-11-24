@@ -56,3 +56,5 @@ describe('FR-12.4 rate-limit keys', () => {
     expect(rateLimitKey({ headers: {} })).toBe('ip:unknown');
   });
 });
+
+it('keeps authenticated learners behind one school network in separate session buckets',()=>{const a=rateLimitKey({headers:{cookie:'vs_access=learner-a'},ip:'10.0.0.1'}),b=rateLimitKey({headers:{cookie:'vs_access=learner-b'},ip:'10.0.0.1'});expect(a).not.toBe(b);expect(a).toBe(rateLimitKey({headers:{cookie:'vs_access=learner-a'},ip:'10.0.0.2'}));});

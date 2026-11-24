@@ -14,6 +14,7 @@ export const ROLES = [
   'Assessor',
   'Developer',
   'Viewer',
+  'Learner',
 ] as const;
 
 export type Role = (typeof ROLES)[number];
@@ -54,6 +55,9 @@ export const PERMISSIONS = [
   'spatial:join',
   /** Register equipment, digital twins and review tenant telemetry. */
   'iot:manage',
+  'learning:participate',
+  'learning:generate-private',
+  'class:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -63,6 +67,7 @@ export type Permission = (typeof PERMISSIONS)[number];
  * represented as membership here; the empty cells ("—") are simply absent.
  */
 export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
+  Learner: ['catalog:view', 'api:call', 'spatial:join', 'learning:participate', 'learning:generate-private'],
   SuperAdmin: [
     'tenant:manage',
     'tenant:manage-users',
@@ -77,6 +82,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'catalog:view',
     'audit:view',
     'learning:manage',
+    'learning:participate',
+    'learning:generate-private',
+    'class:manage',
     'spatial:manage',
     'spatial:join',
     'iot:manage',
@@ -94,6 +102,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'catalog:view',
     'audit:view',
     'learning:manage',
+    'learning:participate',
+    'learning:generate-private',
+    'class:manage',
     'spatial:manage',
     'spatial:join',
     'iot:manage',
@@ -104,6 +115,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'api:call',
     'catalog:view',
     'learning:manage',
+    'learning:participate',
+    'learning:generate-private',
+    'class:manage',
     'spatial:manage',
     'spatial:join',
     'iot:manage',
@@ -115,6 +129,9 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = {
     'api:call',
     'catalog:view',
     'learning:manage',
+    'learning:participate',
+    'learning:generate-private',
+    'class:manage',
     'spatial:manage',
     'spatial:join',
     'iot:manage',
@@ -141,6 +158,7 @@ export function anyRoleHasPermission(roles: readonly Role[], permission: Permiss
  * SuperAdmin implicitly satisfies an Assessor-gated action; a Creator does not.
  */
 export const ROLE_RANK: Readonly<Record<Role, number>> = {
+  Learner: 6,
   SuperAdmin: 0,
   TenantAdmin: 1,
   Assessor: 2,
@@ -177,6 +195,9 @@ export const ROLE_MATRIX_LABELS: Readonly<Record<Permission, string>> = {
   'spatial:manage': 'Create and manage shared spatial rooms',
   'spatial:join': 'Join shared spatial rooms',
   'iot:manage': 'Manage IoT devices, twins and telemetry',
+  'learning:participate': 'Study and complete learning activities',
+  'learning:generate-private': 'Create private source-grounded practice',
+  'class:manage': 'Manage classes and assignments',
 };
 
 export function buildRoleMatrix(): RoleMatrixRow[] {

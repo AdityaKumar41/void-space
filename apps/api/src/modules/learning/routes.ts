@@ -1,3 +1,4 @@
+import { syncLearningPrograms } from '../learning-hub/progress';
 import { lessonProgressRoutes } from './progress';
 /**
  * DAM-native learning loop: approved asset -> authored lesson -> assessment ->
@@ -627,7 +628,7 @@ export async function learningRoutes(
           tenantId: principal.tenantId,
           learnerId: principal.userId,
           status: 'active',
-          course: { lessons: { some: { lessonId: id } } },
+          course: { units: { none: {} }, lessons: { some: { lessonId: id } } },
         },
         include: { course: { include: { lessons: { select: { lessonId: true } } } } },
       });
@@ -670,6 +671,7 @@ export async function learningRoutes(
         rightAnswer: question.options[question.correctOption] ?? '',
         explanation: question.explanation,
       }));
+      await syncLearningPrograms(db, principal.userId);
       return { attempt, credential, correct, completedCourses, review };
     });
     return reply.status(201).send({

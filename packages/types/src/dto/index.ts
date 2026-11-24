@@ -11,3 +11,8 @@ export * from './developer';
 export * from './jobs';
 export * from './learning';
 export * from './experience';
+export * from './learning-activity';
+
+export * from './lesson-plan';
+export * from './lesson-template';
+export * from './learning-evaluation';

@@ -18,9 +18,10 @@
 import { ModelViewer, type SceneInteraction, type ModelViewerProps } from './model-viewer';
 
 export interface ModelStageProps {
+  readonly sourceUrl?: string;
   readonly interaction?: SceneInteraction;
   readonly onGeometryDecoded?: ModelViewerProps['onGeometryDecoded'];
-  readonly cid: string;
+  readonly cid: string|null;
   readonly format: string;
   readonly name: string;
   readonly polycount: number | null;
@@ -48,6 +49,7 @@ export interface ModelStageProps {
 }
 
 export function ModelStage({
+  sourceUrl,
   interaction,
   onGeometryDecoded,
   cid,
@@ -79,6 +81,7 @@ export function ModelStage({
         }
       >
         <ModelViewer
+          sourceUrl={sourceUrl}
           interaction={interaction}
           onGeometryDecoded={onGeometryDecoded}
           onReady={onReady}

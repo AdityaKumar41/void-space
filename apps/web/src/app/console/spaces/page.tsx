@@ -1,4 +1,5 @@
 'use client';
+import {LearningRoom} from '../../../components/learning-room';
 
 import { useLinkedItem } from '../../../lib/use-linked-item';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -347,7 +348,7 @@ function RoomSession({ roomId, leave }: { roomId: string; leave: () => void }) {
         </Button>
       </div>
       {error || room.error ? <ErrorNote message={error ?? (room.error as Error).message} /> : null}
-      <div className="grid items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_16rem]">
+      <LearningRoom roomId={roomId}/><div className="grid items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_16rem]">
         <div className="min-w-0">
           {lesson.error ? <ErrorNote message={(lesson.error as Error).message} /> : null}
           {lessonId && lesson.isLoading ? <LoadingBlock label="Loading the room lesson" /> : null}

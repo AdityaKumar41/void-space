@@ -1429,6 +1429,7 @@ function Transport({
  * ========================================================================================== */
 
 export interface ModelViewerProps {
+  readonly sourceUrl?: string;
   readonly interaction?: SceneInteraction;
   readonly cid: string | null;
   readonly format: string;
@@ -1486,6 +1487,7 @@ export interface ModelViewerProps {
 }
 
 export function ModelViewer({
+  sourceUrl,
   interaction,
   cid,
   format,
@@ -1501,7 +1503,7 @@ export function ModelViewer({
   onGeometryDecoded,
 }: ModelViewerProps) {
   const previewable = canPreviewNatively(format);
-  const url = cid ? `/ipfs/${cid}` : null;
+  const url = sourceUrl ?? (cid ? `/ipfs/${cid}` : null);
 
   /* --- the file --------------------------------------------------------------------------- */
   const [mode, setMode] = useState<ShadeMode>('shaded');

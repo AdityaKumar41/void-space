@@ -20,6 +20,7 @@ import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import pino from 'pino';
 
+import { createLearningProcessor } from './processors/learning';
 import { createAiEnrichmentProcessor } from './processors/ai-enrichment';
 import { createBlenderOptimizeProcessor } from './processors/blender-optimize';
 import { createChainLicenseProcessor } from './processors/chain-license';
@@ -87,6 +88,8 @@ export async function main(): Promise<void> {
     model: process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-5-20250929',
     timeoutMs: Number.parseInt(process.env.ANTHROPIC_TIMEOUT_MS ?? '30000', 10),
   }) as Processor;
+
+  PROCESSORS.learning = createLearningProcessor({textAi:textAiEnvSchema.parse(process.env),stagingDir:process.env.STAGING_DIR??'.staging'}) as Processor;
 
   PROCESSORS['notify'] = createNotifyProcessor({ logger }) as Processor;
 

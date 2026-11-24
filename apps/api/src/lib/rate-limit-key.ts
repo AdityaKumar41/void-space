@@ -22,7 +22,7 @@ import { createHash } from 'node:crypto';
 const KEY_CHARS = 32;
 
 export function rateLimitKey(request: {
-  readonly headers: { readonly authorization?: string | undefined };
+  readonly headers: { readonly authorization?: string | undefined; readonly cookie?:string|undefined };
   readonly ip?: string | undefined;
 }): string {
   const header = request.headers.authorization;
@@ -32,5 +32,7 @@ export function rateLimitKey(request: {
     const digest = createHash('sha256').update(header.slice(7), 'utf8').digest('hex');
     return `token:${digest.slice(0, KEY_CHARS)}`;
   }
+  const cookie=request.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith('vs_access='))?.slice('vs_access='.length);
+  if(cookie)return `session:${createHash('sha256').update(cookie).digest('hex').slice(0,KEY_CHARS)}`;
   return `ip:${request.ip ?? 'unknown'}`;
 }

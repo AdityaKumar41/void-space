@@ -8,6 +8,7 @@
  */
 
 export const QUEUE_NAMES = [
+  'learning',
   'ai-enrichment',
   'ipfs-pin',
   'blender-optimize',
@@ -31,6 +32,7 @@ export interface QueuePolicy {
 }
 
 export const QUEUE_POLICIES: Readonly<Record<QueueName, QueuePolicy>> = {
+  learning: {name:'learning',attempts:2,backoff:{type:'fixed',delayMs:2000},policy:'Bounded source extraction and reviewed learning draft generation',defaultConcurrency:2},
   'ai-enrichment': {
     name: 'ai-enrichment',
     attempts: 2,
@@ -186,6 +188,7 @@ export const JOB_QUEUE_DB_TO_NAME: Readonly<Record<string, QueueName>> = {
   chain_license: 'chain-license',
   xr_publish: 'xr-publish',
   notify: 'notify',
+  learning: 'learning',
   skill_credential: 'skill-credential',
 };
 

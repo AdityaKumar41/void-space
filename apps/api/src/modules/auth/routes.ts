@@ -26,6 +26,8 @@ import {
   type AuthResponse,
   type SessionUser,
 } from '@void-space/types';
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
 import type { ApiEnv } from '../../env';
@@ -110,6 +112,32 @@ export async function authRoutes(app: FastifyInstance, options: AuthRoutesOption
   app.post('/register', { config: { rateLimit: limits.register } }, async (request, reply) => {
     const input = parseBody(registerSchema, request.body);
     const result = await auth.register(input, requestContext(request));
+    return completeAuth(reply, result, 201);
+  });
+
+  app.post('/learners', { config: { rateLimit: limits.register } }, async (request, reply) => {
+    const input = parseBody(
+      registerSchema
+        .omit({ organizationName: true, organizationSlug: true })
+        .extend({ ageBand: z.enum(['13-17', '18+']) }),
+      request.body,
+    );
+    const result = await auth.register(
+      {
+        ...input,
+        organizationName: `${input.fullName}'s learning`,
+        organizationSlug: `personal-${randomUUID()}`,
+      },
+      requestContext(request),
+      'learner',
+    );
+    const { withTenant } = await import('@void-space/db');
+    await withTenant(result.session.activeTenantId, (db) =>
+      db.user.update({
+        where: { id: result.session.id },
+        data: { learningProfile: { ageBand: input.ageBand, language: 'en' } },
+      }),
+    );
     return completeAuth(reply, result, 201);
   });
 

@@ -342,6 +342,7 @@ export default async function ModelPage({ params }: PageProps) {
                 page changes.
               </div>
 
+              <Link className="mb-3 block rounded-lg border border-hairline p-3 text-center text-sm" href={`/console/learn/agent?asset=${item.assetId}`}>Create lesson with this model</Link>
               <CheckoutButton
                 assetId={item.assetId}
                 priceCents={item.priceCents ?? 0}

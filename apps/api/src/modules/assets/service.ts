@@ -48,6 +48,7 @@ const JOB_QUEUE_ENUM: Record<QueueName, string> = {
   'chain-license': 'chain_license',
   'xr-publish': 'xr_publish',
   notify: 'notify',
+  learning: 'learning',
   'skill-credential': 'skill_credential',
 };
 

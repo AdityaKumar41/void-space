@@ -119,8 +119,9 @@ export function SessionProvider({
         body: { tenantId },
       });
       if (result.user?.tenants) optimisticMemberships = result.user.tenants;
+      await queryClient.cancelQueries({predicate:q=>q.queryKey[0]!=='session'});
+      queryClient.removeQueries({predicate:q=>q.queryKey[0]!=='session'});
       await query.refetch();
-      await queryClient.invalidateQueries();
       optimisticMemberships = null;
     },
   };

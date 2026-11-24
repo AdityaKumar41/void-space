@@ -44,6 +44,10 @@ export async function jobRoutes(app: FastifyInstance): Promise<void> {
         });
         if (!job) throw new NotFoundError('Job');
 
+        if(job.entityType === 'learning_task') {
+          const task=await db.learningTask.findFirst({where:{id:job.entityId ?? '',ownerId:principal.userId}});
+          if(!task) throw new NotFoundError('Job');
+        }
         // A job on an asset is readable by whoever may read that asset. Jobs on other entity
         // types (a bare `notify`, for instance) carry no asset to check, and stay tenant-scoped:
         // any member may poll their own workspace's job state.

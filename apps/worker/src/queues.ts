@@ -35,7 +35,9 @@ export function concurrencyFor(queue: QueueName): number {
   const envKey = `WORKER_CONCURRENCY_${queue.replace(/-/g, '_').toUpperCase()}`;
   const configured = Number.parseInt(process.env[envKey] ?? '', 10);
   return Number.isFinite(configured) && configured > 0
-    ? configured
+    ? queue === 'learning'
+      ? Math.min(configured, 4)
+      : configured
     : QUEUE_POLICIES[queue].defaultConcurrency;
 }
 

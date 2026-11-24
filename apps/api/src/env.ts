@@ -123,6 +123,8 @@ export const envSchema = z.object({
    * CID, never the binary (FR-8.1).
    */
   STAGING_DIR: z.string().default('.staging'),
+  LEARNING_TEACHER_DAILY_JOBS:z.coerce.number().int().min(1).max(1000).default(30),
+  LEARNING_LEARNER_DAILY_JOBS:z.coerce.number().int().min(1).max(100).default(10),
   /** Hard ceiling on total bytes the staging area may hold (NFR-SCAL.3). */
   STAGING_MAX_BYTES: z.coerce
     .number()

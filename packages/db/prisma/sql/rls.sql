@@ -87,6 +87,14 @@ DO $$
 DECLARE
   target_table text;
   tenant_tables text[] := ARRAY[
+    'learning_threads', 'learning_folders',
+    'lesson_plans', 'lesson_plan_releases', 'lesson_shares', 'lesson_grants', 'lesson_studies',
+    'learning_sources',
+    'learning_classes',
+    'learning_class_members',
+    'learning_assignments',
+    'learning_program_units',
+    'learning_tasks',
     'users',
     'user_roles',
     'wallets',

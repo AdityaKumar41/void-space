@@ -36,6 +36,33 @@ import { createScenarioSchema, submitScenarioAttemptSchema } from '../src/dto/le
  * ROLE_PERMISSIONS) is the point — it is an independent statement of the spec.
  */
 const MATRIX: Record<Permission, Record<Role, boolean>> = {
+  'learning:participate': {
+    SuperAdmin: true,
+    TenantAdmin: true,
+    Creator: true,
+    Assessor: true,
+    Developer: false,
+    Viewer: false,
+    Learner: true,
+  },
+  'learning:generate-private': {
+    SuperAdmin: true,
+    TenantAdmin: true,
+    Creator: true,
+    Assessor: true,
+    Developer: false,
+    Viewer: false,
+    Learner: true,
+  },
+  'class:manage': {
+    SuperAdmin: true,
+    TenantAdmin: true,
+    Creator: true,
+    Assessor: true,
+    Developer: false,
+    Viewer: false,
+    Learner: false,
+  },
   'tenant:manage': {
     SuperAdmin: true,
     TenantAdmin: false,
@@ -43,6 +70,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: false,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'tenant:manage-users': {
     SuperAdmin: true,
@@ -51,6 +79,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: false,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'asset:upload-own': {
     SuperAdmin: true,
@@ -59,6 +88,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: false,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'asset:delete-own-unpublished': {
     SuperAdmin: true,
@@ -67,6 +97,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: false,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'review:view-queue': {
     SuperAdmin: true,
@@ -75,6 +106,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: true,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'review:decide': {
     SuperAdmin: true,
@@ -83,6 +115,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: true,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'asset:publish': {
     SuperAdmin: true,
@@ -91,6 +124,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: true,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'asset:revoke-license': {
     SuperAdmin: true,
@@ -99,6 +133,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: false,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'apikey:manage': {
     SuperAdmin: true,
@@ -107,6 +142,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: false,
     Developer: true,
     Viewer: false,
+    Learner: false,
   },
   'api:call': {
     SuperAdmin: true,
@@ -115,6 +151,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: true,
     Developer: true,
     Viewer: true,
+    Learner: true,
   },
   'catalog:view': {
     SuperAdmin: true,
@@ -123,6 +160,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: true,
     Developer: true,
     Viewer: true,
+    Learner: true,
   },
   'audit:view': {
     SuperAdmin: true,
@@ -131,6 +169,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: false,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'learning:manage': {
     SuperAdmin: true,
@@ -139,6 +178,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: true,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'spatial:manage': {
     SuperAdmin: true,
@@ -147,6 +187,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: true,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
   'spatial:join': {
     SuperAdmin: true,
@@ -155,6 +196,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: true,
     Developer: true,
     Viewer: true,
+    Learner: true,
   },
   'iot:manage': {
     SuperAdmin: true,
@@ -163,6 +205,7 @@ const MATRIX: Record<Permission, Record<Role, boolean>> = {
     Assessor: true,
     Developer: false,
     Viewer: false,
+    Learner: false,
   },
 };
 

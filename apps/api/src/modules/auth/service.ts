@@ -17,7 +17,12 @@ import {
   withPlatform,
   withTenant,
 } from '@void-space/db';
-import { ROLE_PERMISSIONS, type AuthPrincipal, type Role, type SessionUser } from '@void-space/types';
+import {
+  ROLE_PERMISSIONS,
+  type AuthPrincipal,
+  type Role,
+  type SessionUser,
+} from '@void-space/types';
 import type { Permission } from '@void-space/types';
 
 import {
@@ -112,7 +117,11 @@ export interface ChangePasswordInput {
 }
 
 export interface AuthService {
-  register(input: RegisterInput, context: SessionRequestContext): Promise<AuthenticatedResult>;
+  register(
+    input: RegisterInput,
+    context: SessionRequestContext,
+    mode?: 'learner',
+  ): Promise<AuthenticatedResult>;
   login(
     input: LoginInput,
     context: SessionRequestContext,
@@ -138,7 +147,10 @@ export interface AuthService {
     tenantId: string,
     context: SessionRequestContext,
   ): Promise<AuthenticatedResult>;
-  acceptInvite(input: InviteAcceptInput, context: SessionRequestContext): Promise<AuthenticatedResult>;
+  acceptInvite(
+    input: InviteAcceptInput,
+    context: SessionRequestContext,
+  ): Promise<AuthenticatedResult>;
   /** Session list for the account settings screen. */
   listSessions(principal: AuthPrincipal): Promise<
     {
@@ -338,7 +350,13 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
   async function register(
     input: RegisterInput,
     context: SessionRequestContext,
+    mode?: 'learner',
   ): Promise<AuthenticatedResult> {
+    if (mode === 'learner' && (await loadMemberships(input.email)).length)
+      throw new ConflictError(
+        'This email already has an account. Sign in to continue.',
+        'ACCOUNT_EXISTS',
+      );
     const slug = slugify(input.organizationSlug ?? input.organizationName);
     if (slug.length < 2) {
       throw new ConflictError('Organization name must contain letters or digits', 'INVALID_SLUG');
@@ -357,7 +375,13 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     // The tenant context must equal the new tenant's id for the `tenants` policy.
     const createdUserId = await withTenant(tenantId, async (db) => {
       await db.tenant.create({
-        data: { id: tenantId, name: input.organizationName, slug, status: 'active' },
+        data: {
+          id: tenantId,
+          name: input.organizationName,
+          slug,
+          status: 'active',
+          kind: mode === 'learner' ? 'personal' : 'organization',
+        },
       });
       await db.tenantSettings.create({
         data: {
@@ -380,7 +404,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       });
 
       const role = await db.role.findUnique({
-        where: { name: 'TenantAdmin' },
+        where: { name: mode === 'learner' ? 'Learner' : 'TenantAdmin' },
         select: { id: true },
       });
       if (!role) {
@@ -410,7 +434,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           entityId: user.id,
           actorId: user.id,
           actorLabel,
-          afterState: { email: input.email, role: 'TenantAdmin' },
+          afterState: { email: input.email, role: mode === 'learner' ? 'Learner' : 'TenantAdmin' },
         },
         db,
       );
@@ -452,7 +476,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       throw new UnauthenticatedError('Invalid email or password', 'INVALID_CREDENTIALS');
     }
 
-    const matching = [];
+    const matching: typeof candidates = [];
     for (const candidate of candidates) {
       if (await verifyPassword(input.password, candidate.passwordHash)) matching.push(candidate);
     }
@@ -476,6 +500,12 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       throw new UnauthenticatedError('Invalid email or password', 'INVALID_CREDENTIALS');
     }
 
+    // A successful password check proves these memberships belong to the same account owner.
+    if(matching.length>1)for(const member of matching)await withTenant(member.tenantId,async db=>{
+      const user=await db.user.findUniqueOrThrow({where:{id:member.id}});
+      const profile=(user.learningProfile??{}) as {verifiedLearningPeers?:string[]};
+      await db.user.update({where:{id:member.id},data:{learningProfile:{...profile,verifiedLearningPeers:[...new Set([...(profile.verifiedLearningPeers??[]),...matching.map(m=>m.id)])]}}});
+    });
     const chosen =
       (input.tenantId
         ? matching.find((candidate) => candidate.tenantId === input.tenantId)
@@ -787,6 +817,26 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     if (!target) {
       throw new ForbiddenError('You are not a member of that workspace', 'NOT_A_MEMBER');
     }
+    if (target.userId !== principal.userId) {
+      const sourceUser = await withTenant(principal.tenantId, (db) =>
+        db.user.findUniqueOrThrow({ where: { id: principal.userId } }),
+      );
+      const targetUser = await withTenant(tenantId, (db) =>
+        db.user.findUniqueOrThrow({ where: { id: target.userId } }),
+      );
+      const peers =
+        (targetUser.learningProfile as { verifiedLearningPeers?: string[] } | null)
+          ?.verifiedLearningPeers ?? [];
+      if (
+        !(sourceUser.googleId && sourceUser.googleId === targetUser.googleId) &&
+        !(sourceUser.passwordHash && sourceUser.passwordHash === targetUser.passwordHash) &&
+        !peers.includes(sourceUser.id)
+      )
+        throw new ForbiddenError(
+          'Sign in to the target workspace or accept its invitation to verify ownership before switching',
+          'IDENTITY_PROOF_REQUIRED',
+        );
+    }
     if (target.tenantStatus === 'suspended') {
       throw new ForbiddenError('This workspace has been suspended', 'TENANT_SUSPENDED');
     }
@@ -993,4 +1043,3 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     listSessions,
   };
 }
-

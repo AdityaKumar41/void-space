@@ -110,3 +110,5 @@ export {
 } from '../generated/client';
 
 export type { PrismaClient } from '../generated/client';
+
+export { learningStorageRoot, isLearningStoragePath } from './learning-storage';
