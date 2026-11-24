@@ -390,7 +390,7 @@ export function LessonEditor({ id }: { id?: string }) {
           </Notice>
           <div className="flex flex-wrap gap-3">
             <button
-              className={action + ' bg-brand text-[#172832]'}
+              className={action + ' bg-brand text-[#262626]'}
               disabled={
                 busy ||
                 (!!assetId && !asset) ||

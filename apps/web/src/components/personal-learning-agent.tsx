@@ -41,6 +41,7 @@ interface Thread {
   messages: Message[];
 }
 interface Task {
+  input?: { context?: { privateModelId?: string; assetId?: string; asset?: { id: string } } };
   progress?: AgentActivityStep[];
   id: string;
   status: string;
@@ -156,14 +157,18 @@ export function PersonalLearningAgent() {
       void lessons.refetch();
     }
     if (task.data?.task.status === 'failed')
-      setError(task.data.task.error ?? 'The agent could not finish this turn.');
+      setError(
+        task.data.task.error === 'No configured text provider returned a valid response'
+          ? 'The AI service could not finish this request. Your conversation and selected model are saved. Try again or continue with an editable lesson.'
+          : (task.data.task.error ?? 'The agent could not finish this turn.'),
+      );
   }, [task.data?.task.status]);
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
   }, [thread.data?.thread.messages.length]);
   useEffect(() => {
-    const last = thread.data?.thread.messages.at(-1);
-    if (last?.role === 'user' && last.taskId && !taskId) setTaskId(last.taskId);
+    const last = [...(thread.data?.thread.messages ?? [])].reverse().find((m) => m.taskId);
+    if (last?.taskId && !taskId) setTaskId(last.taskId);
   }, [thread.data, taskId]);
   useEffect(() => {
     const result = [...(thread.data?.thread.messages ?? [])]
@@ -171,6 +176,17 @@ export function PersonalLearningAgent() {
       .find((m) => m.role === 'assistant' && m.result?.planId)?.result;
     if (result?.planId) setPlanId(result.planId);
   }, [thread.data?.thread.id]);
+  useEffect(() => {
+    const context = task.data?.task.input?.context;
+    if (model || !context) return;
+    const privateId = context.privateModelId;
+    const assetId = context.assetId ?? context.asset?.id;
+    if (!privateId && !assetId) return;
+    setModel(privateId ? `private:${privateId}` : `asset:${assetId}`);
+    const url = new URL(location.href);
+    url.searchParams.set(privateId ? 'model' : 'asset', (privateId ?? assetId)!);
+    window.history.replaceState(null, '', url.pathname + url.search);
+  }, [task.data?.task.id]);
   const running = !!taskId && !['completed', 'failed'].includes(task.data?.task.status ?? '');
   async function send(e?: FormEvent) {
     e?.preventDefault();
@@ -186,7 +202,9 @@ export function PersonalLearningAgent() {
         });
         current = r.thread;
         setThreadId(current.id);
-        window.history.replaceState(null, '', `/console/learn/agent?thread=${current.id}`);
+        const url = new URL(location.href);
+        url.searchParams.set('thread', current.id);
+        window.history.replaceState(null, '', url.pathname + url.search);
       }
       const event = pending.current ?? { eventKey: crypto.randomUUID(), message: message.trim() };
       pending.current = event;
@@ -224,6 +242,7 @@ export function PersonalLearningAgent() {
   }
   function openThread(id: string) {
     setThreadId(id);
+    setModel('');
     setPlanId('');
     setTaskId('');
     setError('');
@@ -457,8 +476,19 @@ export function PersonalLearningAgent() {
         <div role="alert" className="agent-status agent-error">
           {error}
           <div className="mt-2 flex flex-wrap gap-3">
-            <Link className="underline" href="/console/learn/create">
-              Use editable lesson structure
+            <Link
+              className="underline"
+              href={
+                model.startsWith('private:')
+                  ? `/console/learn/library?model=${model.slice(8)}`
+                  : model.startsWith('asset:')
+                    ? `/console/learn/create?asset=${model.slice(6)}`
+                    : '/console/learn/create'
+              }
+            >
+              {model.startsWith('private:')
+                ? 'Continue with this model without AI'
+                : 'Use editable lesson structure'}
             </Link>
             {thread.data?.thread.messages.at(-1)?.role === 'user' && (
               <button
@@ -552,7 +582,17 @@ export function PersonalLearningAgent() {
                 <select
                   aria-label="Choose a model for the agent"
                   value={model}
-                  onChange={(e) => setModel(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setModel(next);
+                    const url = new URL(location.href);
+                    url.searchParams.delete('model');
+                    url.searchParams.delete('asset');
+                    if (next.startsWith('private:')) url.searchParams.set('model', next.slice(8));
+                    else if (next.startsWith('asset:'))
+                      url.searchParams.set('asset', next.slice(6));
+                    window.history.replaceState(null, '', url.pathname + url.search);
+                  }}
                 >
                   <option value="">Choose a model</option>
                   {models.data?.models.map((m) => (

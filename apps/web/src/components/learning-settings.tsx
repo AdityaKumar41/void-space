@@ -60,7 +60,7 @@ export function LearningSettings() {
     }
   }
   return (
-    <div className="space-y-6">
+    <div className="learning-settings-page space-y-6">
       <header>
         <p className="text-sm text-ink-dim">Your space</p>
         <h1 className="mt-2 text-3xl font-semibold">Settings</h1>

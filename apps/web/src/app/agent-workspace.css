@@ -5,9 +5,9 @@
   --fc-surface: #fff;
   --fc-surface-raised: #f4f4f6;
   --fc-fg: #17181d;
-  --fc-heat: #202432;
-  --fc-heat-warm: #333b51;
-  --fc-heat-dim: #202432;
+  --fc-heat: #fa5d19;
+  --fc-heat-warm: #ff7a3d;
+  --fc-heat-dim: #c9480f;
   --vs-bg: #fff;
   --vs-surface: #fff;
   --vs-surface-2: #f7f7f8;
@@ -17,17 +17,17 @@
   --vs-fg-faint: #6b6d76;
   --vs-line: #e5e5e9;
   --vs-line-strong: #c6c6cf;
-  --vs-accent: #202432;
+  --vs-accent: var(--fc-heat);
   --vs-accent-ink: #fff;
   --fc-a-4: rgba(20, 25, 40, 0.04);
   --fc-a-6: rgba(20, 25, 40, 0.06);
   --fc-a-8: rgba(20, 25, 40, 0.08);
   --fc-a-12: rgba(20, 25, 40, 0.12);
   --fc-a-16: rgba(20, 25, 40, 0.16);
-  --fc-heat-4: rgba(35, 58, 255, 0.04);
-  --fc-heat-8: rgba(35, 58, 255, 0.08);
-  --fc-heat-12: rgba(35, 58, 255, 0.12);
-  --fc-heat-16: rgba(35, 58, 255, 0.16);
+  --fc-heat-4: rgba(250, 93, 25, 0.04);
+  --fc-heat-8: rgba(250, 93, 25, 0.08);
+  --fc-heat-12: rgba(250, 93, 25, 0.12);
+  --fc-heat-16: rgba(250, 93, 25, 0.16);
   color-scheme: light;
   color: #17181d;
   background: #f5f5f6;
@@ -41,7 +41,7 @@
   line-height: 1.6;
 }
 .agent-workspace :where(button, a, input, textarea, select, summary):focus-visible {
-  outline: 2px solid #3e4eff;
+  outline: 2px solid var(--fc-heat);
   outline-offset: 3px;
 }
 .agent-workspace button {
@@ -77,9 +77,9 @@
   width: 31px;
   height: 34px;
   color: #fff;
-  background: #253cff;
+  background: var(--fc-heat);
   border-radius: 8px 10px 10px 2px;
-  box-shadow: inset -6px -5px 0 #1522c0;
+  box-shadow: inset -4px -4px 0 #c9480f;
 }
 .agent-collapse {
   position: absolute;
@@ -188,8 +188,8 @@
   align-items: center;
   gap: 6px;
   min-height: 34px;
-  border: 1px solid #2439da;
-  color: #1e2cb2;
+  border: 1px solid var(--fc-heat);
+  color: #a43a0b;
   border-radius: 20px;
   padding: 5px 13px;
   font-size: 11px;
@@ -410,7 +410,7 @@
   color: #626671;
 }
 .agent-composer-label svg {
-  color: #233dff;
+  color: #c9480f;
 }
 .agent-composer textarea {
   resize: vertical;
@@ -561,8 +561,8 @@
   color: #ac263b;
 }
 .agent-workspace .bg-brand {
-  background: #151a2b;
-  color: #fff;
+  background: var(--fc-heat);
+  color: #262626;
 }
 @media (min-width: 1700px) {
   .agent-workspace {
@@ -797,7 +797,7 @@
 }
 
 .agent-workspace label:has(input[type='file']:focus-visible) {
-  outline: 2px solid #3e4eff;
+  outline: 2px solid var(--fc-heat);
   outline-offset: 3px;
 }
 @media (max-width: 700px) {
@@ -1324,10 +1324,10 @@
   place-items: center;
   width: 38px;
   height: 38px;
-  border: 1px solid #e2e1f6;
+  border: 1px solid #f4d6c8;
   border-radius: 13px;
-  background: #f1f0ff;
-  color: #5045a6;
+  background: #fff0e9;
+  color: #ad3f0e;
   flex-shrink: 0;
 }
 .agent-activity-symbol.has-error {
@@ -1382,7 +1382,7 @@
   width: 16px;
   height: 20px;
   flex-shrink: 0;
-  color: #5750ad;
+  color: #ad3f0e;
 }
 .agent-activity-steps li.complete > span {
   color: #347561;
@@ -1426,10 +1426,11 @@
     transition: none !important;
   }
 }
-.learning-signin {
+.agent-workspace.agent-onboarding.learning-signin {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 30px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
+  padding: 24px;
   gap: 30px;
   background: #fff;
   min-height: 100dvh;
@@ -1439,16 +1440,16 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  background: #f2f1ed;
+  background: #f4f4f4;
   border-radius: 28px;
-  min-height: 650px;
+  min-height: min(740px, calc(100dvh - 48px));
   overflow: hidden;
   padding: 35px;
 }
 .learning-signin-story > div {
   position: relative;
   z-index: 1;
-  padding: 55px 10px 220px;
+  padding: 55px 10px 250px;
 }
 .learning-signin-story h2 {
   font-size: clamp(32px, 3.7vw, 58px);
@@ -1479,9 +1480,9 @@
 }
 .learning-signin button[type='submit'] {
   min-height: 46px;
-  background: #101116;
-  border-color: #101116;
-  color: #fff;
+  background: var(--fc-heat);
+  border-color: var(--fc-heat);
+  color: #262626;
   box-shadow: none;
 }
 .learning-signin form {
@@ -1497,7 +1498,7 @@
   padding: 0;
 }
 @media (max-width: 800px) {
-  .learning-signin {
+  .agent-workspace.agent-onboarding.learning-signin {
     display: block;
     padding: 15px;
   }
@@ -1507,19 +1508,19 @@
     border-radius: 20px;
   }
   .learning-signin-story > div {
-    padding: 20px 0 10px;
+    padding: 12px 0 0;
   }
   .learning-signin-story > div > p:first-child,
   .learning-signin-story > img {
     display: none;
   }
   .learning-signin-story h2 {
-    font-size: 34px;
+    font-size: 27px;
     letter-spacing: -1px;
     margin: 0 0 10px;
   }
   .learning-signin > section:last-child {
-    padding: 0 15px;
+    padding: 0 5px;
   }
 }
 /* A lesson is an exploration surface, with its session and context alongside. */
@@ -1549,9 +1550,9 @@
   background: #fafafa;
 }
 .lesson-session-steps > button[aria-current='step'] {
-  border-color: #77718c;
-  background: #efedf5;
-  box-shadow: inset 0 2px #77718c;
+  border-color: #c9480f;
+  background: #fff0e9;
+  box-shadow: inset 0 2px #c9480f;
 }
 .lesson-session-steps > button > span:last-child {
   font-size: 10px;
@@ -1705,8 +1706,8 @@
   font-size: 10px;
 }
 .learning-component[aria-pressed='true'] {
-  border-color: #9295a7;
-  background: #f0f0f6;
+  border-color: #c9480f;
+  background: #fff4ee;
 }
 .learning-pick-hint,
 .learning-preview-note {
@@ -1734,7 +1735,7 @@
   font-size: 12px;
   line-height: 1.8;
   padding: 13px;
-  background: #eeedf6;
+  background: #fff0e9;
   border-radius: 10px;
   margin-top: 12px;
 }
@@ -1772,7 +1773,7 @@
   justify-content: space-between;
   gap: 25px;
   padding: 24px 28px;
-  background: #f0f2ed;
+  background: #f5f5f5;
   border-radius: 18px;
 }
 .learning-start-bar > div {
@@ -1790,13 +1791,13 @@
   display: block;
   margin-top: 5px;
   font-size: 12px;
-  color: #637063;
+  color: #646464;
 }
 .learning-primary {
   display: flex;
   align-items: center;
   gap: 17px;
-  background: #273c32;
+  background: var(--fc-heat);
   color: #fff;
   border-radius: 12px;
   padding: 12px 17px;
@@ -1832,13 +1833,13 @@
   aspect-ratio: 2/1;
 }
 .lesson-cover-model {
-  background: #efedf6;
+  background: #f4f4f4;
 }
 .lesson-cover-diagram {
   background: #f8f0e4;
 }
 .lesson-cover-process {
-  background: #eef3ef;
+  background: #f2f2f2;
 }
 .lesson-cover > svg {
   width: 100%;
@@ -1904,7 +1905,7 @@
 .learning-lesson-card progress {
   width: 100%;
   height: 5px;
-  accent-color: #57725f;
+  accent-color: var(--fc-heat);
 }
 .learning-examples h2 {
   font-size: 19px;
@@ -2005,7 +2006,7 @@
   background: #f6f6f8;
 }
 .learning-inbox-toolbar button[aria-pressed='true'] {
-  background: #eae9f0;
+  background: #fff0e9;
 }
 .learning-inbox-toolbar button:disabled {
   opacity: 0.45;
@@ -2028,8 +2029,8 @@
   color: #6c7084;
 }
 .learning-inbox > article.is-unread .learning-update-icon {
-  background: #eae8f4;
-  color: #62557d;
+  background: #fff0e9;
+  color: #a43a0b;
 }
 .learning-inbox > article > div:nth-child(2) {
   flex: 1;
@@ -2060,14 +2061,14 @@
   align-items: center;
   gap: 20px;
   padding: 28px;
-  background: #f4f5f2;
+  background: #f5f5f5;
   border-radius: 20px;
 }
 .learning-settings-profile > span {
   display: grid;
   place-items: center;
-  background: #e6eadd;
-  color: #647155;
+  background: #fff0e9;
+  color: #ad3f0e;
   border-radius: 18px;
   width: 65px;
   height: 65px;
@@ -2221,4 +2222,130 @@
     min-height: 44px;
   }
 }
-.learning-label-portal{position:absolute;inset:0;pointer-events:none}.learning-label-portal button{pointer-events:auto}
+.learning-label-portal {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.learning-label-portal button {
+  pointer-events: auto;
+}
+
+/* Shared learning surfaces follow DESIGN.md: neutral ground and heat for the primary action. */
+.agent-workspace .learning-primary {
+  color: #262626;
+  font-weight: 600;
+}
+.agent-workspace .agent-pill.primary {
+  background: var(--fc-heat);
+  border-color: var(--fc-heat);
+  color: #262626;
+  font-weight: 600;
+}
+.agent-workspace .agent-nav a[aria-current='page'] {
+  background: #fff0e9;
+  color: #8f310a;
+}
+.agent-workspace .learning-settings-page {
+  padding: 32px;
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+}
+.learning-settings-profile > div {
+  min-width: 0;
+  flex: 1;
+}
+.learning-settings-profile p {
+  overflow-wrap: anywhere;
+}
+.learning-settings-links > a > svg {
+  flex-shrink: 0;
+}
+.learning-settings-links > a > div {
+  min-width: 0;
+}
+.learning-settings-links h2 {
+  overflow-wrap: anywhere;
+}
+.agent-workspace input,
+.agent-workspace textarea,
+.agent-workspace select {
+  font-family: inherit;
+}
+.agent-workspace .text-ink-dim {
+  color: var(--vs-fg-dim);
+}
+.agent-workspace.agent-onboarding.learning-signin > section:last-child {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.learning-signin .learning-login-form-column {
+  width: 100%;
+  max-width: 400px;
+  padding: 24px 0;
+}
+.learning-signin-story > div > p:first-child {
+  font-size: 12px;
+}
+.learning-signin-story > div > p:last-child {
+  font-size: 14px;
+}
+.learning-site {
+  --fc-heat: #fa5d19;
+}
+.learning-site .learning-black-button {
+  background: var(--fc-heat);
+  border-color: var(--fc-heat);
+  color: #262626;
+  font-weight: 600;
+}
+.learning-site .learning-submit {
+  background: var(--fc-heat);
+  color: #262626;
+}
+.learning-site :where(a, button, textarea):focus-visible {
+  outline-color: var(--fc-heat);
+}
+.agent-workspace :where(h1, h2, h3) {
+  text-wrap: balance;
+}
+.agent-workspace .learning-settings-page h1 {
+  font-weight: 600;
+}
+@media (max-width: 800px) {
+  .learning-signin .learning-login-form-column {
+    padding: 22px 0;
+  }
+  .agent-workspace.agent-onboarding.learning-signin {
+    padding: 16px;
+    gap: 20px;
+  }
+  .learning-signin-story {
+    padding: 20px;
+    min-height: 0;
+  }
+  .learning-signin-story > div > p:last-child {
+    font-size: 12px;
+  }
+  .learning-signin-story > div > p:first-child {
+    display: none;
+  }
+  .learning-signin-story > a {
+    font-size: 16px;
+  }
+  .agent-workspace .learning-settings-page {
+    padding: 24px 16px;
+  }
+  .learning-settings-profile > div {
+    flex-basis: calc(100% - 85px);
+  }
+  .learning-settings-profile button {
+    margin-left: 0;
+  }
+  .learning-settings-profile p {
+    max-width: 100%;
+  }
+}

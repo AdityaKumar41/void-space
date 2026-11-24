@@ -149,7 +149,7 @@ export function LoginForm({
       </section>
       {/* Right: the form. */}
       <section className="flex items-center justify-center px-6 lg:px-12">
-        <div className="w-full max-w-[400px] py-12">
+        <div className="learning-login-form-column">
           <div className="mb-8 flex items-center justify-between">
             <Link href="/" aria-label="VOID·SPACE — home">
               <Wordmark />

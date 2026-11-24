@@ -82,7 +82,7 @@ export function LessonHome() {
       </div>
       <div className="flex flex-wrap gap-3">
         <Link
-          className={action + ' bg-brand text-[#172832]'}
+          className={action + ' bg-brand text-[#262626]'}
           href="/console/learn/agent?intent=lesson"
         >
           <Sparkles className="inline mr-2" size={15} />

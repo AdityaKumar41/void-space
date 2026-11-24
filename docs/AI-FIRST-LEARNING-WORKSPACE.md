@@ -89,3 +89,23 @@ Review found an invalid empty-task manual lesson and label displacement while pl
 Review additionally found that annotations without mesh mappings could misleadingly enable isolation. The control now requires a mapped target. No new provider was added. The previously observed Qwen latency/timeouts remain an external limitation; live AI generation is not claimed to be reliable. Animation, live payments and public Void Space deployment remain outside this change.
 
 Final release verification: 14/14 browser journeys passed together in 50.2 seconds on the production build, including read/unread inbox behavior, every learning navigation destination and the no-AI private-model path on desktop and touch. The focused label-overlay reproduction also passed after the explicit portal fix. API 199/199 and web 30/30 tests passed; production build and source typechecks passed. Surface placement now disables component transforms for the whole placement session, closing the review edge case. The manual Neo walkthrough verified label positioning, reviewed persistence and immediate private-model lesson creation. These checks establish the tested paths, not a claim of full Blender functionality or verified anatomy recognition.
+
+## Theme, login and settings verification — 24 November 2026
+
+Login's onboarding selector overrode its two-column layout, pushing the form below the illustration. The corrected selector restores the desktop split and a compact mobile stack. Settings now has a bounded, padded content area with wrapping profile details. Learning navigation, primary buttons, focus, progress and login share the existing heat-orange accent, neutral surfaces and locally hosted Plus Jakarta Sans. Accidental green/navy theme overrides and tinted format artwork were removed; semantic status colours remain.
+
+Agent conversation URLs preserve model selection. Reopening a saved conversation recovers its model from the authorized saved task context. Provider failure now explains recovery in plain language and links to the selected private model or workspace asset's editable lesson path.
+
+### Verification
+
+BrowserOS Neo was used to inspect login, settings, marketplace and landing, and to upload a private GLB, select it in the agent, choose the suggested exploration prompt and send a real request. The worker read the selected model but the configured Qwen provider returned no valid response. Live AI success remains unresolved; the failed stage and manual recovery are shown rather than fabricated output. The temporary walkthrough account is removed after testing.
+
+The production build passed. All 17 production browser journeys passed together, including desktop/mobile login geometry, settings inset, font/accent checks, lesson primary-button colour and selected-model failure/reload recovery. The saved-history recovery extension was checked again after review. Web unit coverage passed 30 tests. Existing API results from the preceding model-led release remain 199 passing tests; API implementation was unchanged in this pass.
+
+### Standards review
+
+Review caught a remaining navy primary-button override and loss of model context when reopening saved conversations. Both were corrected and covered by browser checks.
+
+### Spec review
+
+Review caught workspace-asset fallback losing its selected asset. Recovery now preserves that asset ID. The actual external AI failure is recorded above; these checks do not establish that every feature or external service is error-free.
