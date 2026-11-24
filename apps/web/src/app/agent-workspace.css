@@ -796,226 +796,6 @@
   }
 }
 
-.agent-workspace.agent-landing {
-  display: block;
-  background: #f6f6f8;
-  padding: 0 6vw;
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-}
-.agent-landing-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 25px 0;
-  border-bottom: 1px solid #e6e6ec;
-}
-.agent-landing-nav .agent-brand {
-  padding: 0;
-}
-.agent-landing-nav > div {
-  display: flex;
-  gap: 30px;
-  font-size: 12px;
-}
-.agent-landing-hero {
-  max-width: 1400px;
-  margin: auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6vw;
-  align-items: center;
-  padding: 80px 0 90px;
-}
-.agent-landing-kicker {
-  font-size: 11px;
-  letter-spacing: 0.02em;
-  color: #626675;
-  margin-bottom: 23px;
-}
-.agent-landing-hero h1 {
-  font-size: clamp(42px, 5.4vw, 82px);
-  font-weight: 550;
-  line-height: 1.05;
-  letter-spacing: -0.06em;
-}
-.agent-landing-hero h1 span {
-  color: #858894;
-}
-.agent-landing-description {
-  max-width: 470px;
-  margin: 26px 0 28px;
-  color: #5d626f;
-  font-size: 15px;
-  line-height: 1.9;
-}
-.agent-landing-hero .agent-pill {
-  min-height: 45px;
-  font-size: 12px;
-}
-.agent-landing-preview {
-  border: 1px solid #e5e5ec;
-  background: #fff;
-  border-radius: 22px;
-  box-shadow: 0 24px 70px #252c4810;
-  transform: rotate(-1deg);
-}
-.agent-preview-bar {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 19px 23px;
-  border-bottom: 1px solid #ededf2;
-  font-size: 11px;
-}
-.agent-preview-bar svg {
-  color: #3445d4;
-}
-.agent-preview-body {
-  padding: 25px 22px 24px;
-}
-.agent-preview-model {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  color: #788095;
-  padding: 15px 0 20px;
-}
-.agent-preview-model span {
-  font-size: 10px;
-  text-align: center;
-}
-.agent-preview-body h2 {
-  font-size: 28px;
-  line-height: 1.35;
-  text-align: center;
-  font-weight: 500;
-  letter-spacing: -1px;
-  margin: 5px 0 26px;
-}
-.agent-preview-prompt {
-  display: block;
-  border: 1px solid #e8e9f0;
-  border-radius: 19px;
-  padding: 16px;
-  box-shadow: 0 4px 20px #11112203;
-}
-.agent-preview-prompt > span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: #777c8a;
-}
-.agent-preview-prompt > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 40px;
-}
-.agent-preview-prompt > div > span:first-child {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 10px;
-  color: #707583;
-}
-.agent-preview-body > p {
-  margin-top: 14px;
-}
-.agent-landing-features {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5vw;
-  border-top: 1px solid #e3e4ea;
-  padding: 55px 0;
-}
-.agent-landing-features h2 {
-  font-size: 20px;
-  font-weight: 550;
-  margin: 18px 0 12px;
-  letter-spacing: -0.6px;
-}
-.agent-landing-features p {
-  font-size: 13px;
-  line-height: 1.9;
-  max-width: 350px;
-  color: #646a78;
-}
-.agent-landing-bottom {
-  padding: 60px 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 30px;
-  border-top: 1px solid #e3e4ea;
-}
-.agent-landing-bottom h2 {
-  font-size: 34px;
-  letter-spacing: -1.2px;
-  line-height: 1.3;
-}
-.agent-landing-bottom p {
-  max-width: 530px;
-  margin-top: 17px;
-  color: #646a78;
-  line-height: 1.9;
-  font-size: 13px;
-}
-.agent-landing-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 25px 0;
-  border-top: 1px solid #e3e4ea;
-  font-size: 10px;
-  color: #676d79;
-}
-.agent-landing-footer > div {
-  display: flex;
-  gap: 20px;
-}
-@media (max-width: 750px) {
-  .agent-landing-nav > div {
-    gap: 14px;
-    font-size: 10px;
-  }
-  .agent-landing-nav .agent-brand {
-    font-size: 20px;
-  }
-  .agent-landing-hero {
-    grid-template-columns: 1fr;
-    padding: 45px 0;
-    gap: 45px;
-  }
-  .agent-landing-hero h1 {
-    font-size: 56px;
-  }
-  .agent-landing-preview {
-    max-width: 500px;
-    width: 100%;
-    margin: auto;
-  }
-  .agent-landing-features {
-    grid-template-columns: 1fr;
-    gap: 30px;
-  }
-  .agent-landing-bottom {
-    display: block;
-  }
-  .agent-landing-bottom > a {
-    margin-top: 25px;
-  }
-  .agent-landing-footer {
-    flex-direction: column;
-  }
-  .agent-landing-footer > div {
-    flex-wrap: wrap;
-  }
-}
 .agent-workspace label:has(input[type='file']:focus-visible) {
   outline: 2px solid #3e4eff;
   outline-offset: 3px;
@@ -1040,5 +820,705 @@
   .agent-nav a,
   .agent-bottom-nav a {
     min-height: 44px;
+  }
+}
+/* Public entry follows the supplied editorial reference: one message, one starting point. */
+.learning-site {
+  background: #111;
+  color: #101010;
+  min-height: 100dvh;
+  padding: 44px 4vw;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color-scheme: light;
+}
+.learning-site-sheet {
+  max-width: 1540px;
+  margin: auto;
+  background: #fff;
+  padding: 38px 5vw 0;
+}
+.learning-site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+}
+.learning-site-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 16px;
+  font-weight: 550;
+  letter-spacing: -0.5px;
+}
+.learning-site-brand > span {
+  font-weight: 400;
+}
+.learning-site-links {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+}
+.learning-site-links > span {
+  color: #777;
+}
+.learning-outline,
+.learning-black-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  min-height: 46px;
+  padding: 11px 22px;
+  border: 1px solid #151515;
+  border-radius: 28px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.learning-black-button {
+  background: #080808;
+  color: #fff;
+  border-color: #080808;
+}
+.learning-site :where(a, button, textarea):focus-visible {
+  outline: 2px solid #392de3;
+  outline-offset: 5px;
+}
+.learning-site-intro {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 50px;
+  padding: 115px 6vw 65px;
+}
+.learning-site-intro h1 {
+  font-size: clamp(64px, 6vw, 96px);
+  line-height: 0.98;
+  font-weight: 450;
+  letter-spacing: -5px;
+}
+.learning-site-promise {
+  display: flex;
+  align-items: center;
+  gap: 35px;
+  padding-bottom: 0;
+}
+.learning-site-promise > span {
+  font-size: 44px;
+  font-weight: 350;
+}
+.learning-site-promise p {
+  font-size: 17px;
+  line-height: 1.5;
+  letter-spacing: -0.4px;
+}
+.learning-site-promise strong {
+  font-weight: 450;
+}
+.learning-site-promise > a {
+  margin-left: 25px;
+}
+.learning-hero-scene {
+  position: relative;
+  border-radius: 46px;
+  overflow: hidden;
+  min-height: 420px;
+  background: #f3f3f2;
+}
+.learning-hero-scene > img {
+  width: 100%;
+  height: 470px;
+  object-fit: cover;
+}
+.learning-site-composer {
+  position: absolute;
+  width: min(770px, 72%);
+  left: 50%;
+  top: 43%;
+  transform: translateX(-50%);
+  background: #fff;
+  border-radius: 33px;
+  padding: 23px 28px 19px;
+  box-shadow: 0 16px 35px #0000000d;
+}
+.learning-site-composer > label {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 14px;
+}
+.learning-site-composer > textarea {
+  resize: none;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  font-size: 19px;
+  letter-spacing: -0.4px;
+  line-height: 1.5;
+  outline: none;
+  margin: 14px 0 7px;
+  padding: 0 2px;
+  color: #151515;
+}
+.learning-site-composer > textarea::placeholder {
+  color: #727272;
+}
+.learning-site-composer > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.learning-attach {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  font-size: 13px;
+  min-height: 44px;
+}
+.learning-attach > span {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #b9b9b9;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+.learning-submit {
+  width: 46px;
+  min-height: 46px;
+  border-radius: 12px;
+  background: #080808;
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+.learning-scene-caption {
+  position: absolute;
+  bottom: 24px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 14px;
+}
+.learning-scene-caption strong {
+  font-weight: 500;
+}
+.learning-audiences {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 44px 4vw 42px;
+  font-size: 16px;
+  font-weight: 550;
+  letter-spacing: -0.5px;
+}
+.learning-audiences span:first-child {
+  font-size: 11px;
+  color: #656565;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.learning-how {
+  padding: 70px 5vw 65px;
+  border-top: 1px solid #e9e9e9;
+}
+.learning-how header > p {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 18px;
+}
+.learning-how h2 {
+  font-size: 45px;
+  line-height: 1.2;
+  letter-spacing: -2px;
+  font-weight: 450;
+}
+.learning-how-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 45px;
+  margin-top: 45px;
+}
+.learning-how-steps article > span {
+  font-size: 12px;
+  color: #777;
+  display: block;
+  margin-bottom: 20px;
+}
+.learning-how-steps h3 {
+  font-size: 17px;
+  font-weight: 550;
+  letter-spacing: -0.4px;
+  margin-bottom: 13px;
+}
+.learning-how-steps p {
+  color: #646464;
+  font-size: 13px;
+  line-height: 1.9;
+  max-width: 340px;
+}
+.learning-site-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 35px;
+  background: #f5f5f3;
+  border-radius: 30px;
+  padding: 45px 5vw;
+  margin-bottom: 35px;
+}
+.learning-site-choice h2 {
+  font-size: 34px;
+  line-height: 1.25;
+  letter-spacing: -1.4px;
+  font-weight: 450;
+}
+.learning-site-choice p {
+  font-size: 13px;
+  color: #666;
+  max-width: 480px;
+  line-height: 1.9;
+  margin-top: 18px;
+}
+.learning-site-choice > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.learning-site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 25px;
+  border-top: 1px solid #e8e8e8;
+  padding: 28px 0;
+  font-size: 10px;
+  color: #676767;
+}
+.learning-site-footer .learning-site-brand {
+  font-size: 14px;
+  color: #111;
+  gap: 10px;
+}
+.learning-site-footer svg {
+  width: 25px;
+  height: 25px;
+}
+.learning-site-footer > div {
+  display: flex;
+  gap: 25px;
+}
+@media (max-width: 1100px) {
+  .learning-site {
+    padding: 25px 3vw;
+  }
+  .learning-site-sheet {
+    padding: 28px 4vw 0;
+  }
+  .learning-site-links {
+    gap: 10px;
+    font-size: 10px;
+  }
+  .learning-site-intro {
+    padding: 80px 2vw 50px;
+  }
+  .learning-site-intro h1 {
+    font-size: 72px;
+  }
+  .learning-site-promise {
+    gap: 20px;
+    flex-wrap: wrap;
+    max-width: 300px;
+  }
+  .learning-site-promise p {
+    font-size: 14px;
+  }
+  .learning-site-promise > a {
+    margin-left: 40px;
+  }
+  .learning-site-composer {
+    width: 77%;
+  }
+  .learning-hero-scene > img {
+    height: 460px;
+  }
+  .learning-audiences {
+    font-size: 13px;
+    gap: 14px;
+  }
+}
+@media (max-width: 700px) {
+  .learning-site {
+    padding: 0;
+    background: #fff;
+  }
+  .learning-site-sheet {
+    padding: 22px 20px 0;
+  }
+  .learning-site-nav {
+    gap: 14px;
+  }
+  .learning-site-brand {
+    font-size: 14px;
+    gap: 9px;
+  }
+  .learning-site-brand svg {
+    width: 29px;
+    height: 29px;
+  }
+  .learning-site-links {
+    display: none;
+  }
+  .learning-site-nav > .learning-outline {
+    font-size: 10px;
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 13px;
+  }
+  .learning-site-intro {
+    display: block;
+    padding: 60px 5px 35px;
+  }
+  .learning-site-intro h1 {
+    font-size: 69px;
+    letter-spacing: -4px;
+  }
+  .learning-site-promise {
+    margin-top: 30px;
+    max-width: none;
+    gap: 18px;
+    align-items: center;
+  }
+  .learning-site-promise > span {
+    font-size: 35px;
+  }
+  .learning-site-promise p {
+    font-size: 13px;
+    flex: 1;
+  }
+  .learning-site-promise > a {
+    margin: 0;
+    min-height: 44px;
+    padding: 9px 13px;
+    gap: 10px;
+    font-size: 10px;
+  }
+  .learning-hero-scene {
+    border-radius: 25px;
+    min-height: 430px;
+    margin: 0 -5px;
+  }
+  .learning-hero-scene > img {
+    height: 430px;
+    object-position: 52% center;
+    object-fit: cover;
+  }
+  .learning-site-composer {
+    width: 90%;
+    border-radius: 23px;
+    padding: 18px 17px 15px;
+    top: 37%;
+  }
+  .learning-site-composer > label {
+    font-size: 10px;
+    gap: 9px;
+  }
+  .learning-site-composer > label svg {
+    width: 18px;
+  }
+  .learning-site-composer > textarea {
+    font-size: 16px;
+    min-height: 85px;
+  }
+  .learning-attach {
+    font-size: 10px;
+    gap: 9px;
+  }
+  .learning-attach > span {
+    width: 36px;
+    height: 36px;
+  }
+  .learning-scene-caption {
+    font-size: 10px;
+    bottom: 25px;
+    padding: 0 15px;
+  }
+  .learning-audiences {
+    flex-wrap: wrap;
+    justify-content: center;
+    text-align: center;
+    padding: 30px 10px;
+    font-size: 12px;
+    gap: 16px;
+  }
+  .learning-audiences > span:first-child {
+    width: 100%;
+  }
+  .learning-how {
+    padding: 40px 5px;
+  }
+  .learning-how h2 {
+    font-size: 34px;
+    letter-spacing: -1.4px;
+  }
+  .learning-how-steps {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    margin-top: 30px;
+  }
+  .learning-how-steps article > span {
+    margin-bottom: 9px;
+  }
+  .learning-site-choice {
+    padding: 30px 24px;
+    display: block;
+    border-radius: 22px;
+  }
+  .learning-site-choice h2 {
+    font-size: 28px;
+  }
+  .learning-site-choice > div:last-child {
+    margin-top: 25px;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .learning-site-choice .learning-outline,
+  .learning-site-choice .learning-black-button {
+    padding: 10px 15px;
+    font-size: 11px;
+    gap: 10px;
+  }
+  .learning-site-footer {
+    flex-wrap: wrap;
+    font-size: 10px;
+    gap: 20px;
+  }
+  .learning-site-footer > span {
+    width: 100%;
+  }
+}
+
+/* Execution is persisted by the worker and survives reloads. */
+.agent-activity {
+  width: 100%;
+  max-width: 760px;
+  border: 1px solid #e7e8ec;
+  border-radius: 20px;
+  background: #fbfbfd;
+  overflow: hidden;
+  color: #252631;
+}
+.agent-activity-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 18px 20px;
+  text-align: left;
+}
+.agent-activity-symbol {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #e2e1f6;
+  border-radius: 13px;
+  background: #f1f0ff;
+  color: #5045a6;
+  flex-shrink: 0;
+}
+.agent-activity-symbol.has-error {
+  background: #fff2f0;
+  color: #ae3d36;
+  border-color: #f3d4d0;
+}
+.agent-activity-summary > span:nth-child(2) {
+  flex: 1;
+}
+.agent-activity-summary strong {
+  font-weight: 550;
+  display: block;
+  font-size: 14px;
+}
+.agent-activity-summary small {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #656777;
+}
+.agent-activity-summary > svg {
+  transition: transform 0.2s;
+}
+.agent-activity-summary > svg.is-expanded {
+  transform: rotate(180deg);
+}
+.agent-activity-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 22px 20px 38px;
+}
+.agent-activity-steps li {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  padding: 10px 0;
+  align-items: flex-start;
+}
+.agent-activity-steps li:not(:last-child):before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 29px;
+  bottom: -7px;
+  width: 1px;
+  background: #dedfe7;
+}
+.agent-activity-steps li > span {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 20px;
+  flex-shrink: 0;
+  color: #5750ad;
+}
+.agent-activity-steps li.complete > span {
+  color: #347561;
+}
+.agent-activity-steps li.failed > span {
+  color: #ae3d36;
+}
+.agent-activity-steps p {
+  margin: 0;
+  font-size: 13px;
+}
+.agent-activity-steps small {
+  display: block;
+  margin-top: 5px;
+  line-height: 1.5;
+  color: #656777;
+  font-size: 12px;
+}
+.lesson-options {
+  padding: 18px 20px;
+  border: 1px solid #e5e6eb;
+  border-radius: 14px;
+  background: #fafafb;
+}
+.lesson-options > summary,
+.lesson-publish > summary {
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 14px;
+  min-height: 24px;
+}
+.lesson-publish > summary {
+  padding: 4px 0;
+}
+.lesson-options:focus-within {
+  border-color: #b7b4ce;
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-activity * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+.learning-signin {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 30px;
+  gap: 30px;
+  background: #fff;
+  min-height: 100dvh;
+}
+.learning-signin-story {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #f2f1ed;
+  border-radius: 28px;
+  min-height: 650px;
+  overflow: hidden;
+  padding: 35px;
+}
+.learning-signin-story > div {
+  position: relative;
+  z-index: 1;
+  padding: 55px 10px 220px;
+}
+.learning-signin-story h2 {
+  font-size: clamp(32px, 3.7vw, 58px);
+  line-height: 1.12;
+  font-weight: 450;
+  letter-spacing: -2px;
+  margin: 20px 0;
+}
+.learning-signin-story p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #666;
+  max-width: 330px;
+}
+.learning-signin-story > img {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 250px;
+  object-fit: cover;
+  width: 100%;
+}
+.learning-signin > section:last-child {
+  padding: 25px;
+}
+.learning-signin input {
+  min-height: 46px;
+}
+.learning-signin button[type='submit'] {
+  min-height: 46px;
+  background: #101116;
+  border-color: #101116;
+  color: #fff;
+  box-shadow: none;
+}
+.learning-signin form {
+  box-shadow: none;
+}
+.learning-signin form > div > p {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.learning-signin .shadow-panel {
+  box-shadow: none;
+  border: 0;
+  padding: 0;
+}
+@media (max-width: 800px) {
+  .learning-signin {
+    display: block;
+    padding: 15px;
+  }
+  .learning-signin-story {
+    min-height: 0;
+    padding: 22px;
+    border-radius: 20px;
+  }
+  .learning-signin-story > div {
+    padding: 20px 0 10px;
+  }
+  .learning-signin-story > div > p:first-child,
+  .learning-signin-story > img {
+    display: none;
+  }
+  .learning-signin-story h2 {
+    font-size: 34px;
+    letter-spacing: -1px;
+    margin: 0 0 10px;
+  }
+  .learning-signin > section:last-child {
+    padding: 0 15px;
   }
 }

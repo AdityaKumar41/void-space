@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiFetch } from '../lib/api';
 import { LearningLayout, Panel, Notice, control, action } from './learning-ui';
 interface Listing {
-  legacyLessons?: { id: string; title: string; isPublished: boolean }[];
+  legacyLessons?: { id: string; title: string }[];
   plans: {
     id: string;
     title: string;
@@ -26,6 +26,7 @@ export function LessonHome() {
   const router = useRouter(),
     [search, setSearch] = useState(''),
     [filter, setFilter] = useState('all'),
+    [importId, setImportId] = useState(''),
     [busy, setBusy] = useState(''),
     [error, setError] = useState(''),
     [ready, setReady] = useState(false);
@@ -164,40 +165,46 @@ export function LessonHome() {
         </section>
       )}
       {!!q.data?.legacyLessons?.length && (
-        <details className="rounded-xl border border-hairline p-5">
-          <summary className="cursor-pointer font-semibold">Earlier lessons</summary>
+        <details className="lesson-options">
+          <summary>Import a saved lesson</summary>
           <p className="mt-3 text-sm text-ink-dim">
-            Your existing lessons and original attempts remain available. Copy a lesson to work on a
-            new draft with your agent.
+            Bring an existing lesson into this workspace as a new draft. Its original records stay
+            saved.
           </p>
-          {q.data.legacyLessons.map((l) => (
-            <article
-              className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-hairline pt-4"
-              key={l.id}
+          <div className="mt-4 flex flex-wrap gap-3">
+            <select
+              className={control}
+              aria-label="Saved lesson to import"
+              value={importId}
+              onChange={(e) => setImportId(e.target.value)}
             >
-              <Link className="underline" href={`/console/lessons?lesson=${l.id}`}>
-                {l.title}
-              </Link>
-              <button
-                className={action}
-                disabled={!!busy}
-                onClick={() => {
-                  setBusy(l.id);
-                  void apiFetch<{ plan: { id: string } }>(
-                    `/learning/lesson-plans/from-lesson/${l.id}`,
-                    { method: 'POST' },
-                  )
-                    .then((r) => router.push(`/console/learn/drafts/${r.plan.id}`))
-                    .catch((e) => {
-                      setError(e.message);
-                      setBusy('');
-                    });
-                }}
-              >
-                Copy to new lesson workspace
-              </button>
-            </article>
-          ))}
+              <option value="">Choose a saved lesson</option>
+              {q.data.legacyLessons.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.title}
+                </option>
+              ))}
+            </select>
+            <button
+              className={action}
+              disabled={!importId || !!busy}
+              onClick={() => {
+                setBusy(importId);
+                setError('');
+                void apiFetch<{ plan: { id: string } }>(
+                  `/learning/lesson-plans/from-lesson/${importId}`,
+                  { method: 'POST' },
+                )
+                  .then((r) => router.push(`/console/learn/drafts/${r.plan.id}`))
+                  .catch((e) => {
+                    setError(e.message);
+                    setBusy('');
+                  });
+              }}
+            >
+              {busy === importId ? 'Importing…' : 'Import as a draft'}
+            </button>
+          </div>
         </details>
       )}
       <details className="rounded-xl border border-hairline p-5">

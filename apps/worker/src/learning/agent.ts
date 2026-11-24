@@ -1,3 +1,4 @@
+import { learningToolProgress } from './progress';
 import { withTenant, type Prisma } from '@void-space/db';
 import { learnerLessonPlan, lessonPlanSchema, type LessonPlan } from '@void-space/types';
 import { generateText, isTextAiConfigured, type TextAiConfig } from '@void-space/studio-ai/text';
@@ -59,6 +60,7 @@ export async function processLearningAgent(
     throw new UnrecoverableError(
       'Your personal agent is unavailable because no AI provider is configured. Your conversation and attachments are saved. You can still build an editable lesson or explore your library.',
     );
+  await learningToolProgress(tenantId, taskId, 'context', 'Reading your material', 'working');
   const attached = await withTenant(tenantId, (db) =>
     db.learningSource.findMany({
       where: { id: { in: data.context.sourceIds }, ownerId, status: 'ready' },
@@ -81,6 +83,21 @@ export async function processLearningAgent(
     .slice(0, 8)
     .map(({ score, ...p }) => p);
   const validRefs = new Set(passages.map((p) => `${p.sourceId}:${p.passageId}`));
+  await learningToolProgress(
+    tenantId,
+    taskId,
+    'context',
+    'Reading your material',
+    'complete',
+    `${attached.length} source documents${data.context.model ? ' and your selected model' : ''}`,
+  );
+  await learningToolProgress(
+    tenantId,
+    taskId,
+    'understand',
+    'Understanding your request',
+    'working',
+  );
   const response = await generateText(textAi, {
     maxTokens: 1800,
     json: true,
@@ -118,6 +135,22 @@ export async function processLearningAgent(
     },
   });
   const decision = decisionSchema.parse(JSON.parse(response.text));
+  await learningToolProgress(
+    tenantId,
+    taskId,
+    'understand',
+    'Understanding your request',
+    'complete',
+  );
+  const toolLabels = {
+    respond: 'Preparing an explanation',
+    create_lesson: 'Creating your lesson',
+    revise_lesson: 'Editing your lesson',
+    find_lessons: 'Finding your lessons',
+    find_models: 'Searching your library',
+    label_model: 'Examining model components',
+  };
+  await learningToolProgress(tenantId, taskId, 'tool', toolLabels[decision.action], 'working');
   let result: Record<string, unknown> = {
     message: decision.message,
     action: decision.action,
@@ -272,6 +305,7 @@ export async function processLearningAgent(
       };
     }
   }
+  await learningToolProgress(tenantId, taskId, 'tool', toolLabels[decision.action], 'complete');
   return withTenant(tenantId, async (db) => {
     await db.$queryRaw`SELECT id FROM learning_tasks WHERE id=${taskId}::uuid FOR UPDATE`;
     const task = await db.learningTask.findUniqueOrThrow({ where: { id: taskId } });

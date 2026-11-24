@@ -15,7 +15,7 @@ This supersedes the Classes / Programs / Teaching navigation proposed earlier. T
 - Draft and published lifecycle is distinct from audience: Private, Institution-only, Public to everyone. Both individual authors and institutions may publish globally after explicit review. Institution-only publication requires educator permission; access requires actual workspace membership. Original source documents and individual answers remain private.
 - Public lesson discovery is an allow-listed metadata projection, independent of the asset marketplace. Anonymous readers can view public lesson content; authenticated learners can practise and save individual progress.
 - Released content is immutable. Visibility may be changed independently. Link access can be revoked. Scoring is server-authoritative and duplicate/stale events cannot create progress.
-- Preserve legacy learning content and URLs. Keep old activity runtime/attempt semantics. New UI should not promote Classes, Programs or separate Teaching/Practice areas.
+- Preserve stored learning content and original activity/attempt semantics. Remove obsolete learning screens; redirect their URLs and provide saved-lesson import into the current workspace. Do not promote Classes, Programs or separate Teaching/Practice areas.
 
 ## Verification required
 
@@ -39,3 +39,27 @@ Focused API, worker and browser checks must cover account/tenant privacy, all th
 - The 50-learner API scenario passed 250 agent/listing/lesson requests, including idempotent progress submissions. Latest focused local p95: 146 ms; this is a local API measurement, not a public-hosting performance guarantee. Another 250-request scenario covers legacy server-scored activities.
 - PDF files were parsed back to text to verify content and omission of unfinished answer keys/private instructor notes. PPTX archives were inspected for editable slides, notes and links. PDF extraction checks include scanned/no-text and invalid input recovery.
 - The configured live AI successfully executed a read-only lesson-search tool. Live lesson creation remains unreliable with the existing qwen2.5-coder:32b / mistral:7b endpoint: observed provider timeouts and schema-invalid content even after one correction. Invalid drafts were rejected, never published or given invented answer keys. Deterministic local-provider tests verify actual lesson creation, grounded replies, proposal preservation and valid repair. A reliable model/provider is still required for consistently successful live AI authoring; no new paid provider was enabled.
+
+## UX simplification and provider recheck — 24 November 2026
+
+The newer public reference supersedes the earlier landing design: a white editorial sheet on a black surround, a large three-line headline, an original colourful learning illustration and a functional floating lesson prompt. Prompt and attachment intent survive the sign-in/signup detour. Sign-in now describes learning, starts with empty credentials and exposes account creation; seeded demo accounts are opt-in and hidden in production.
+
+Obsolete Classes, Programs, standalone Practice, Spaces, Field guides, Career, Ventures and old lesson/activity authoring screens and their unused UI helpers were removed. Central redirects recover their named routes and UUID activity links. Their database records, original scoring semantics and APIs remain intact. A compact saved-lesson import converts existing material into a current draft without reviving the old interface. Marketplace and Studio behavior remain unchanged.
+
+Lessons open as readable, interactive previews. Detailed metadata, sources, setup and publication controls are disclosed on demand. Manual editing remains available. AI revisions remain proposals requiring an explicit apply; preview state resets when the saved revision changes. Model and diagram visuals and Sketchfab references are included in previews. Publication still requires human review of facts, answers, mappings and rights.
+
+Learning tasks now persist actual execution stages in a tenant-protected JSON column, introduced by additive migration `20261124160000_learning_task_progress`. Chat and lesson editors display the same execution timeline. Queued work, real tool stages, completion and terminal failure are distinct. Editor task restoration is scoped by account, workspace and draft; applying or dismissing a proposal clears its persisted task and URL parameter. Retry and terminal-failure tests verify that failures cannot leave a completed-looking result or permanent spinner.
+
+The supplied Qwen configuration was already present; no API key or replacement provider was added. Direct native `/api/generate` probes returned `READY` in 2.44 seconds and a valid 12-token JSON reply in 42.09 seconds. The application's real source/model lesson request timed out (42-second primary allocation, then 18-second configured fallback). A smaller direct three-section request also timed out after 120 seconds. Thus connectivity is verified, but live AI lesson authoring remains unreliable; host latency/capacity needs investigation. The image endpoint was not required for the original SVG illustration and was not exercised. Inngest AgentKit is not installed; existing durable BullMQ jobs provide the execution infrastructure.
+
+Verification in this pass: production build passed; API 198 tests, web 28 tests and worker 82 tests passed, followed by an additional passing worker retry/terminal/recovery case. Ten current browser journeys passed, covering desktop/touch navigation, private GLB library and labels, landing prompt handoff, three learning formats, removed-route recovery, publication/presentation, sharing/revocation, resume/recap/PDF, Sketchfab references, marketplace purchase/download, telemetry and real worker/IPFS model upload. Final browser recovery verification and source typechecks are recorded in the commit validation.
+
+Final validation: all 11 current production browser journeys passed in 45.0 seconds. The expanded proposal-recovery browser case also passed: resume a ready proposal after reload, complete the old preview, apply the revision through the API, verify the revised interaction restarts, and verify the saved task clears. Web, worker and database typechecks passed; the production build includes its own web type validation. Source diff checks passed for this change.
+
+### Standards review
+
+Two recovery findings were fixed: UUID activity links redirect to current Lessons, and saved legacy lessons remain importable through the current interface. The focused recheck found no remaining concrete issue. Retry, terminal failure and recovery now have worker and browser coverage.
+
+### Spec review
+
+The saved-lesson import path and stale preview state after AI changes were fixed. A second review verified the fixes, protected visual preview URLs, Sketchfab preview and account/workspace/draft-scoped task recovery. No further actionable P1/P2 issue was found in the reviewed changes. Live Qwen reliability remains explicitly unresolved as described above.

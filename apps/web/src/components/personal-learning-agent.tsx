@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { AgentActivity, type AgentActivityStep } from './agent-activity';
 import { LessonSources } from './lesson-sources';
 interface Result {
   sources?: { title: string; page: number; text: string; sourceId: string; passageId: string }[];
@@ -40,6 +41,7 @@ interface Thread {
   messages: Message[];
 }
 interface Task {
+  progress?: AgentActivityStep[];
   id: string;
   status: string;
   error: string | null;
@@ -128,6 +130,15 @@ export function PersonalLearningAgent() {
   });
   useEffect(() => {
     const q = new URLSearchParams(location.search);
+    const startingPrompt = sessionStorage.getItem('void-start-prompt');
+    if (startingPrompt) {
+      setMessage(startingPrompt);
+      sessionStorage.removeItem('void-start-prompt');
+    }
+    if (q.get('attach') === 'true' || sessionStorage.getItem('void-start-attachments') === 'true') {
+      setAttachments(true);
+      sessionStorage.removeItem('void-start-attachments');
+    }
     setThreadId(q.get('thread') ?? '');
     setPlanId(q.get('plan') ?? '');
     if (q.get('asset')) setModel(`asset:${q.get('asset')}`);
@@ -429,11 +440,13 @@ export function PersonalLearningAgent() {
           <div ref={bottom} />
         </section>
       )}
-      {running && (
-        <p role="status" className="agent-status flex items-center gap-2">
-          <LoaderCircle size={15} className="animate-spin" />
-          The agent is working with your selected material…
-        </p>
+      {taskId && (
+        <div className="agent-status">
+          <AgentActivity
+            steps={task.data?.task.progress ?? []}
+            status={task.data?.task.status ?? 'queued'}
+          />
+        </div>
       )}
       {thread.error && (
         <p role="alert" className="agent-status agent-error">

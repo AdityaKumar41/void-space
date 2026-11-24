@@ -57,10 +57,6 @@ for (const mobile of [false, true])
       await teacher.getByRole('button', { name: '3D components', exact: true }).click();
       await expect(teacher).toHaveURL(/\/console\/learn\/drafts\//);
       planId = teacher.url().split('/').at(-1)!;
-      await expect(
-        teacher.getByRole('button', { name: 'Preview lesson', exact: true }),
-      ).toBeEnabled();
-      await teacher.getByRole('button', { name: 'Preview lesson', exact: true }).click();
       await teacher.getByRole('button', { name: /3\. Explore and practise/ }).click();
       await expect(teacher.locator('canvas')).toHaveCount(1);
       await teacher.getByRole('button', { name: 'Sphere', exact: true }).click();
@@ -68,7 +64,7 @@ for (const mobile of [false, true])
       await expect(
         teacher.getByText('Select the box and isolate it.', { exact: true }),
       ).toBeVisible();
-      await teacher.getByRole('button', { name: 'Return to editing', exact: true }).click();
+      await teacher.getByText('Review and publish', { exact: true }).click();
       for (const label of [
         'I reviewed the facts and explanations',
         'I checked every quiz answer and explanation',

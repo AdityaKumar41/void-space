@@ -29,7 +29,7 @@ export function LearningLayout({
 }
 export function Notice({ children, error = false }: { children: ReactNode; error?: boolean }) {
   return (
-    <p
+    <div
       role={error ? 'alert' : 'status'}
       className={
         'rounded-lg border border-hairline p-4 text-sm leading-relaxed ' +
@@ -37,7 +37,7 @@ export function Notice({ children, error = false }: { children: ReactNode; error
       }
     >
       {children}
-    </p>
+    </div>
   );
 }
 export function Panel({ children }: { children: ReactNode }) {

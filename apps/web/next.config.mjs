@@ -33,6 +33,36 @@ const nextConfig = {
    * These rewrites make the bare origin work without changing the deployed path. In the container
    * stack they are never reached, because nginx resolves `/api/*` before the request arrives here.
    */
+  async redirects() {
+    return [
+      ...[
+        'classes',
+        'campus',
+        'lessons',
+        'simulations',
+        'spaces',
+        'field-guides',
+        'career',
+        'ventures',
+      ].map((page) => ({
+        source: `/console/${page}/:path*`,
+        destination: '/console/learn',
+        permanent: false,
+      })),
+      ...['activities', 'programs', 'author'].map((page) => ({
+        source: `/console/learn/${page}/:path*`,
+        destination: '/console/learn',
+        permanent: false,
+      })),
+      {
+        source:
+          '/console/learn/:id([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})',
+        destination: '/console/learn',
+        permanent: false,
+      },
+      { source: '/asset-workspace', destination: '/console/library', permanent: false },
+    ];
+  },
   async rewrites() {
     return [
       { source: '/catalog/:assetId', destination: '/m/:assetId' },

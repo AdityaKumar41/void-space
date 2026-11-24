@@ -84,13 +84,11 @@ for (const mobile of [false, true])
         folder.id,
       );
       await page.goto('/console/learn/library');
-      await page
-        .getByLabel('Add a private 3D model', { exact: true })
-        .setInputFiles({
-          name: 'learning-cube.glb',
-          mimeType: 'model/gltf-binary',
-          buffer: buildGlbFixture(12),
-        });
+      await page.getByLabel('Add a private 3D model', { exact: true }).setInputFiles({
+        name: 'learning-cube.glb',
+        mimeType: 'model/gltf-binary',
+        buffer: buildGlbFixture(12),
+      });
       await expect(page.getByRole('heading', { name: 'learning-cube', exact: true })).toBeVisible();
       await expect(page.locator('canvas')).toHaveCount(1);
       await page

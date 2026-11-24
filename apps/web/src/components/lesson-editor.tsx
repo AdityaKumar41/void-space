@@ -10,11 +10,13 @@ import {
   initialLessonActivityState,
   type LessonPlan,
 } from '@void-space/types';
-import { apiFetch } from '../lib/api';
+import { API_PUBLIC_BASE, apiFetch } from '../lib/api';
 import { useSession } from '../lib/session';
 import { LearningLayout, Panel, Notice, control, action } from './learning-ui';
+import { AgentActivity, type AgentActivityStep } from './agent-activity';
 import { LessonSources } from './lesson-sources';
 import { LessonSectionEditor } from './lesson-section-editor';
+import { SketchfabWorkbench } from './sketchfab-workbench';
 import { LessonActivity } from './lesson-activity';
 interface Draft {
   id: string;
@@ -39,6 +41,7 @@ interface Asset {
   meshCount: number | null;
 }
 interface Task {
+  progress?: AgentActivityStep[];
   id: string;
   status: string;
   error: string | null;
@@ -59,23 +62,38 @@ export function LessonEditor({ id }: { id?: string }) {
     [revision, setRevision] = useState(0),
     [dirty, setDirty] = useState(false),
     [sectionId, setSectionId] = useState(''),
-    [preview, setPreview] = useState(false),
+    [preview, setPreview] = useState(true),
     [before, setBefore] = useState<LessonPlan | null>(null),
     [restore, setRestore] = useState<LessonPlan | null>(null);
   const [error, setError] = useState(''),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
-    [taskId, setTaskId] = useState(''),
+    [taskId, setTaskIdState] = useState(''),
     [instruction, setInstruction] = useState(''),
     [onlySection, setOnlySection] = useState(true),
     [review, setReview] = useState<Record<string, boolean>>({}),
     [visibility, setVisibility] = useState<'private' | 'institution' | 'public'>('private'),
     [release, setRelease] = useState<Draft['release']>(null);
-  useEffect(() => {
-    const proposal = new URLSearchParams(location.search).get('proposal');
-    if (proposal) setTaskId(proposal);
-  }, []);
   const storageKey = `lesson-draft:${session?.user.activeTenantId}:${session?.user.id}:${id ?? 'new'}`;
+  function setTaskId(next: string) {
+    setTaskIdState(next);
+    if (next) sessionStorage.setItem(`${storageKey}:task`, next);
+    else {
+      sessionStorage.removeItem(`${storageKey}:task`);
+      const url = new URL(location.href);
+      if (url.searchParams.has('proposal')) {
+        url.searchParams.delete('proposal');
+        history.replaceState(null, '', url.pathname + url.search);
+      }
+    }
+  }
+  useEffect(() => {
+    setTaskIdState(
+      new URLSearchParams(location.search).get('proposal') ??
+        sessionStorage.getItem(`${storageKey}:task`) ??
+        '',
+    );
+  }, [storageKey]);
   const loaded = useRef('');
   const q = useQuery({
     queryKey: ['lesson-draft', id],
@@ -131,8 +149,10 @@ export function LessonEditor({ id }: { id?: string }) {
       task.data?.task.status === 'completed' &&
       !task.data.task.result?.proposal &&
       task.data.task.result?.planId
-    )
+    ) {
+      setTaskId('');
       router.push(`/console/learn/drafts/${task.data.task.result.planId}`);
+    }
   }, [task.data, router]);
   useEffect(() => {
     if (draft && dirty)
@@ -286,15 +306,6 @@ export function LessonEditor({ id }: { id?: string }) {
               />
             </label>
             <label className="grid gap-2">
-              Audience
-              <input
-                className={control}
-                maxLength={200}
-                value={audience}
-                onChange={(e) => setAudience(e.target.value)}
-              />
-            </label>
-            <label className="grid gap-2">
               Lesson duration (minutes)
               <input
                 className={control}
@@ -305,50 +316,65 @@ export function LessonEditor({ id }: { id?: string }) {
                 onChange={(e) => setDuration(Number(e.target.value))}
               />
             </label>
-            <label className="grid gap-2 sm:col-span-2">
-              Anything the agent should focus on?
-              <textarea
-                className={control}
-                maxLength={3000}
-                value={instructions}
-                onChange={(e) => setInstructions(e.target.value)}
-              />
-            </label>
-            <label className="grid gap-2 sm:col-span-2">
-              Library asset (optional)
-              <select
-                className={control}
-                value={assetId}
-                onChange={(e) => setAssetId(e.target.value)}
-              >
-                <option value="">Start from a topic</option>
-                {asset && !assets.data?.items?.some((a) => a.id === asset.id) && (
-                  <option value={asset.id}>{asset.name}</option>
-                )}
-                {assets.data?.items
-                  ?.filter((a) => ['approved', 'published'].includes(a.status))
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label className="grid gap-2 sm:col-span-2">
-              Sketchfab model link (optional)
-              <input
-                className={control}
-                type="url"
-                value={sketchfab}
-                onChange={(e) => setSketchfab(e.target.value)}
-                placeholder="https://sketchfab.com/3d-models/…"
-              />
-            </label>
           </div>
-          <Link className="inline-block underline" href="/console/catalog">
-            Find a marketplace model
-          </Link>
-          <LessonSources selected={sourceIds} onChange={setSourceIds} />
+          <details className="lesson-options">
+            <summary>More options · sources, models and audience</summary>
+            <div className="grid gap-4 pt-4">
+              {' '}
+              <label className="grid gap-2">
+                Audience
+                <input
+                  className={control}
+                  maxLength={200}
+                  value={audience}
+                  onChange={(e) => setAudience(e.target.value)}
+                />
+              </label>
+              <label className="grid gap-2 sm:col-span-2">
+                Anything the agent should focus on?
+                <textarea
+                  className={control}
+                  maxLength={3000}
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                />
+              </label>
+              <label className="grid gap-2 sm:col-span-2">
+                Library asset (optional)
+                <select
+                  className={control}
+                  value={assetId}
+                  onChange={(e) => setAssetId(e.target.value)}
+                >
+                  <option value="">Start from a topic</option>
+                  {asset && !assets.data?.items?.some((a) => a.id === asset.id) && (
+                    <option value={asset.id}>{asset.name}</option>
+                  )}
+                  {assets.data?.items
+                    ?.filter((a) => ['approved', 'published'].includes(a.status))
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="grid gap-2 sm:col-span-2">
+                Sketchfab model link (optional)
+                <input
+                  className={control}
+                  type="url"
+                  value={sketchfab}
+                  onChange={(e) => setSketchfab(e.target.value)}
+                  placeholder="https://sketchfab.com/3d-models/…"
+                />
+              </label>
+              <Link className="inline-block underline" href="/console/catalog">
+                Find a marketplace model
+              </Link>
+              <LessonSources selected={sourceIds} onChange={setSourceIds} />
+            </div>
+          </details>
           <Notice>
             The agent produces an unverified draft. Review facts, quiz answers, component mappings
             and rights before sharing.
@@ -385,12 +411,15 @@ export function LessonEditor({ id }: { id?: string }) {
         </Panel>
       )}
       {taskId && (
-        <Notice>
-          {task.data?.task.status === 'failed'
-            ? `Agent could not finish: ${task.data.task.error}`
-            : task.data?.task.status === 'completed'
-              ? 'Proposal ready for review.'
-              : 'The agent is preparing a draft. You can keep editing while it works.'}
+        <AgentActivity
+          steps={task.data?.task.progress ?? []}
+          status={task.data?.task.status ?? 'queued'}
+        />
+      )}
+      {task.data?.task.status === 'failed' && (
+        <Notice error>
+          {task.data.task.error ??
+            'The agent could not finish. Your saved draft is still available.'}
         </Notice>
       )}
       {draft && (
@@ -408,7 +437,7 @@ export function LessonEditor({ id }: { id?: string }) {
               {busy ? 'Working…' : 'Save draft'}
             </button>
             <button className={action} onClick={() => setPreview(!preview)}>
-              {preview ? 'Return to editing' : 'Preview lesson'}
+              {preview ? 'Edit this lesson' : 'Preview lesson'}
             </button>
             <button
               className={action}
@@ -475,13 +504,22 @@ export function LessonEditor({ id }: { id?: string }) {
                   <p className="whitespace-pre-wrap leading-relaxed">{selected.body}</p>
                   {selected.activity && (
                     <LessonActivity
-                      key={selected.id}
+                      key={`${selected.id}:${revision}`}
                       activity={selected.activity}
+                      visualUrl={
+                        selected.activity.scene.kind === 'diagram' &&
+                        selected.activity.scene.imageSourceId
+                          ? `${API_PUBLIC_BASE}/learning/sources/${selected.activity.scene.imageSourceId}/file`
+                          : undefined
+                      }
                       state={initialLessonActivityState()}
                       onAction={() => {}}
                       preview
                       exploreOnly={selected.kind === 'exploration'}
                     />
+                  )}
+                  {draft.sketchfabUrl && selected.kind === 'exploration' && (
+                    <SketchfabWorkbench compact initialLink={draft.sketchfabUrl} />
                   )}
                   {selected.notes && (
                     <details>
@@ -492,57 +530,60 @@ export function LessonEditor({ id }: { id?: string }) {
                 </Panel>
               ) : (
                 <>
-                  <Panel>
-                    <label className="grid gap-2">
-                      Lesson title
-                      <input
-                        className={control}
-                        value={draft.title}
-                        onChange={(e) => change({ ...draft, title: e.target.value })}
-                      />
-                    </label>
-                    <label className="grid gap-2">
-                      Summary
-                      <textarea
-                        className={control}
-                        value={draft.summary}
-                        onChange={(e) => change({ ...draft, summary: e.target.value })}
-                      />
-                    </label>
-                    <div className="grid gap-4 sm:grid-cols-2">
+                  <details className="lesson-options">
+                    <summary>Lesson details · title, outcomes and timing</summary>
+                    <div className="grid gap-4 pt-4">
                       <label className="grid gap-2">
-                        Audience
+                        Lesson title
                         <input
                           className={control}
-                          value={draft.audience}
-                          onChange={(e) => change({ ...draft, audience: e.target.value })}
+                          value={draft.title}
+                          onChange={(e) => change({ ...draft, title: e.target.value })}
                         />
                       </label>
                       <label className="grid gap-2">
-                        Total minutes
-                        <input
+                        Summary
+                        <textarea
                           className={control}
-                          type="number"
-                          min={5}
-                          max={180}
-                          value={draft.durationMinutes}
+                          value={draft.summary}
+                          onChange={(e) => change({ ...draft, summary: e.target.value })}
+                        />
+                      </label>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="grid gap-2">
+                          Audience
+                          <input
+                            className={control}
+                            value={draft.audience}
+                            onChange={(e) => change({ ...draft, audience: e.target.value })}
+                          />
+                        </label>
+                        <label className="grid gap-2">
+                          Total minutes
+                          <input
+                            className={control}
+                            type="number"
+                            min={5}
+                            max={180}
+                            value={draft.durationMinutes}
+                            onChange={(e) =>
+                              change({ ...draft, durationMinutes: Number(e.target.value) })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <label className="grid gap-2">
+                        Learning outcomes (one per line)
+                        <textarea
+                          className={control}
+                          value={draft.objectives.join('\n')}
                           onChange={(e) =>
-                            change({ ...draft, durationMinutes: Number(e.target.value) })
+                            change({ ...draft, objectives: e.target.value.split('\n') })
                           }
                         />
                       </label>
                     </div>
-                    <label className="grid gap-2">
-                      Learning outcomes (one per line)
-                      <textarea
-                        className={control}
-                        value={draft.objectives.join('\n')}
-                        onChange={(e) =>
-                          change({ ...draft, objectives: e.target.value.split('\n') })
-                        }
-                      />
-                    </label>
-                  </Panel>
+                  </details>
                   {selected && (
                     <Panel>
                       <LessonSectionEditor
@@ -559,13 +600,16 @@ export function LessonEditor({ id }: { id?: string }) {
                       />
                     </Panel>
                   )}
-                  <LessonSources
-                    selected={sourceIds}
-                    onChange={(ids) => {
-                      setSourceIds(ids);
-                      change({ ...draft, sourceIds: ids });
-                    }}
-                  />
+                  <details className="lesson-options">
+                    <summary>Source materials</summary>{' '}
+                    <LessonSources
+                      selected={sourceIds}
+                      onChange={(ids) => {
+                        setSourceIds(ids);
+                        change({ ...draft, sourceIds: ids });
+                      }}
+                    />
+                  </details>
                 </>
               )}
               <Panel>
@@ -685,84 +729,93 @@ export function LessonEditor({ id }: { id?: string }) {
               </Panel>
               {can('learning:generate-private') && (
                 <Panel>
-                  <h2 className="text-lg font-semibold">Review and publish</h2>
-                  <label className="grid gap-2">
-                    Who can study this lesson?
-                    <select
-                      className={control}
-                      value={visibility}
-                      onChange={(e) => setVisibility(e.target.value as typeof visibility)}
-                    >
-                      <option value="private">
-                        Private · only me and people I deliberately invite
-                      </option>
-                      {can('learning:manage') && (
-                        <option value="institution">
-                          Institution-only · members of this workspace
-                        </option>
+                  <details className="lesson-publish">
+                    <summary>Review and publish</summary>
+                    <div className="grid gap-3 pt-4">
+                      <label className="grid gap-2">
+                        Who can study this lesson?
+                        <select
+                          className={control}
+                          value={visibility}
+                          onChange={(e) => setVisibility(e.target.value as typeof visibility)}
+                        >
+                          <option value="private">
+                            Private · only me and people I deliberately invite
+                          </option>
+                          {can('learning:manage') && (
+                            <option value="institution">
+                              Institution-only · members of this workspace
+                            </option>
+                          )}
+                          <option value="public">
+                            Public to everyone · listed in Discover lessons
+                          </option>
+                        </select>
+                      </label>
+                      {visibility === 'public' && (
+                        <Notice>
+                          Anyone can view this lesson’s approved content and visuals. Original PDFs
+                          and notes stay private. Confirm that you have the right to share any model
+                          or image used here.
+                        </Notice>
                       )}
-                      <option value="public">
-                        Public to everyone · listed in Discover lessons
-                      </option>
-                    </select>
-                  </label>
-                  {visibility === 'public' && (
-                    <Notice>
-                      Anyone can view this lesson’s approved content and visuals. Original PDFs and
-                      notes stay private. Confirm that you have the right to share any model or
-                      image used here.
-                    </Notice>
-                  )}
-                  <p className="text-sm text-ink-dim">
-                    Publication creates an immutable release. Later edits stay in a new draft.
-                    Uncited facts require your independent verification.
-                  </p>
-                  {[
-                    ['facts', 'I reviewed the facts and explanations'],
-                    ['answers', 'I checked every quiz answer and explanation'],
-                    ['mappings', 'I previewed the visuals and confirmed component mappings'],
-                    ['rights', 'I have permission to use and share these materials'],
-                  ].map(([key, label]) => (
-                    <label key={key} className="flex min-h-11 items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={!!review[key!]}
-                        onChange={(e) => setReview({ ...review, [key!]: e.target.checked })}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                  <button
-                    className={action}
-                    disabled={
-                      busy ||
-                      !id ||
-                      !['facts', 'answers', 'mappings', 'rights'].every((k) => review[k])
-                    }
-                    onClick={() =>
-                      void work(async () => {
-                        const current = dirty ? await save() : { revision };
-                        const r = await apiFetch<{ release: NonNullable<Draft['release']> }>(
-                          `/learning/lesson-plans/${id}/publish`,
-                          {
-                            method: 'POST',
-                            body: {
-                              revision: current.revision,
-                              visibility,
-                              review: { facts: true, answers: true, mappings: true, rights: true },
-                            },
-                          },
-                        );
-                        setRelease(r.release);
-                        setRevision(r.release.revision);
-                        setMessage(
-                          'Published. Open the released lesson to share, present or export.',
-                        );
-                      })
-                    }
-                  >
-                    Publish reviewed lesson
-                  </button>
+                      <p className="text-sm text-ink-dim">
+                        Publication creates an immutable release. Later edits stay in a new draft.
+                        Uncited facts require your independent verification.
+                      </p>
+                      {[
+                        ['facts', 'I reviewed the facts and explanations'],
+                        ['answers', 'I checked every quiz answer and explanation'],
+                        ['mappings', 'I previewed the visuals and confirmed component mappings'],
+                        ['rights', 'I have permission to use and share these materials'],
+                      ].map(([key, label]) => (
+                        <label key={key} className="flex min-h-11 items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={!!review[key!]}
+                            onChange={(e) => setReview({ ...review, [key!]: e.target.checked })}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                      <button
+                        className={action}
+                        disabled={
+                          busy ||
+                          !id ||
+                          !['facts', 'answers', 'mappings', 'rights'].every((k) => review[k])
+                        }
+                        onClick={() =>
+                          void work(async () => {
+                            const current = dirty ? await save() : { revision };
+                            const r = await apiFetch<{ release: NonNullable<Draft['release']> }>(
+                              `/learning/lesson-plans/${id}/publish`,
+                              {
+                                method: 'POST',
+                                body: {
+                                  revision: current.revision,
+                                  visibility,
+                                  review: {
+                                    facts: true,
+                                    answers: true,
+                                    mappings: true,
+                                    rights: true,
+                                  },
+                                },
+                              },
+                            );
+                            setRelease(r.release);
+                            setRevision(r.release.revision);
+                            setMessage(
+                              'Published. Open the released lesson to share, present or export.',
+                            );
+                          })
+                        }
+                      >
+                        Publish reviewed lesson
+                      </button>
+                    </div>
+                  </details>
                 </Panel>
               )}
             </div>

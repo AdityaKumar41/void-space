@@ -46,5 +46,13 @@ export default async function LoginPage({
     wallet = false;
   }
 
-  return <LoginForm next={next} google={google} wallet={wallet} error={error} />;
+  return (
+    <LoginForm
+      next={next}
+      google={google}
+      wallet={wallet}
+      error={error}
+      showDemo={process.env.NODE_ENV !== 'production'}
+    />
+  );
 }

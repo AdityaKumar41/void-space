@@ -241,9 +241,19 @@ export function createLearningProcessor({
       const terminal = isTerminalFailure(error, ctx);
       const message = error instanceof Error ? error.message : 'Learning task failed';
       await withTenant(tenantId, async (db) => {
+        const latest = await db.learningTask.findUnique({ where: { id: taskId } });
+        const steps = Array.isArray(latest?.progress)
+          ? (latest.progress as unknown as { status: string }[])
+          : [];
         await db.learningTask.update({
           where: { id: taskId },
-          data: { status: terminal ? 'failed' : 'queued', error: message.slice(0, 2000) },
+          data: {
+            status: terminal ? 'failed' : 'queued',
+            error: message.slice(0, 2000),
+            progress: steps.map((s) =>
+              s.status === 'working' ? { ...s, status: terminal ? 'failed' : 'working' } : s,
+            ) as Prisma.InputJsonValue,
+          },
         });
         if (trackedTask?.kind === 'extract' && terminal) {
           const sourceId = (trackedTask.input as { sourceId: string }).sourceId;

@@ -46,6 +46,8 @@ test('public model, sign-in return, labelled demo checkout and entitled download
     await expect(page.locator('canvas')).toBeVisible();
     await expect(page.getByText(/\d+ tris decoded/)).toBeVisible({ timeout: 30_000 });
     await page.getByRole('link', { name: 'Sign in to purchase', exact: true }).click();
+    await page.getByLabel('Email', { exact: true }).fill('creator@aurora.dev');
+    await page.getByLabel('Password', { exact: true }).fill('VoidSpace!2026');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/m/${assetId}$`));
     await expect(

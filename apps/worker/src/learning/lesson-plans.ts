@@ -1,3 +1,4 @@
+import { learningToolProgress } from './progress';
 import {
   composeLessonDraft,
   compactLessonPrompt,
@@ -104,6 +105,14 @@ export async function generateLessonPlanTask(
     throw new UnrecoverableError(
       'Some private sources are unavailable. Select ready sources and try again.',
     );
+  await learningToolProgress(
+    tenantId,
+    taskId,
+    'write',
+    'Writing your lesson',
+    'working',
+    'Building the sequence, explanations and knowledge checks',
+  );
   const bounded = sources.map((s) => ({
     ...s,
     passages: (s.passages as { id: string; page: number; text: string }[]).slice(0, 4),
@@ -204,6 +213,7 @@ export async function generateLessonPlanTask(
   };
   const deadline = Date.now() + generationTimeout;
   let output;
+  let repaired = false;
   try {
     output = await generateText(
       {
@@ -218,6 +228,15 @@ export async function generateLessonPlanTask(
   } catch (error) {
     const remaining = deadline - Date.now();
     if (!lastInvalidText || remaining < 1000) throw error;
+    repaired = true;
+    await learningToolProgress(
+      tenantId,
+      taskId,
+      'repair',
+      'Refining the draft',
+      'working',
+      'Correcting a draft that did not pass validation',
+    );
     // One bounded repair of invalid output; answer keys and citations still pass the same validator.
     output = await generateText(
       {
@@ -242,10 +261,28 @@ export async function generateLessonPlanTask(
       },
     );
   }
+  if (repaired)
+    await learningToolProgress(tenantId, taskId, 'repair', 'Refining the draft', 'complete');
+  await learningToolProgress(tenantId, taskId, 'write', 'Writing your lesson', 'complete');
+  await learningToolProgress(
+    tenantId,
+    taskId,
+    'check',
+    'Checking answers and references',
+    'working',
+  );
   const definition = parseOutput(output.text);
   if (request && definition.privateModelId !== request.privateModelId)
     throw new Error('The generated lesson changed the selected private model');
   for (const s of definition.sections) if (s.activity) s.activity.reviewed = false;
+  await learningToolProgress(
+    tenantId,
+    taskId,
+    'check',
+    'Checking answers and references',
+    'complete',
+    'Draft ready for your review',
+  );
   if (draftOnly) return { definition, unverified: true };
   if (original)
     return { definition, planId: data.planId, baseRevision: data.baseRevision, proposal: true };

@@ -48,29 +48,15 @@ interface NavItem {
 }
 const GROUPS: readonly { label: string; items: NavItem[] }[] = [
   {
-    label: 'Your learning',
+    label: 'Learning',
     items: [
-      { href: '/console', label: 'Home', permission: 'catalog:view', icon: LayoutDashboard },
+      { href: '/console/learn/agent', label: 'Ask AI', permission: 'catalog:view', icon: Sparkles },
+      { href: '/console/learn', label: 'Lessons', permission: 'catalog:view', icon: BookOpen },
       {
-        href: '/console/campus',
-        label: 'Programs',
+        href: '/console/learn/library',
+        label: 'Learning library',
         permission: 'catalog:view',
-        icon: GraduationCap,
-      },
-      { href: '/console/lessons', label: 'Lessons', permission: 'catalog:view', icon: BookOpen },
-      { href: '/console/models', label: '3D references', permission: 'catalog:view', icon: Boxes },
-      {
-        href: '/console/simulations',
-        label: 'Practice',
-        permission: 'catalog:view',
-        icon: Compass,
-      },
-      { href: '/console/spaces', label: 'Spaces', permission: 'spatial:join', icon: Users },
-      {
-        href: '/console/field-guides',
-        label: 'Field guides',
-        permission: 'catalog:view',
-        icon: Wrench,
+        icon: Boxes,
       },
     ],
   },
@@ -114,20 +100,28 @@ const GROUPS: readonly { label: string; items: NavItem[] }[] = [
         permission: 'audit:view',
         icon: History,
       },
-      { href: '/console/career', label: 'Career', permission: 'catalog:view', icon: Compass },
-      { href: '/console/ventures', label: 'Ventures', permission: 'catalog:view', icon: Sparkles },
       { href: '/console/audit', label: 'Audit', permission: 'audit:view', icon: History },
       { href: '/console/admin', label: 'Team', permission: 'tenant:manage-users', icon: Settings },
       { href: '/console/tenants', label: 'Workspaces', permission: 'tenant:manage', icon: Users },
     ],
   },
 ];
-const LEARNING_GROUPS: readonly {label:string;items:NavItem[]}[]=[{label:'Learning',items:[
- {href:'/console/learn',label:'Lessons',permission:'catalog:view',icon:BookOpen},
- {href:'/console/models',label:'Find a visual',permission:'catalog:view',icon:Boxes},
- {href:'/console/catalog',label:'Marketplace',permission:'catalog:view',icon:FolderOpen},
- {href:'/console/account',label:'Settings',permission:'catalog:view',icon:Settings},
-]}];
+const LEARNING_GROUPS: readonly { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Learning',
+    items: [
+      { href: '/console/learn', label: 'Lessons', permission: 'catalog:view', icon: BookOpen },
+      { href: '/console/models', label: 'Find a visual', permission: 'catalog:view', icon: Boxes },
+      {
+        href: '/console/catalog',
+        label: 'Marketplace',
+        permission: 'catalog:view',
+        icon: FolderOpen,
+      },
+      { href: '/console/account', label: 'Settings', permission: 'catalog:view', icon: Settings },
+    ],
+  },
+];
 
 const NAV = GROUPS.flatMap((g) => g.items);
 
@@ -211,16 +205,33 @@ function NotificationBell() {
  * search is shareable, bookmarkable and works with the back button. A search box that silently
  * filters a page you are not on is the most common decorative control in a dashboard.
  */
-function useWorkspaceMode(){
- const [mode,setMode]=useState('learning');
- useEffect(()=>{const read=()=>setMode(localStorage.getItem('void-workspace-mode')??'learning');read();window.addEventListener('void-workspace-mode',read);return()=>window.removeEventListener('void-workspace-mode',read);},[]);
- return [mode,(next:string)=>{localStorage.setItem('void-workspace-mode',next);setMode(next);window.dispatchEvent(new Event('void-workspace-mode'));}] as const;
+function useWorkspaceMode() {
+  const [mode, setMode] = useState('learning');
+  useEffect(() => {
+    const read = () => setMode(localStorage.getItem('void-workspace-mode') ?? 'learning');
+    read();
+    window.addEventListener('void-workspace-mode', read);
+    return () => window.removeEventListener('void-workspace-mode', read);
+  }, []);
+  return [
+    mode,
+    (next: string) => {
+      localStorage.setItem('void-workspace-mode', next);
+      setMode(next);
+      window.dispatchEvent(new Event('void-workspace-mode'));
+    },
+  ] as const;
 }
 function WorkspaceSearch() {
   const router = useRouter();
   const { can } = useSession();
-  const [mode]=useWorkspaceMode();
-  const destination = mode==='learning'?'/console/learn':can('asset:upload-own') ? '/console/library' : '/console/catalog';
+  const [mode] = useWorkspaceMode();
+  const destination =
+    mode === 'learning'
+      ? '/console/learn'
+      : can('asset:upload-own')
+        ? '/console/library'
+        : '/console/catalog';
   const inputId = useId();
   const [value, setValue] = useState('');
 
@@ -446,7 +457,7 @@ function Header({ openNavigation }: { openNavigation: () => void }) {
   );
 }
 function Sidebar({ open, close }: { open: boolean; close: () => void }) {
-  const [mode,setMode]=useWorkspaceMode();
+  const [mode, setMode] = useWorkspaceMode();
   const pathname = usePathname();
   const { can, session } = useSession();
   useEffect(() => {
@@ -483,10 +494,20 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
             Learning workspace
           </span>
           <WorkspaceSwitcher />
-          <label className="mt-3 grid gap-2 text-sm">Workspace mode<select className="min-h-11 rounded-lg border border-hairline bg-surface px-2" value={mode} onChange={e=>setMode(e.target.value)}><option value="learning">Learning</option><option value="assets">Asset workspace</option></select></label>
+          <label className="mt-3 grid gap-2 text-sm">
+            Workspace mode
+            <select
+              className="min-h-11 rounded-lg border border-hairline bg-surface px-2"
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+            >
+              <option value="learning">Learning</option>
+              <option value="assets">Asset workspace</option>
+            </select>
+          </label>
         </div>
         <nav aria-label="Sections" className="min-h-0 flex-1 space-y-6 overflow-y-auto px-3 pb-6">
-          {(mode==='learning'?LEARNING_GROUPS:GROUPS).map((group) => {
+          {(mode === 'learning' ? LEARNING_GROUPS : GROUPS).map((group) => {
             const items = group.items.filter((item) => can(item.permission));
             return items.length ? (
               <div key={group.label}>
@@ -543,7 +564,7 @@ function Sidebar({ open, close }: { open: boolean; close: () => void }) {
  * table of forty audit rows wants the width, and the storefront's measure is about reading prose.
  */
 function Shell({ children }: { children: React.ReactNode }) {
-  const pathname=usePathname();
+  const pathname = usePathname();
   const { session, isLoading, error } = useSession();
   const [navigationOpen, setNavigationOpen] = useState(false);
   const status = (error as { status?: number } | null)?.status;
@@ -573,7 +594,12 @@ function Shell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if(pathname.startsWith('/console/learn')) return <AgentWorkspaceShell key={`${session.tenant.id}:${session.user.id}`}>{children}</AgentWorkspaceShell>;
+  if (pathname.startsWith('/console/learn'))
+    return (
+      <AgentWorkspaceShell key={`${session.tenant.id}:${session.user.id}`}>
+        {children}
+      </AgentWorkspaceShell>
+    );
   return (
     <div key={`${session.tenant.id}:${session.user.id}`} className="workspace-theme">
       <Sidebar open={navigationOpen} close={() => setNavigationOpen(false)} />

@@ -14,8 +14,10 @@ test.beforeAll(async ({ browser, baseURL }) => {
   const page = await context.newPage();
   try {
     await page.goto(`${baseURL}/login`);
+    await page.getByLabel('Email', { exact: true }).fill('creator@aurora.dev');
+    await page.getByLabel('Password', { exact: true }).fill('VoidSpace!2026');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await expect(page.getByRole('link', { name: 'Practice', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ask AI', exact: true })).toBeVisible();
     signInCookies = await context.cookies();
   } finally {
     await context.close();
@@ -77,108 +79,6 @@ test('equipment registration, twin creation and authenticated readings are usabl
   }
 });
 
-test('venture plans preserve every field and owners can edit saved plans', async ({ page }) => {
-  const db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
-  const title = `Venture workflow ${Date.now()}`;
-  try {
-    await page.goto('/console/ventures');
-    await page.getByLabel('Venture title', { exact: true }).fill(title);
-    await page
-      .getByLabel('Customer problem', { exact: true })
-      .fill('Teams need reliable evidence of maintenance training.');
-    await page.getByLabel('Target customer', { exact: true }).fill('Maintenance teams');
-    await page
-      .getByLabel('Your solution', { exact: true })
-      .fill('A reviewed model and repeatable guided practice.');
-    await page.getByLabel('Next milestone', { exact: true }).fill('Run a pilot');
-    await page.getByRole('button', { name: 'Save venture plan', exact: true }).click();
-    const card = page.getByRole('heading', { name: title, exact: true }).locator('..');
-    await expect(
-      card.getByText('A reviewed model and repeatable guided practice.', { exact: true }),
-    ).toBeVisible();
-    await card.getByRole('button', { name: 'Edit plan', exact: true }).click();
-    await expect(page.getByLabel('Customer problem', { exact: true })).toHaveValue(
-      'Teams need reliable evidence of maintenance training.',
-    );
-    await page.getByLabel('Next milestone', { exact: true }).fill('Complete the first pilot');
-    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
-    await expect(card.getByText('Complete the first pilot', { exact: true })).toBeVisible();
-    await page.reload();
-    await expect(page.getByText('Complete the first pilot', { exact: true })).toBeVisible();
-    await page.goto('/console/help');
-    await expect(
-      page.getByRole('heading', { name: 'Find your next step', exact: true }),
-    ).toBeVisible();
-    await page.getByRole('link', { name: 'Account and wallets', exact: true }).click();
-    await expect(
-      page.getByRole('heading', { name: 'Account and wallets', exact: true }),
-    ).toBeVisible();
-  } finally {
-    await db.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-      await tx.venturePlan.deleteMany({ where: { tenantId, title } });
-    });
-    await db.$disconnect();
-  }
-});
-
-test('a QR field-guide link survives sign-in and can be completed and left', async ({ page }) => {
-  const db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
-  let guideId: string | undefined;
-  const title = `Guide workflow ${Date.now()}`;
-  try {
-    await page.goto('/console');
-    await expect(page.getByRole('link', { name: 'Field guides', exact: true })).toBeVisible();
-    const lessons = await (await page.request.get('/api/v1/lessons')).json();
-    expect(lessons.lessons.length).toBeGreaterThan(0);
-    const created = await page.request.post('/api/v1/field-guides', {
-      data: {
-        title,
-        description: 'Read and acknowledge each instruction for the verification workflow.',
-        lessonId: lessons.lessons[0].id,
-        steps: [
-          {
-            id: 'inspect',
-            instruction: 'Inspect the reviewed component.',
-            safetyNote: 'Stop if the component does not match.',
-          },
-          { id: 'record', instruction: 'Record the inspection outcome.' },
-        ],
-      },
-    });
-    expect(created.status()).toBe(201);
-    guideId = (await created.json()).guide.id;
-    expect((await page.request.post(`/api/v1/field-guides/${guideId}/publish`)).status()).toBe(200);
-    await page.context().clearCookies();
-    await page.goto(`/console/field-guides?guide=${guideId}`);
-    expect(new URL(page.url()).searchParams.get('next')).toBe(
-      `/console/field-guides?guide=${guideId}`,
-    );
-    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await expect(
-      page.getByText('Stop if the component does not match.', { exact: true }),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Acknowledge and continue', exact: true }).click();
-    await page.getByRole('button', { name: 'Acknowledge and complete', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Guide completed', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Back to field guides', exact: true }).click();
-    await expect(page).not.toHaveURL(/guide=/);
-    await page.reload();
-    await expect(
-      page.getByRole('button', { name: 'Acknowledge and complete', exact: true }),
-    ).toHaveCount(0);
-    await page.goto('/console/career');
-    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
-  } finally {
-    if (guideId)
-      await db.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        await tx.fieldGuide.deleteMany({ where: { id: guideId } });
-      });
-    await db.$disconnect();
-  }
-});
-
 test('a real upload is processed by the worker, pinned to IPFS and renders again', async ({
   page,
 }) => {
@@ -231,56 +131,6 @@ test('a real upload is processed by the worker, pinned to IPFS and renders again
           },
         });
         await tx.asset.deleteMany({ where: { id: assetId } });
-      });
-    await db.$disconnect();
-  }
-});
-
-test('a program can be authored, released, enrolled in and opened at its lesson', async ({
-  page,
-}) => {
-  const db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
-  const title = `Program workflow ${Date.now()}`;
-  let courseId: string | undefined;
-  try {
-    await page.goto('/console/campus');
-    await expect(
-      page.getByRole('heading', { name: 'Your learning programs', exact: true }),
-    ).toBeVisible();
-    const lessons = (await (await page.request.get('/api/v1/lessons')).json()).lessons;
-    expect(lessons.length).toBeGreaterThan(0);
-    const lesson = lessons[0];
-    await page.getByText('Build a program', { exact: true }).click();
-    await page.getByLabel('Program title', { exact: true }).fill(title);
-    await page.getByLabel('Program slug', { exact: true }).fill(`program-workflow-${Date.now()}`);
-    await page
-      .getByLabel('Program description', { exact: true })
-      .fill('Follow the published source lesson and record passing evidence.');
-    await page.getByRole('checkbox', { name: lesson.title, exact: true }).check();
-    const response = page.waitForResponse(
-      (r) => r.url().endsWith('/api/v1/courses') && r.request().method() === 'POST',
-    );
-    await page.getByRole('button', { name: 'Create draft program', exact: true }).click();
-    const created = await response;
-    expect(created.status()).toBe(201);
-    courseId = (await created.json()).course.id;
-    const card = page.getByRole('heading', { name: title, exact: true }).locator('../..');
-    await card.getByRole('button', { name: 'Publish program', exact: true }).click();
-    await card.getByRole('button', { name: 'Enroll', exact: true }).click();
-    await expect(card.getByRole('button', { name: 'Enroll', exact: true })).toHaveCount(0);
-    await page.reload();
-    await expect(card.getByRole('button', { name: 'Enroll', exact: true })).toHaveCount(0);
-    await card.getByRole('link').click();
-    await expect(page.getByRole('heading', { name: lesson.title, exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '← All lessons', exact: true }).click();
-    await expect(page).not.toHaveURL(/lesson=/);
-    await page.reload();
-    await expect(page.getByRole('heading', { name: 'Lessons', exact: true })).toBeVisible();
-  } finally {
-    if (courseId)
-      await db.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        await tx.course.deleteMany({ where: { id: courseId } });
       });
     await db.$disconnect();
   }
