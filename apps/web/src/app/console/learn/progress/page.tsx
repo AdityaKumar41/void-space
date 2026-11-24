@@ -2,10 +2,14 @@
 import Link from 'next/link';
 import { Route, ArrowUpRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useLearningProfile } from '../../../../lib/learning-profile';
 import { apiFetch } from '../../../../lib/api';
 import { LearningLayout, Notice } from '../../../../components/learning-ui';
 export default function Page() {
+  const profile = useLearningProfile();
+  const teacher = profile.data?.persona === 'teacher';
   const q = useQuery({
+    enabled: !!profile.data && !teacher,
     queryKey: ['personal-learning-progress'],
     queryFn: () =>
       apiFetch<{
@@ -19,6 +23,17 @@ export default function Page() {
         }[];
       }>('/learning/progress'),
   });
+  if (teacher)
+    return (
+      <LearningLayout
+        title="Teaching workspace"
+        description="Your institution membership provides teaching tools. Personal learning progress is shown for students and individual learners."
+      >
+        <Link className="agent-pill primary" href="/console/learn">
+          Open teaching materials
+        </Link>
+      </LearningLayout>
+    );
   return (
     <LearningLayout
       title="My progress"

@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { useLearningProfile } from '../lib/learning-profile';
 import { Box, Clock3, ArrowUpRight, Plus, Sparkles, CheckCircle2 } from 'lucide-react';
 import { LessonCover, type LessonVisualKind } from './lesson-cover';
 import { useEffect, useState } from 'react';
@@ -33,6 +34,8 @@ interface Listing {
   }[];
 }
 export function LessonHome() {
+  const profile = useLearningProfile();
+  const teacher = profile.data?.persona === 'teacher';
   const router = useRouter(),
     [search, setSearch] = useState(''),
     [filter, setFilter] = useState('all'),
@@ -65,14 +68,18 @@ export function LessonHome() {
   }
   return (
     <LearningLayout
-      title="Lessons"
-      description="Create a lesson around an asset or an idea. Teach it, study it, and keep what you learn."
+      title={teacher ? 'Teaching materials' : 'Lessons'}
+      description={
+        teacher
+          ? 'Prepare, review and share lessons for your institution.'
+          : 'Create a lesson around an asset or an idea. Study it and keep what you learn.'
+      }
     >
       <div className="learning-start-bar">
         <div>
           <Box size={25} />
           <span>
-            <strong>Learn by exploring.</strong>
+            <strong>{teacher ? 'Bring your lesson to life.' : 'Learn by exploring.'}</strong>
             <small>Choose a model, then turn it into a session.</small>
           </span>
         </div>
@@ -121,7 +128,9 @@ export function LessonHome() {
       {q.isPending && <Notice>Loading your lessons…</Notice>}
       {filter !== 'drafts' && filter !== 'published' && !!q.data?.shared.length && (
         <section className="space-y-3">
-          <h2 className="text-xl font-semibold">Continue learning</h2>
+          <h2 className="text-xl font-semibold">
+            {teacher ? 'Shared teaching materials' : 'Continue learning'}
+          </h2>
           <div className="learning-lesson-grid">
             {q.data.shared
               .filter((s) => s.title.toLowerCase().includes(search.toLowerCase()))
@@ -135,18 +144,22 @@ export function LessonHome() {
                   <div className="learning-lesson-card-copy">
                     <span className="font-semibold">{s.title}</span>
                     <span className="text-sm text-ink-dim">
-                      {s.completed === s.total
-                        ? 'Recap ready'
-                        : `${s.completed}/${s.total} sections`}{' '}
+                      {teacher
+                        ? 'Lesson resource'
+                        : s.completed === s.total
+                          ? 'Recap ready'
+                          : `${s.completed}/${s.total} sections`}{' '}
                       · {s.durationMinutes} min
                     </span>
-                    <progress
-                      aria-label={`${s.title} completion`}
-                      value={s.completed}
-                      max={s.total}
-                    />
+                    {!teacher && (
+                      <progress
+                        aria-label={`${s.title} completion`}
+                        value={s.completed}
+                        max={s.total}
+                      />
+                    )}
                     <span className="learning-card-action">
-                      Continue learning <ArrowUpRight size={16} />
+                      {teacher ? 'Open material' : 'Continue learning'} <ArrowUpRight size={16} />
                     </span>
                   </div>
                 </Link>
@@ -156,7 +169,9 @@ export function LessonHome() {
       )}
       {filter !== 'shared' && (
         <section className="space-y-3">
-          <h2 className="text-xl font-semibold">My lessons</h2>
+          <h2 className="text-xl font-semibold">
+            {teacher ? 'My teaching materials' : 'My lessons'}
+          </h2>
           <div className="learning-lesson-grid">
             {q.data?.plans
               .filter(

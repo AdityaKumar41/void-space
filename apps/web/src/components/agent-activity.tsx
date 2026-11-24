@@ -6,6 +6,7 @@ export interface AgentActivityStep {
   label: string;
   status: 'working' | 'complete' | 'failed';
   detail?: string;
+  updatedAt?: string;
 }
 export function AgentActivity({
   steps,
@@ -94,6 +95,14 @@ export function AgentActivity({
                 <div>
                   <p>{step.label}</p>
                   {step.detail && <small>{step.detail}</small>}
+                  {'updatedAt' in step && typeof step.updatedAt === 'string' && (
+                    <time dateTime={step.updatedAt}>
+                      {new Date(step.updatedAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </time>
+                  )}
                 </div>
               </li>
             );

@@ -5,6 +5,23 @@ import { z } from 'zod';
 import { ConflictError } from '../../lib/errors';
 export async function learningWorkspaceRoutes(app: FastifyInstance) {
   const auth = { preHandler: app.authenticate };
+  app.get('/learning/workspace/profile', auth, async (request, reply) => {
+    reply.header('cache-control', 'private, no-store');
+    const p = request.principal!;
+    const workspace = await withTenant(p.tenantId, (db) =>
+      db.tenant.findUniqueOrThrow({
+        where: { id: p.tenantId },
+        select: { id: true, name: true, kind: true },
+      }),
+    );
+    const persona =
+      workspace.kind === 'personal'
+        ? 'individual'
+        : p.permissions.includes('learning:manage')
+          ? 'teacher'
+          : 'student';
+    return { workspace, persona };
+  });
   app.get('/learning/workspace', auth, async (request) => {
     const p = request.principal!;
     return withTenant(p.tenantId, async (db) => ({

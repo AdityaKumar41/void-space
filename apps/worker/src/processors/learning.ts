@@ -1,3 +1,4 @@
+import { generateLearningImage } from '../learning/images';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { processLearningAgent } from '../learning/agent';
@@ -93,6 +94,14 @@ export function createLearningProcessor({
       let result: Record<string, unknown>;
       if (task.kind === 'agent_turn') {
         result = await processLearningAgent(tenantId, taskId, task.ownerId, task.input, textAi);
+      } else if (task.kind === 'image_generate') {
+        const input = z
+          .object({
+            prompt: z.string().trim().min(5).max(2000),
+            title: z.string().max(200).optional(),
+          })
+          .parse(task.input);
+        result = await generateLearningImage(tenantId, taskId, task.ownerId, input, stagingDir);
       } else if (task.kind === 'plan_generate') {
         result = await generateLessonPlanTask(tenantId, taskId, task.ownerId, task.input, textAi);
       } else if (task.kind === 'plan_export') {

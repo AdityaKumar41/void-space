@@ -55,20 +55,118 @@ export async function learningAgentRoutes(
     }
     return { lessons: rows };
   });
-  app.get('/learning/agent/threads', auth, async (request) => {
+  app.post('/learning/agent/images', auth, async (request, reply) => {
     const p = request.principal!;
-    return withTenant(p.tenantId, async (db) => ({
-      threads: await db.learningThread.findMany({
+    requirePrivateAuthor(p);
+    const input = z
+      .object({
+        prompt: z.string().trim().min(5).max(2000),
+        title: z.string().trim().min(2).max(200).optional(),
+      })
+      .strict()
+      .parse(request.body);
+    return reply
+      .code(202)
+      .send({ task: await enqueueLearningTask(env, producer, p, 'image_generate', input) });
+  });
+  app.post('/learning/agent/activity/:id/retry', auth, async (request, reply) => {
+    const p = request.principal!;
+    requirePrivateAuthor(p);
+    const { id } = params.parse(request.params);
+    const previous = await withTenant(p.tenantId, (db) =>
+      db.learningTask.findFirst({
+        where: { id, ownerId: p.userId, kind: 'image_generate', status: 'failed' },
+      }),
+    );
+    if (!previous) throw new NotFoundError('Failed image request');
+    return reply.code(202).send({
+      task: await enqueueLearningTask(env, producer, p, 'image_generate', previous.input),
+    });
+  });
+  app.get('/learning/agent/activity', auth, async (request, reply) => {
+    reply.header('cache-control', 'private, no-store');
+    const p = request.principal!;
+    const { cursor } = z.object({ cursor: uuid.optional() }).parse(request.query);
+    const tasks = await withTenant(p.tenantId, (db) =>
+      db.learningTask.findMany({
+        where: { ownerId: p.userId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 51,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        select: {
+          id: true,
+          kind: true,
+          status: true,
+          progress: true,
+          error: true,
+          createdAt: true,
+          input: true,
+          result: true,
+        },
+      }),
+    );
+    return {
+      imageAvailable: !!env.AI_IMAGE_BASE_URL,
+      nextCursor: tasks.length > 50 ? tasks[49]!.id : null,
+      tasks: tasks.slice(0, 50).map((task) => {
+        const input = task.input as {
+          threadId?: string;
+          planId?: string;
+          request?: { topic?: string };
+          context?: { message?: string };
+          instruction?: string;
+          prompt?: string;
+        };
+        const result = task.result as {
+          planId?: string;
+          modelId?: string;
+          sourceId?: string;
+          format?: string;
+        } | null;
+        return {
+          id: task.id,
+          kind: task.kind,
+          status: task.status,
+          progress: task.progress,
+          error: task.error,
+          createdAt: task.createdAt,
+          title: (
+            input.context?.message ??
+            input.request?.topic ??
+            input.instruction ??
+            input.prompt ??
+            ''
+          ).slice(0, 200),
+          threadId: input.threadId,
+          planId: result?.planId ?? input.planId,
+          modelId: result?.modelId,
+          sourceId: result?.sourceId,
+          format: result?.format,
+        };
+      }),
+    };
+  });
+  app.get('/learning/agent/threads', auth, async (request, reply) => {
+    reply.header('cache-control', 'private, no-store');
+    const p = request.principal!;
+    const { cursor } = z.object({ cursor: uuid.optional() }).parse(request.query);
+    return withTenant(p.tenantId, async (db) => {
+      const rows = await db.learningThread.findMany({
         where: { ownerId: p.userId },
         select: { id: true, title: true, folderId: true, updatedAt: true },
-        orderBy: { updatedAt: 'desc' },
-        take: 100,
-      }),
-      folders: await db.learningFolder.findMany({
-        where: { ownerId: p.userId },
-        orderBy: { createdAt: 'desc' },
-      }),
-    }));
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        take: 51,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      return {
+        threads: rows.slice(0, 50),
+        nextCursor: rows.length > 50 ? rows[49]!.id : null,
+        folders: await db.learningFolder.findMany({
+          where: { ownerId: p.userId },
+          orderBy: { createdAt: 'desc' },
+        }),
+      };
+    });
   });
   app.post('/learning/agent/folders', auth, async (request, reply) => {
     const p = request.principal!;
@@ -104,14 +202,35 @@ export async function learningAgentRoutes(
     });
     return reply.code(201).send({ thread });
   });
-  app.get('/learning/agent/threads/:id', auth, async (request) => {
+  app.get('/learning/agent/threads/:id', auth, async (request, reply) => {
+    reply.header('cache-control', 'private, no-store');
     const p = request.principal!,
       { id } = params.parse(request.params);
     const thread = await withTenant(p.tenantId, (db) =>
       db.learningThread.findFirst({ where: { id, ownerId: p.userId } }),
     );
     if (!thread) throw new NotFoundError('Conversation');
-    return { thread };
+    const ids = [
+      ...new Set(
+        (thread.messages as { taskId?: string }[])
+          .map((m) => m.taskId)
+          .filter((id): id is string => !!id),
+      ),
+    ].slice(-100);
+    const tasks = await withTenant(p.tenantId, (db) =>
+      db.learningTask.findMany({
+        where: { id: { in: ids }, ownerId: p.userId },
+        select: {
+          id: true,
+          kind: true,
+          status: true,
+          progress: true,
+          error: true,
+          createdAt: true,
+        },
+      }),
+    );
+    return { thread, tasks };
   });
   app.patch('/learning/agent/threads/:id', auth, async (request) => {
     requirePrivateAuthor(request.principal!);

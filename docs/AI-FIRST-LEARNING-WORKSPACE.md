@@ -123,3 +123,21 @@ The workspace marketplace now has a plain-language introduction, compact categor
 BrowserOS Neo inspected the exact localhost catalogue, landing, public marketplace and permission-bearing asset library. Removing an unused module exposed a stale Next.js development dependency; restarting only the web frontend cleared it and the exact localhost desktop/touch journeys then passed. The initial broader run against the development API hit HTTP 429 signup protection; regression runs use a separate test API rather than weakening development limits. Production build and web unit tests passed; final browser totals accompany this change.
 
 Final validation: 19/19 production browser journeys passed in 57.4 seconds against the isolated test API; 30/30 web unit tests and web type validation passed. The competing root palettes were consolidated into a single shared light token set. Focused layout/marketplace checks were repeated after that stylesheet cleanup. No API, Studio or paid-service implementation was changed.
+
+## Persistent AI work and institution roles — 24 November 2026
+
+### History and live activity checks
+
+Conversation history is visible by default, with separate Conversations and All AI work views. Older conversations and jobs load through cursors. Every saved turn retains its job steps, failure state and result links; current work uses those persisted records rather than an invented animation or hidden model reasoning. Job history also includes generation, revision, extraction, images and exports outside chat. Owner/tenant filters and narrow projections exclude private source bodies, answer definitions, provider credentials and server storage paths. Cache keys include the active account/workspace.
+
+### Institution access checks
+
+The active workspace is resolved by the server. Personal workspaces stay Individual; organization memberships with learning-management permission use the Teacher interface; other institution participants use Student. Teachers see teaching materials rather than personal learning-progress navigation/cards. Students and individual learners retain progress. Institution onboarding explains Student, Teacher and institution setup separately. Existing students/teachers join through an invitation bound to its intended account/email and assigned access; an email domain does not grant teaching or administrative rights.
+
+### Image generation checks
+
+Private Flux illustration jobs use the existing queue, usage limits and source storage. Completed images appear as unreviewed sources with previews; failed jobs remain in history and can be retried. The live host is currently unable to load its Flux checkpoint; see FREE-AI-PROVIDER.md. Mocked success, invalid data, unsupported remote URLs and private recovery paths are tested without pretending the external service succeeded.
+
+Final checks for this pass: the full production browser suite passed 22 journeys; six focused history/model/persona/image journeys passed again after pagination and context restoration changes. The final API suite passed 203 tests across 36 files, including 50-learner load scenarios and history ownership/pagination. Worker tests passed 88 across 14 files; web unit tests passed 30. Production build and API/web/worker type checks passed. A real queued Flux request failed on the configured host, remained visible in private history and stored no image; this limitation is not represented as a successful generation. BrowserOS Neo confirmed the current teacher workspace hides personal progress and shows the visible History/All AI work panel.
+
+A focused retry regression additionally reproduced a stale image-task URL before the fix and passed afterward. Retry now follows the new task across reload. Completed image jobs invalidate the private source listing so newly generated images appear immediately.

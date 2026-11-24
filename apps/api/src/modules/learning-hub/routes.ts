@@ -55,6 +55,7 @@ export async function learningHubRoutes(
           id: true,
           title: true,
           mime: true,
+          metadata: true,
           status: true,
           passages: true,
           error: true,

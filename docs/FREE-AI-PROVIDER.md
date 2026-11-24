@@ -42,3 +42,15 @@ The check sends only a synthetic readiness request and reports provider/model, s
 All live lesson content used synthetic notes and test models. The real provider key is excluded from git. The original provider remains configured as a fallback; no paid model or subscription was enabled.
 
 The live label-proposal check initially failed because the worker expected JSON without requesting JSON mode. A controlled-provider regression reproduced it; the request now explicitly uses JSON mode. The corrected live queued test returned one unreviewed proposal against the supplied mesh key. Temporary test workspaces were removed after terminal task completion.
+
+## Private Flux illustrations
+
+The learning agent can request `generate_image`, or a user can describe an image and choose **Create image**. The existing learning job queue stores progress and failure state; successful raster images become private PNG sources, explicitly unreviewed. They are displayed in the conversation and My sources and never published as assets automatically. The adapter accepts bounded PNG/JPEG/WebP bytes or base64 data and rejects remote URLs and vector payloads.
+
+```dotenv
+AI_IMAGE_BASE_URL=https://qwen.cutm.ac.in/api/image/generate
+AI_IMAGE_MODEL=flux
+# AI_IMAGE_API_KEY=<optional server secret>
+```
+
+On 24 November 2026 the real endpoint returned an image-generation error: the host could not load `black-forest-labs/FLUX.1-schnell`. Its administrator must install/authorize that model. The platform now retains the failed request in All AI work with a retry path; successful live Flux image generation is not claimed. Image decoding and recovery paths have controlled-provider tests.

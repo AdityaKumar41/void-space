@@ -28,6 +28,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useSession } from '../lib/session';
+import { useLearningProfile } from '../lib/learning-profile';
 import { Avatar } from './ui/avatar';
 import { VoidStudioLaunchButton } from './studio-launch';
 import type { Permission } from '@void-space/types';
@@ -64,6 +65,18 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
     [collapsed, setCollapsed] = useState(false),
     [search, setSearch] = useState(''),
     [error, setError] = useState('');
+  const profile = useLearningProfile();
+  const teacher = profile.data?.persona === 'teacher';
+  const learningGroups = groups.map((group) => ({
+    ...group,
+    items: group.items
+      .filter((item) => item.href !== '/console/learn/progress' || (!!profile.data && !teacher))
+      .map((item) =>
+        teacher && item.href === '/console/learn'
+          ? { ...item, label: 'My teaching materials' }
+          : item,
+      ),
+  }));
   const aside = useRef<HTMLElement>(null),
     menu = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -150,10 +163,10 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
     pathname !== '/console/models';
   const navGroups = assetPage
     ? [{ title: 'Asset workspace', items: assetItems.filter((i) => can(i.permission)) }]
-    : groups;
+    : learningGroups;
   const selected =
     [
-      ...groups.flatMap((g) => g.items),
+      ...learningGroups.flatMap((g) => g.items),
       ...assetItems,
       { href: '/console/catalog', label: 'Marketplace' },
       { href: '/console/models', label: 'Find a model' },
@@ -275,7 +288,7 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="agent-account-card">
           <div className="agent-help">
-            <h3>What will you teach next?</h3>
+            <h3>{teacher ? 'What will you teach next?' : 'What would you like to learn?'}</h3>
             <p>Start with an idea. Build it together.</p>
             <Link href="/console/learn/agent">
               <Sparkles size={15} /> Chat with AI
@@ -285,7 +298,14 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
             <Avatar name={session?.user.fullName ?? 'Learner'} />
             <div>
               <strong>{session?.user.fullName}</strong>
-              <span>{session?.tenant.name}</span>
+              <span>
+                {profile.data?.persona === 'teacher'
+                  ? 'Teacher'
+                  : profile.data?.persona === 'student'
+                    ? 'Student'
+                    : 'Individual'}{' '}
+                · {session?.tenant.name}
+              </span>
             </div>
             <button
               aria-label="Sign out"
@@ -339,6 +359,14 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
             </Link>
           </div>
         </header>
+        {profile.error && (
+          <p className="agent-status agent-error" role="alert">
+            Your workspace role could not be confirmed.{' '}
+            <button className="underline" onClick={() => void profile.refetch()}>
+              Try again
+            </button>
+          </p>
+        )}
         <main
           id="main"
           className={

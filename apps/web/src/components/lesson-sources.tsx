@@ -7,6 +7,7 @@ interface Source {
   id: string;
   title: string;
   mime: string;
+  metadata?: { generated?: boolean; reviewed?: boolean };
   status: string;
   error: string | null;
   passages: { id: string; page: number; text: string }[];
@@ -134,6 +135,28 @@ export function LessonSources({
                   {s.title} · {s.status}
                 </span>
               </label>
+              {s.mime.startsWith('image/') && s.status === 'ready' && (
+                <div className="grid gap-2">
+                  <img
+                    src={`${API_PUBLIC_BASE}/learning/sources/${s.id}/file`}
+                    alt={s.title}
+                    className="max-h-56 w-full rounded-lg object-contain"
+                  />
+                  {s.metadata?.generated && (
+                    <p className="text-xs text-ink-dim">
+                      AI-generated illustration · check facts and labels before teaching
+                    </p>
+                  )}
+                  <a
+                    className="underline text-sm"
+                    href={`${API_PUBLIC_BASE}/learning/sources/${s.id}/file`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open full image
+                  </a>
+                </div>
+              )}
               {s.error && (
                 <p role="alert" className="text-sm text-red-400">
                   {s.error}

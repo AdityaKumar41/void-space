@@ -2620,3 +2620,118 @@
     top: 30%;
   }
 }
+
+.agent-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 10px 12px;
+}
+.agent-history-header h2 {
+  font-weight: 600;
+}
+.agent-history-header > div {
+  display: flex;
+  gap: 6px;
+}
+.agent-history-header button {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.agent-history-header button[aria-pressed='true'] {
+  background: #fff0e9;
+  color: #ad3f0e;
+}
+.agent-thread-list {
+  max-height: 330px;
+  background: #fafafa;
+  flex-shrink: 0;
+}
+.agent-history-task {
+  padding: 14px;
+  border-top: 1px solid #e5e5e9;
+  display: grid;
+  gap: 8px;
+}
+.agent-history-task > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+}
+.agent-history-task time {
+  color: #62646d;
+  font-size: 11px;
+}
+.agent-message .agent-activity {
+  margin-top: 14px;
+  white-space: normal;
+}
+.agent-result-image {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+}
+.agent-result-image img {
+  max-height: 400px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+@media (max-width: 760px) {
+  .agent-history-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+.agent-room.has-history {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  align-content: start;
+  gap: 20px;
+}
+.agent-room.has-history > .agent-room-heading,
+.agent-room.has-history > .agent-drawer {
+  grid-column: 1/-1;
+}
+.agent-room.has-history > .agent-thread-list {
+  grid-column: 1;
+  margin: 0;
+  max-height: calc(100dvh - 180px);
+  position: sticky;
+  top: 100px;
+}
+.agent-conversation-pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.agent-room.has-history > .agent-conversation-pane {
+  grid-column: 2;
+}
+.agent-thread-list .agent-history-header {
+  flex-direction: column;
+  align-items: flex-start;
+}
+@media (max-width: 1100px) {
+  .agent-room.has-history {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .agent-room.has-history > .agent-thread-list {
+    max-height: 220px;
+    position: static;
+    grid-column: 1;
+  }
+  .agent-room.has-history > .agent-conversation-pane {
+    grid-column: 1;
+  }
+}
+.agent-activity-steps time {
+  display: block;
+  font-size: 10px;
+  color: #6b6d76;
+  margin-top: 3px;
+}

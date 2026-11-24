@@ -76,6 +76,9 @@ export const envSchema = z.object({
     .transform((value) => value !== 'false' && value !== '0'),
 
   ...textAiEnvSchema.shape,
+  AI_IMAGE_BASE_URL: optionalUrl,
+  AI_IMAGE_MODEL: optionalString,
+  AI_IMAGE_API_KEY: optionalString,
 
   // --- optional integrations (absent => graceful degradation, NFR-REL.1) ---
   ANTHROPIC_API_KEY: optionalString,
@@ -123,8 +126,8 @@ export const envSchema = z.object({
    * CID, never the binary (FR-8.1).
    */
   STAGING_DIR: z.string().default('.staging'),
-  LEARNING_TEACHER_DAILY_JOBS:z.coerce.number().int().min(1).max(1000).default(30),
-  LEARNING_LEARNER_DAILY_JOBS:z.coerce.number().int().min(1).max(100).default(10),
+  LEARNING_TEACHER_DAILY_JOBS: z.coerce.number().int().min(1).max(1000).default(30),
+  LEARNING_LEARNER_DAILY_JOBS: z.coerce.number().int().min(1).max(100).default(10),
   /** Hard ceiling on total bytes the staging area may hold (NFR-SCAL.3). */
   STAGING_MAX_BYTES: z.coerce
     .number()
