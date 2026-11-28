@@ -9,9 +9,7 @@
 #   * TLS 1.2+ termination for the whole local stack
 #   * reverse proxy to the Next.js app and the Fastify API
 #   * edge rate limiting
-#   * IPFS gateway caching, so repeated 3D-preview loads never re-fetch from
-#     the local IPFS node (FR-8.3, NFR-PERF.4). The IPFS node itself is never
-#     exposed to the browser.
+#   * Object downloads pass through API authorization; private responses are never cached.
 # ---------------------------------------------------------------------------
 
 # --- Websocket upgrade helper (Next.js HMR + any streaming endpoints) ------
@@ -19,16 +17,6 @@ map $http_upgrade $connection_upgrade {
   default upgrade;
   ''      close;
 }
-
-# --- IPFS gateway cache ----------------------------------------------------
-# 2 GB / 30 days: asset binaries are immutable (content-addressed), so they can
-# be cached aggressively; the cache key is the CID itself.
-proxy_cache_path /var/cache/nginx/ipfs
-                 levels=1:2
-                 keys_zone=ipfs_cache:32m
-                 max_size=2g
-                 inactive=30d
-                 use_temp_path=off;
 
 # --- Edge rate limits (FR-12.4 is enforced per API key inside the API; this is
 #     the coarser network-level guard) ---------------------------------------
@@ -40,7 +28,6 @@ limit_req_status 429;
 # or api:4000 / web:3000 when they run inside compose (profile "app").
 upstream void_space_web { server ${EDGE_WEB_UPSTREAM}; }
 upstream void_space_api { server ${EDGE_API_UPSTREAM}; }
-upstream void_space_ipfs_gateway { server ${EDGE_IPFS_GATEWAY_UPSTREAM}; }
 
 server {
   listen 80;
@@ -102,29 +89,14 @@ server {
     proxy_send_timeout 300s;
   }
 
-  # ------------------------------------------- IPFS gateway (cached, FR-8.3)
+  # Historical saved model URLs go through the authorized object gateway.
   location /ipfs/ {
-    limit_req zone=edge_general burst=200 nodelay;
-
-    proxy_pass http://void_space_ipfs_gateway/ipfs/;
-    proxy_http_version 1.1;
+    rewrite ^/ipfs/(.*)$ /api/v1/content/$1 break;
+    proxy_pass http://void_space_api;
     proxy_set_header Host $host;
-
-    proxy_cache ipfs_cache;
-    proxy_cache_key "$request_uri";
-    proxy_cache_valid 200 206 30d;
-    proxy_cache_valid 404 1m;
-    proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504;
-    proxy_cache_lock on;
-    proxy_cache_background_update on;
-    proxy_ignore_client_abort on;
-
-    # Range requests are how browsers/three.js stream large meshes.
     proxy_set_header Range $http_range;
-    proxy_set_header If-Range $http_if_range;
-    add_header X-Cache-Status $upstream_cache_status always;
-    add_header Cache-Control "public, max-age=31536000, immutable" always;
-    add_header Accept-Ranges bytes always;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
   }
 
   # ------------------------------------------------------- application (web)

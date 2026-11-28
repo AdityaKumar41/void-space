@@ -35,7 +35,6 @@ import { ErrorNote, LoadingBlock } from '../../../../components/ui/feedback';
 import { BackLink } from '../../../../components/ui/layout';
 import { Button } from '../../../../components/ui/button';
 import { PersonCell } from '../../../../components/console-kit';
-import { VoidStudioLaunchButton } from '../../../../components/studio-launch';
 
 interface AssetDetailView {
   readonly id: string;
@@ -317,18 +316,14 @@ export default function AssetConsolePage() {
                     : 'Delete'}
               </Button>
             ) : null}
-            {['approved','published'].includes(asset.status) && <Link className="inline-flex min-h-10 items-center rounded-lg border border-hairline px-3 text-sm" href={`/console/learn/agent?asset=${asset.id}`}>Create lesson with this asset</Link>}
-            <VoidStudioLaunchButton
-              assetId={asset.id}
-              name={asset.name}
-              format={version?.format}
-              filename={`${asset.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}${version?.format ? (version.format.startsWith('.') ? version.format : `.${version.format}`) : '.glb'}`}
-              modelUrl={version?.gatewayUrl ?? undefined}
-              variant="secondary"
-              size="sm"
-            >
-              Edit in Void Studio
-            </VoidStudioLaunchButton>
+            {['approved', 'published'].includes(asset.status) && (
+              <Link
+                className="inline-flex min-h-10 items-center rounded-lg border border-hairline px-3 text-sm"
+                href={`/console/learn/agent?asset=${asset.id}`}
+              >
+                Create lesson with this asset
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -739,8 +734,8 @@ export default function AssetConsolePage() {
                   </select>
                 </label>
                 <div className="text-[12px] tracking-[0.01em] text-ink-faint mt-3">
-                  Mints an ERC-721 licence on Avalanche Fuji, pins the licence document to IPFS,
-                  then pushes the module to EoN Reality. Approval records the assessor decision;
+                  Mints an ERC-721 licence on Avalanche Fuji and stores the licence document securely.
+                  Approval records the assessor decision;
                   this button submits the actual on-chain mint.
                 </div>
                 <button
@@ -754,7 +749,7 @@ export default function AssetConsolePage() {
                       () =>
                         apiFetch(`/assets/${assetId}/publish`, {
                           method: 'POST',
-                          body: { licenseType, publishToXr: true },
+                          body: { licenseType },
                         }),
                       'publish',
                       'Minting the licence…',
@@ -765,7 +760,7 @@ export default function AssetConsolePage() {
                     ? petition.label
                     : version?.pinStatus === 'pinned'
                       ? 'Publish and mint'
-                      : 'Waiting for the IPFS pin'}
+                      : 'Waiting for asset storage'}
                 </button>
               </div>
             </Panel>
@@ -802,7 +797,7 @@ export default function AssetConsolePage() {
           <Panel title="Pipeline jobs" right="§3.10">
             {asset.jobs.length === 0 ? (
               <div className="px-5 py-6 text-[13.5px]" style={{ color: 'var(--vs-fg-faint)' }}>
-                No jobs have run for this asset. Pinning, enrichment, minting and publishing each
+                No jobs have run for this asset. Storage, enrichment, minting and publishing each
                 enqueue one, so an empty list means none of them has been triggered yet.
               </div>
             ) : (

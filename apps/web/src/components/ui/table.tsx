@@ -81,12 +81,3 @@ export function TD({
     </td>
   );
 }
-
-/** A table inside a card: full-bleed, with the card's border doing the framing. */
-export function TableCard({ className, children }: { className?: string; children: React.ReactNode }) {
-  return (
-    <div className={cn('overflow-hidden rounded-card border border-hairline bg-surface', className)}>
-      {children}
-    </div>
-  );
-}

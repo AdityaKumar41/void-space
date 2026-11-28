@@ -235,7 +235,7 @@ export function createReviewService(deps: ReviewServiceDeps): ReviewService {
                 polycount: version.polycount,
                 pinStatus: version.pinStatus,
                 ipfsCid: version.ipfsCid,
-                gatewayUrl: version.ipfsCid ? `/ipfs/${version.ipfsCid}` : null,
+                gatewayUrl: version.ipfsCid ? `/api/v1/content/${version.ipfsCid}` : null,
               }
             : null,
           ai: suggestion

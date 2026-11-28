@@ -2,14 +2,13 @@
 
 /**
  * Tenant administration (SRS FR-1.2, FR-1.3, FR-12.3, FR-18.1, §3.6).
- * Members, invites, API keys, and Studio AI policy — all wired to the API.
+ * Members, invites and API keys — all wired to the API.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
-import { ROLES, type AiFeatureFlags, type Role } from '@void-space/types';
+import { useState } from 'react';
+import { ROLES, type Role } from '@void-space/types';
 
 import { ApiRequestError, apiFetch } from '../../../lib/api';
-import { cn } from '../../../lib/cn';
 import { formatNumber, formatRelative } from '../../../lib/format';
 import { useSession } from '../../../lib/session';
 import { Panel } from '../../../components/ui/card';
@@ -44,7 +43,6 @@ interface TenantDetail {
     readonly allowedCategories: readonly string[];
     readonly webhookUrl: string | null;
     readonly webhookEvents: readonly string[];
-    readonly aiFeatureFlags?: AiFeatureFlags;
   };
   readonly counts: { users: number; assets: number; licenses: number; pendingReview: number };
 }
@@ -57,43 +55,6 @@ interface ApiKeySummary {
   readonly createdAt: string;
   readonly expiresAt: string | null;
   readonly revokedAt: string | null;
-}
-
-interface ToggleSwitchProps {
-  readonly label: string;
-  readonly description: string;
-  readonly checked: boolean;
-  readonly onChange: (val: boolean) => void;
-  readonly disabled?: boolean;
-}
-
-function ToggleSwitch({ label, description, checked, onChange, disabled }: ToggleSwitchProps) {
-  return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b border-hairline last:border-b-0">
-      <div>
-        <div className="text-[13px] font-semibold text-ink">{label}</div>
-        <div className="text-[11.5px] text-ink-dim leading-relaxed mt-0.5">{description}</div>
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={cn(
-          'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 mt-0.5',
-          checked ? 'bg-brand' : 'bg-surface-raised border border-hairline',
-        )}
-      >
-        <span
-          className={cn(
-            'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-            checked ? 'translate-x-4' : 'translate-x-0',
-          )}
-        />
-      </button>
-    </div>
-  );
 }
 
 export default function AdminPage() {
@@ -116,11 +77,6 @@ function TeamAdministration() {
   const [inviteRole, setInviteRole] = useState<Role>('Creator');
   const [keyLabel, setKeyLabel] = useState('');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
-  const [copilotEnabled, setCopilotEnabled] = useState(true);
-  const [generativeEnabled, setGenerativeEnabled] = useState(true);
-  const [auditRequired, setAuditRequired] = useState(false);
-  const [flagsHydrated, setFlagsHydrated] = useState(false);
-
   const tenant = useQuery<TenantDetail>({
     queryKey: ['tenant'],
     queryFn: () => apiFetch<{ tenant: TenantDetail }>('/tenant').then((r) => r.tenant),
@@ -161,15 +117,6 @@ function TeamAdministration() {
       apiFetch<{ items: readonly ApiKeySummary[]; total: number }>(`/tenants/${tenantId}/api-keys`),
   });
 
-  useEffect(() => {
-    if (flagsHydrated || !tenant.data) return;
-    const flags = tenant.data.settings.aiFeatureFlags ?? {};
-    setCopilotEnabled(flags.copilot !== false);
-    setGenerativeEnabled(flags.generativeMesh !== false);
-    setAuditRequired(flags.enforcePublishAudit === true);
-    setFlagsHydrated(true);
-  }, [tenant.data, flagsHydrated]);
-
   async function mutate(
     label: string,
     path: string,
@@ -184,7 +131,6 @@ function TeamAdministration() {
         invite?: { token: string; email: string };
         key?: string;
         label?: string;
-        flags?: AiFeatureFlags;
       }>(path, { method, body: method === 'DELETE' ? undefined : body });
       if (result.invite?.token) {
         setNotice(`Invitation created for ${result.invite.email}. Token: ${result.invite.token}`);
@@ -193,50 +139,12 @@ function TeamAdministration() {
         setNotice(
           `API key “${result.label ?? 'new'}” created. Copy it now — it will not be shown again.`,
         );
-      } else if (result.flags) {
-        setNotice('AI & Studio policies saved.');
       } else {
         setNotice(`${label} applied`);
       }
       await queryClient.invalidateQueries({ queryKey: ['users'] });
       await queryClient.invalidateQueries({ queryKey: ['invites'] });
       await queryClient.invalidateQueries({ queryKey: ['api-keys'] });
-      await queryClient.invalidateQueries({ queryKey: ['tenant'] });
-    } catch (caught) {
-      const apiError = caught as ApiRequestError;
-      setError({ message: apiError.message, code: apiError.code });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function saveAiFlags(next: AiFeatureFlags) {
-    setBusy('AI policy');
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await apiFetch<{ flags: AiFeatureFlags }>('/tenant/ai-flags', {
-        method: 'PATCH',
-        body: next,
-      });
-      setCopilotEnabled(result.flags.copilot !== false);
-      setGenerativeEnabled(result.flags.generativeMesh !== false);
-      setAuditRequired(result.flags.enforcePublishAudit === true);
-      // Best-effort mirror into VOID·STUDIO so editor gates match without SQL.
-      const studioBase = process.env.NEXT_PUBLIC_STUDIO_API_URL?.replace(/\/$/, '');
-      if (studioBase) {
-        try {
-          await fetch(`${studioBase}/studio/api/v1/tenant/ai-flags`, {
-            method: 'PATCH',
-            credentials: 'include',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(result.flags),
-          });
-        } catch {
-          // Studio offline is supported for marketplace-only stacks.
-        }
-      }
-      setNotice('AI & Studio policies saved.');
       await queryClient.invalidateQueries({ queryKey: ['tenant'] });
     } catch (caught) {
       const apiError = caught as ApiRequestError;
@@ -403,59 +311,6 @@ function TeamAdministration() {
             ) : (
               <LoadingBlock label="Loading policy" />
             )}
-          </Panel>
-
-          <Panel title="AI & Studio Policies" right="FR-18.1">
-            <div className="px-5 py-2">
-              <ToggleSwitch
-                label="Void Studio AI Copilot"
-                description="Allow natural-language assistance and semantic scene operations in the authoring environment."
-                checked={copilotEnabled}
-                disabled={busy !== null || !flagsHydrated}
-                onChange={(val) => {
-                  setCopilotEnabled(val);
-                  void saveAiFlags({
-                    copilot: val,
-                    generativeMesh: generativeEnabled,
-                    generativeTexture: generativeEnabled,
-                    enforcePublishAudit: auditRequired,
-                    readinessAudit: true,
-                  });
-                }}
-              />
-              <ToggleSwitch
-                label="Generative Text-to-3D Synthesis"
-                description="Enable prompt-to-mesh generative AI models inside Void Studio."
-                checked={generativeEnabled}
-                disabled={busy !== null || !flagsHydrated}
-                onChange={(val) => {
-                  setGenerativeEnabled(val);
-                  void saveAiFlags({
-                    copilot: copilotEnabled,
-                    generativeMesh: val,
-                    generativeTexture: val,
-                    enforcePublishAudit: auditRequired,
-                    readinessAudit: true,
-                  });
-                }}
-              />
-              <ToggleSwitch
-                label="Enforce Pre-Publish Quality Audit"
-                description="Require scenes authored in Void Studio to pass automated quality thresholds (score ≥ 80) before publishing."
-                checked={auditRequired}
-                disabled={busy !== null || !flagsHydrated}
-                onChange={(val) => {
-                  setAuditRequired(val);
-                  void saveAiFlags({
-                    copilot: copilotEnabled,
-                    generativeMesh: generativeEnabled,
-                    generativeTexture: generativeEnabled,
-                    enforcePublishAudit: val,
-                    readinessAudit: true,
-                  });
-                }}
-              />
-            </div>
           </Panel>
 
           <Panel title="Invite member" right="FR-1.2">

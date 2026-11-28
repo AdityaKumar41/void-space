@@ -334,7 +334,7 @@ export default function OverviewPage() {
               <StatCell
                 label="Stored"
                 value={formatBytes(data.counts.storageBytes)}
-                hint="pinned to IPFS"
+                hint="stored in object storage"
               />
             </StatRow>
           </Panel>

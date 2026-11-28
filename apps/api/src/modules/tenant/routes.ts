@@ -6,11 +6,8 @@
  *   GET   /api/v1/tenants                    platform tenant list     (SuperAdmin)
  *   PATCH /api/v1/tenants/:id/status         suspend / reinstate      (SuperAdmin)
  */
-import {
-  aiFeatureFlagsSchema,
-  setTenantStatusSchema,
-  tenantSettingsSchema,
-} from '@void-space/types';
+import { setTenantStatusSchema, tenantSettingsSchema } from '@void-space/types';
+import { requirePlatformConsole } from '../platform/routes';
 import { z } from 'zod';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
@@ -21,6 +18,11 @@ const idParams = z.object({ id: z.string().uuid() });
 
 export async function tenantRoutes(app: FastifyInstance): Promise<void> {
   const tenants = createTenantsService();
+  const platformGuard = async (request: FastifyRequest) => {
+    await app.authenticate(request);
+    await requirePlatformConsole(request, true);
+    request.principal = { ...request.principal!, isSuperAdmin: true };
+  };
 
   function principalOf(request: FastifyRequest) {
     const principal = request.principal;
@@ -35,7 +37,7 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
   // `tenant:manage` is SuperAdmin-only in the §3.6 matrix.
   app.patch(
     '/tenant/settings',
-    { preHandler: app.requirePermission('tenant:manage') },
+    { preHandler: app.requirePermission('tenant:manage-users') },
     async (request, reply) => {
       const input = parseBody(tenantSettingsSchema, request.body);
       const settings = await tenants.updateSettings(principalOf(request), input);
@@ -43,39 +45,15 @@ export async function tenantRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // FR-18.1 — TenantAdmin can gate Studio AI features without SQL.
-  app.get(
-    '/tenant/ai-flags',
-    { preHandler: app.requirePermission('tenant:manage-users') },
-    async (request, reply) => {
-      const flags = await tenants.getAiFlags(principalOf(request));
-      return reply.status(200).send({ flags });
-    },
-  );
-
-  app.patch(
-    '/tenant/ai-flags',
-    { preHandler: app.requirePermission('tenant:manage-users') },
-    async (request, reply) => {
-      const input = parseBody(aiFeatureFlagsSchema, request.body);
-      const flags = await tenants.updateAiFlags(principalOf(request), input);
-      return reply.status(200).send({ flags });
-    },
-  );
-
-  app.get('/tenants', { preHandler: app.requirePermission('tenant:manage') }, async (request, reply) => {
+  app.get('/tenants', { preHandler: platformGuard }, async (request, reply) => {
     const list = await tenants.list(principalOf(request));
     return reply.status(200).send({ tenants: list, total: list.length });
   });
 
-  app.patch(
-    '/tenants/:id/status',
-    { preHandler: app.requirePermission('tenant:manage') },
-    async (request, reply) => {
-      const { id } = parseParams(idParams, request.params);
-      const input = parseBody(setTenantStatusSchema, request.body);
-      const result = await tenants.setStatus(principalOf(request), id, input.status, input.reason);
-      return reply.status(200).send(result);
-    },
-  );
+  app.patch('/tenants/:id/status', { preHandler: platformGuard }, async (request, reply) => {
+    const { id } = parseParams(idParams, request.params);
+    const input = parseBody(setTenantStatusSchema, request.body);
+    const result = await tenants.setStatus(principalOf(request), id, input.status, input.reason);
+    return reply.status(200).send(result);
+  });
 }

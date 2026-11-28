@@ -35,7 +35,7 @@ const THUMBNAIL_DIR = process.env.THUMBNAIL_DIR
 const CID_PATTERN = /^[a-zA-Z0-9]{32,128}$/;
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ cid: string }> },
 ): Promise<Response> {
   const { cid } = await params;
@@ -44,6 +44,28 @@ export async function GET(
     return new Response('Not found', { status: 404 });
   }
 
+  const authHeaders = new Headers();
+  for (const key of ['cookie', 'authorization']) {
+    const value = request.headers.get(key);
+    if (value) authHeaders.set(key, value);
+  }
+  try {
+    const access = await fetch(
+      `${process.env.API_INTERNAL_URL ?? 'http://localhost:4000'}/api/v1/content/${cid}/access`,
+      {
+        headers: authHeaders,
+        cache: 'no-store',
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    if (!access.ok)
+      return new Response('Not found', {
+        status: access.status === 401 ? 401 : 404,
+        headers: { 'cache-control': 'private, no-store' },
+      });
+  } catch {
+    return new Response('Preview unavailable', { status: 503 });
+  }
   try {
     const bytes = await readFile(join(THUMBNAIL_DIR, `${cid}.jpg`));
     return new Response(new Uint8Array(bytes), {
@@ -51,7 +73,7 @@ export async function GET(
       headers: {
         'content-type': 'image/jpeg',
         // Immutable: the URL is the content hash, so a stale copy is impossible by construction.
-        'cache-control': 'public, max-age=31536000, immutable',
+        'cache-control': 'private, no-store',
       },
     });
   } catch (error) {
@@ -61,7 +83,7 @@ export async function GET(
     return new Response(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#111216"/><path d="m200 65 62 36v72l-62 36-62-36v-72zM138 101l62 36 62-36M200 137v72" fill="none" stroke="#535963" stroke-width="2"/><text x="200" y="253" text-anchor="middle" fill="#9d9daa" font-family="system-ui,sans-serif" font-size="14">Preview pending</text></svg>',
       {
-        headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=15' },
+        headers: { 'content-type': 'image/svg+xml', 'cache-control': 'private, no-store' },
       },
     );
   }

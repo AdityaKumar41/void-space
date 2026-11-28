@@ -1,6 +1,5 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
-
 import type { AssetStatus } from '@void-space/types';
 
 import { cn } from '../../lib/cn';
@@ -34,8 +33,7 @@ export const chipVariants = cva(
 );
 
 export interface ChipProps
-  extends React.HTMLAttributes<HTMLSpanElement>,
-    VariantProps<typeof chipVariants> {
+  extends React.HTMLAttributes<HTMLSpanElement>, VariantProps<typeof chipVariants> {
   /** Draws a leading dot, so a state is legible without reading the word as well as with it. */
   readonly dot?: boolean;
 }
@@ -83,10 +81,6 @@ export function statusColor(status: AssetStatus): string {
   return STATUS_VAR[status];
 }
 
-export function statusLabel(status: AssetStatus): string {
-  return STATUS_LABEL[status];
-}
-
 export function StatusChip({ status, className }: { status: AssetStatus; className?: string }) {
   const tone = STATUS_VAR[status];
 
@@ -127,11 +121,6 @@ export function Tag({
       {children}
     </span>
   );
-}
-
-/** A row of chips that wraps without collapsing the gaps. */
-export function ChipRow({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <div className={cn('flex flex-wrap items-center gap-1.5', className)}>{children}</div>;
 }
 
 /**

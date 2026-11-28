@@ -24,7 +24,7 @@
 --                   ReviewDecision, ReviewComment, License, ApiKey, Notification,
 --                   Job or AuditLog (§5.3). Its use is narrow and audited:
 --                   identity resolution at login, workspace listing, SuperAdmin
---                   tenant administration.
+--                   tenant administration and the protected platform console tables.
 --   <owner>         schema owner used only for DDL (migrations, RLS apply).
 -- ---------------------------------------------------------------------------
 
@@ -60,6 +60,17 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE wallets TO void_platform;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE invites TO void_platform;
 
 -- @statement
+-- Central authority is separate from tenant roles. The blanket runtime grant and
+-- platform reset above must never expose MFA credentials or remove console access.
+REVOKE ALL ON platform_access, platform_console_sessions, platform_events FROM PUBLIC, void_app;
+
+-- @statement
+GRANT SELECT, INSERT, UPDATE, DELETE ON platform_access, platform_console_sessions TO void_platform;
+
+-- @statement
+GRANT SELECT, INSERT ON platform_events TO void_platform;
+
+-- @statement
 -- FR-13.3 — the audit log is append-only for the runtime role: UPDATE and DELETE
 -- are revoked at the database-permission level, not merely avoided in code.
 REVOKE UPDATE, DELETE, TRUNCATE ON TABLE audit_logs FROM void_app;
@@ -71,8 +82,9 @@ GRANT SELECT, INSERT ON TABLE audit_logs TO void_app;
 -- Tenant isolation on every tenant-scoped table (§5.3). FORCE makes the owner
 -- subject to the policy too, so accidental owner-context reads cannot leak.
 --
--- Three tables are deliberately ABSENT from this list, and the reason is the same for
--- all three: they are public by construction. `public_catalog_entries` is the marketplace
+-- Four tables are deliberately ABSENT from this list: they are public by
+-- construction. `public_lesson_entries` contains only discoverable lesson metadata,
+-- never private sources, drafts or answer keys. `public_catalog_entries` is the marketplace
 -- projection (§6.1), and `asset_likes` / `asset_comments` are the engagement written
 -- against it. A visitor in one workspace has to be able to like or discuss an asset
 -- belonging to another — that is what a marketplace is — so a `tenant_id` policy would
@@ -87,7 +99,7 @@ DO $$
 DECLARE
   target_table text;
   tenant_tables text[] := ARRAY[
-    'learning_threads', 'learning_folders',
+    'learning_threads', 'learning_folders', 'learning_agent_runs', 'learning_agent_events', 'learning_source_collections', 'learning_annotation_revisions',
     'lesson_plans', 'lesson_plan_releases', 'lesson_shares', 'lesson_grants', 'lesson_studies',
     'learning_sources',
     'learning_classes',

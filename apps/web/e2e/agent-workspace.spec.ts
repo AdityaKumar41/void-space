@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import { PrismaClient } from '../../../packages/db/generated/client/index.js';
-import { buildGlbFixture } from '../../../packages/db/src/glb-fixture';
+import { solidCubeFixture } from './solid-cube-fixture';
 import { loadRootEnv } from '../../../packages/db/src/env';
 loadRootEnv({ override: false });
 for (const mobile of [false, true])
@@ -39,7 +39,7 @@ for (const mobile of [false, true])
       tenant = (await (await page.request.get('/api/v1/auth/me')).json()).user.activeTenantId;
       await expect(
         page.getByRole('textbox', {
-          name: 'Ask me anything — I’m your personal learning agent.',
+          name: 'Message your learning agent',
           exact: true,
         }),
       ).toBeVisible();
@@ -60,7 +60,10 @@ for (const mobile of [false, true])
             .getByRole('navigation', { name: 'Asset tools' })
             .getByRole('link', { name: 'Marketplace', exact: true }),
         ).toBeVisible();
-        await page.screenshot({ path: '/private/tmp/void-space-agent-desktop.png' });
+        await page.screenshot({
+          path: '/private/tmp/void-space-agent-desktop.png',
+          caret: 'initial',
+        });
       }
       await page.getByRole('button', { name: 'Create conversation folder', exact: true }).click();
       await page.getByLabel('Folder name', { exact: true }).fill('My learning notes');
@@ -84,34 +87,48 @@ for (const mobile of [false, true])
         folder.id,
       );
       await page.goto('/console/learn/library');
-      await page.getByLabel('Add a private 3D model', { exact: true }).setInputFiles({
+      await page.getByLabel('Add model', { exact: true }).setInputFiles({
         name: 'learning-cube.glb',
         mimeType: 'model/gltf-binary',
-        buffer: buildGlbFixture(12),
+        buffer: solidCubeFixture(),
       });
       await expect(page.getByRole('heading', { name: 'learning-cube', exact: true })).toBeVisible();
       await expect(page.locator('canvas')).toHaveCount(1);
+      await page.getByRole('link', { name: 'Open annotation editor', exact: true }).click();
+      await expect(page).toHaveURL(/\/annotate$/);
+      await expect(page.getByRole('navigation', { name: 'Workspace sections' })).toHaveCount(0);
+      await page.getByRole('button', { name: 'Add annotation', exact: true }).click();
+      await expect(
+        page.getByRole('button', { name: 'Save annotations', exact: true }),
+      ).toBeDisabled();
+      await page.getByRole('button', { name: '← Back to library', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Keep editing', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+      if (mobile) await page.locator('.library-viewport canvas').tap();
+      else await page.locator('.library-viewport canvas').click();
+      await page.getByLabel('Name', { exact: true }).first().fill('Learning cube');
       await page
-        .getByRole('button', { name: 'Start from model component names', exact: true })
-        .click();
-      await page.getByLabel('Component name', { exact: true }).first().fill('Learning cube');
-      await page
-        .getByRole('textbox', { name: 'What does this component do?', exact: true })
+        .getByRole('textbox', { name: 'Explanation', exact: true })
         .first()
         .fill('A sample component used to practise model exploration.');
       await page
         .getByRole('checkbox', {
-          name: 'I confirmed these names, explanations and model mappings.',
+          name: 'I checked names, explanations and positions',
           exact: true,
         })
         .check();
-      await page.getByRole('button', { name: 'Save reviewed labels', exact: true }).click();
+      await page.getByRole('button', { name: 'Save annotations', exact: true }).click();
       await expect(
-        page.getByRole('status').filter({ hasText: 'Reviewed model labels saved.' }),
+        page.getByRole('status').filter({ hasText: 'Reviewed annotations saved.' }),
       ).toBeVisible();
       const models = (await (await page.request.get('/api/v1/learning/library')).json()).models;
       expect(models).toHaveLength(1);
       expect(models[0].metadata.labelsReviewed).toBe(true);
+      expect(
+        models[0].metadata.labels[0].position.some((value: number) => Math.abs(value) > 0),
+      ).toBe(true);
+      await page.reload();
+      await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Learning cube');
       const anonymous = await browser.newContext({ baseURL });
       try {
         expect(
@@ -120,20 +137,76 @@ for (const mobile of [false, true])
       } finally {
         await anonymous.close();
       }
-      await page.getByRole('button', { name: 'Start an editable lesson', exact: true }).click();
+      await page.getByText('More actions', { exact: true }).click();
+      await page.getByRole('button', { name: 'Start lesson manually', exact: true }).click();
       await expect(page).toHaveURL(/\/drafts\//);
       await expect(page.locator('canvas')).toHaveCount(1);
       await expect(page.getByRole('button', { name: 'Learning cube', exact: true })).toBeVisible();
-      await page.goto(`/console/learn/library?model=${models[0].id}`);
+      await page.getByRole('button', { name: 'Model annotations', exact: true }).click();
+      await page.getByRole('button', { name: 'Add component', exact: true }).click();
+      await page.getByLabel('Component name', { exact: true }).fill('Cube surface');
       await page
-        .getByRole('link', { name: 'Create a lesson with this model', exact: true })
-        .click();
+        .getByLabel('Explanation and role', { exact: true })
+        .fill('The outer surface encloses this synthetic cube.');
       await expect(
-        page.getByRole('combobox', { name: 'Choose a model for the agent', exact: true }),
-      ).toHaveValue(`private:${models[0].id}`);
+        page.getByRole('button', { name: 'Confirm component and pin', exact: true }),
+      ).toBeDisabled();
+      await expect(page.getByRole('combobox', { name: 'Model part', exact: true })).toBeEnabled();
+      await page
+        .getByRole('combobox', { name: 'Model part', exact: true })
+        .selectOption({ index: 1 });
+      await page.getByText('Adjust pin with keyboard', { exact: true }).click();
+      const horizontal = page.getByRole('slider', { name: 'Horizontal position', exact: true });
+      await horizontal.focus();
+      await page.keyboard.press('ArrowRight');
+      await page.getByRole('spinbutton', { name: 'Pin X coordinate', exact: true }).fill('0.123');
+      await page.getByRole('button', { name: 'Place pin on model', exact: true }).click();
+      await page.locator('.lesson-annotation-workspace canvas').click();
+      await expect(
+        page.getByRole('button', { name: 'Undo last pin placement', exact: true }),
+      ).toBeVisible();
+      await page.getByRole('button', { name: 'Undo last pin placement', exact: true }).click();
+      await expect(
+        page.getByRole('spinbutton', { name: 'Pin X coordinate', exact: true }),
+      ).toHaveValue('0.123');
+      await page.getByRole('button', { name: 'Confirm component and pin', exact: true }).click();
+      await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+      await expect(page.getByText('Draft saved.', { exact: true })).toBeVisible();
+      await page.reload();
+      await page.getByRole('button', { name: 'Model annotations', exact: true }).click();
+      await page.getByRole('button', { name: 'Cube surface Confirmed', exact: true }).click();
+      await page.getByText('Adjust pin with keyboard', { exact: true }).click();
+      await expect(
+        page.getByRole('spinbutton', { name: 'Pin X coordinate', exact: true }),
+      ).toHaveValue('0.123');
+      await expect(
+        page.getByRole('textbox', { name: 'Explanation and role', exact: true }),
+      ).toHaveValue('The outer surface encloses this synthetic cube.');
+      await page.goto(`/console/learn/library?model=${models[0].id}`);
+      await page.getByRole('link', { name: 'Create lesson with AI', exact: true }).click();
+      await expect(
+        page.getByRole('button', { name: 'Choose a model for the agent', exact: true }),
+      ).toContainText('learning-cube');
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
       ).toBe(true);
+      await page.goto('/console/learn/sources');
+      await page.getByRole('button', { name: 'Add material', exact: true }).click();
+      await page.getByRole('button', { name: 'Write notes', exact: true }).click();
+      await page.getByLabel('Source title (optional)', { exact: true }).fill('My geometry notes');
+      await page
+        .getByLabel('Paste notes', { exact: true })
+        .fill(
+          'A cube has flat faces. These synthetic geometry notes are private and can ground a lesson.',
+        );
+      await page.getByRole('button', { name: 'Save private notes', exact: true }).click();
+      await page.getByRole('link', { name: 'Use 1 selected source with AI', exact: true }).click();
+      await expect(page).toHaveURL(/sources=/);
+      await expect(page.getByRole('button', { name: '1 sources', exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Attach (1)', exact: true }).click();
+      await expect(
+        page.getByRole('checkbox', { name: 'My geometry notes · ready', exact: true }),
+      ).toBeChecked();
       expect(errors).toEqual([]);
     } finally {
       await context.close();

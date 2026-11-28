@@ -37,7 +37,7 @@ export interface JobContext {
 
 /** The `jobs.queue` enum value for a queue name. */
 export function jobQueueEnum(queue: QueueName): Prisma.JobCreateInput['queue'] {
-  return queue.replace(/-/g, '_') as Prisma.JobCreateInput['queue'];
+  return (queue === 'asset-store' ? 'ipfs_pin' : queue.replace(/-/g, '_')) as Prisma.JobCreateInput['queue'];
 }
 
 /**

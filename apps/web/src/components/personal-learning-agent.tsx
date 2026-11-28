@@ -1,27 +1,30 @@
 'use client';
+import { ModelPicker } from './model-picker';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUp,
+  Square,
+  LoaderCircle,
   BookOpen,
-  Check,
   ChevronDown,
   FolderPlus,
   Link2,
-  LoaderCircle,
   Plus,
   Search,
   Sparkles,
   History,
   ImagePlus,
-  Clock,
   X,
 } from 'lucide-react';
 import { useSession } from '../lib/session';
-import { apiFetch } from '../lib/api';
+import { apiFetch, API_PUBLIC_BASE } from '../lib/api';
 import { AgentActivity, type AgentActivityStep } from './agent-activity';
 import { LessonSources } from './lesson-sources';
+import { LearningHistoryDialog } from './learning-history-dialog';
+import { AgentResponse } from './agent-response';
 interface Result {
   sources?: { title: string; page: number; text: string; sourceId: string; passageId: string }[];
   planId?: string;
@@ -47,6 +50,7 @@ interface Thread {
   messages: Message[];
 }
 interface Task {
+  kind?: string;
   input?: {
     threadId?: string;
     context?: {
@@ -79,35 +83,8 @@ type ActivityPage = {
     createdAt: string;
   })[];
 };
-function AgentPresence() {
-  return (
-    <svg className="agent-orb" viewBox="0 0 220 260" fill="none" aria-hidden="true">
-      <ellipse cx="110" cy="218" rx="67" ry="15" fill="#efeff2" />
-      {Array.from({ length: 30 }, (_, i) => (
-        <ellipse
-          key={i}
-          cx="110"
-          cy={55 + i * 5.1}
-          rx="66"
-          ry="23"
-          stroke={i === 0 || i === 29 ? '#c5c7cd' : '#dedfe5'}
-          strokeWidth={i === 0 || i === 29 ? 1.5 : 0.6}
-        />
-      ))}
-      {Array.from({ length: 22 }, (_, i) => (
-        <path
-          key={i}
-          d={`M ${45 + i * 6} 55 Q ${28 + i * 7} 130 ${45 + i * 6} 204`}
-          stroke="#e0e1e6"
-          strokeWidth="0.7"
-        />
-      ))}
-      <ellipse cx="110" cy="55" rx="66" ry="23" fill="#fafafa" stroke="#c6c8ce" />
-      <path d="M110 107l8 20 21 8-21 8-8 21-8-21-21-8 21-8z" fill="white" stroke="#dfe1e8" />
-    </svg>
-  );
-}
 export function PersonalLearningAgent() {
+  const router = useRouter();
   const { session } = useSession();
   const client = useQueryClient();
   const [threadId, setThreadId] = useState(''),
@@ -120,13 +97,25 @@ export function PersonalLearningAgent() {
     [taskId, setTaskId] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [history, setHistory] = useState(true),
+    [history, setHistory] = useState(false),
     [search, setSearch] = useState(''),
     [historyTab, setHistoryTab] = useState<'conversations' | 'activity'>('conversations'),
     [folderForm, setFolderForm] = useState(false),
     [folderTitle, setFolderTitle] = useState(''),
     [attachments, setAttachments] = useState(false),
     [settings, setSettings] = useState(false);
+  const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const node = input.current;
+    if (!node) return;
+    const resize = () => {
+      node.style.height = '0px';
+      node.style.height = `${node.value ? Math.min(node.scrollHeight, 180) : 48}px`;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, [message]);
   const restoredContext = useRef('');
   const pending = useRef<{ eventKey: string; message: string } | null>(null),
     bottom = useRef<HTMLDivElement>(null);
@@ -164,16 +153,18 @@ export function PersonalLearningAgent() {
     queryFn: () =>
       apiFetch<{ thread: Thread; tasks: Task[] }>(`/learning/agent/threads/${threadId}`),
     enabled: !!threadId,
-    refetchInterval: taskId ? 2000 : false,
+    refetchInterval: (q) =>
+      q.state.data?.tasks.some((t) => ['queued', 'active'].includes(t.status)) ? 2000 : false,
   });
-  const models = useQuery({
-    queryKey: ['learning-library'],
-    queryFn: () => apiFetch<{ models: { id: string; title: string }[] }>('/learning/library'),
-  });
-  const assets = useQuery({
-    queryKey: ['agent-workspace-assets'],
-    queryFn: () =>
-      apiFetch<{ items: { id: string; name: string; status: string }[] }>('/assets?pageSize=50'),
+  const selectedModel = useQuery({
+    queryKey: ['model-picker-selected', model],
+    enabled: !!model,
+    retry: false,
+    queryFn: ({ signal }) =>
+      apiFetch<{ item: { title: string } }>(
+        `/learning/model-picker/selected?reference=${encodeURIComponent(model)}`,
+        { signal },
+      ),
   });
   const lessons = useQuery({
     queryKey: ['lesson-plans'],
@@ -184,7 +175,7 @@ export function PersonalLearningAgent() {
     queryFn: () => apiFetch<{ task: Task }>(`/learning/tasks/${taskId}`),
     enabled: !!taskId,
     refetchInterval: (q) =>
-      ['completed', 'failed'].includes(q.state.data?.task.status ?? '') ? false : 1500,
+      ['completed', 'failed', 'cancelled'].includes(q.state.data?.task.status ?? '') ? false : 1500,
   });
   useEffect(() => {
     const q = new URLSearchParams(location.search);
@@ -197,6 +188,10 @@ export function PersonalLearningAgent() {
       setAttachments(true);
       sessionStorage.removeItem('void-start-attachments');
     }
+    const incomingSources = (q.get('sources') ?? '')
+      .split(',')
+      .filter((id) => /^[a-f0-9-]{36}$/i.test(id));
+    if (incomingSources.length) setSourceIds([...new Set(incomingSources)].slice(0, 20));
     setThreadId(q.get('thread') ?? '');
     if (q.get('task')) {
       setTaskId(q.get('task')!);
@@ -212,6 +207,12 @@ export function PersonalLearningAgent() {
   }, []);
   useEffect(() => {
     if (task.data?.task.status === 'completed') {
+      if (task.data.task.result?.modelId && task.data.task.result.labels) {
+        router.push(
+          `/console/learn/library/${task.data.task.result.modelId}/annotate?thread=${threadId}&proposal=${taskId}`,
+        );
+      }
+
       if (task.data.task.result?.sourceId)
         void client.invalidateQueries({ queryKey: ['learning-sources'] });
       if (task.data.task.result?.planId) setPlanId(task.data.task.result.planId);
@@ -249,13 +250,14 @@ export function PersonalLearningAgent() {
       (task.data.task.input?.threadId && task.data.task.input.threadId !== threadId)
     )
       return;
-    if (restoredContext.current !== threadId) {
-      setSourceIds(context.sourceIds ?? []);
+    if (restoredContext.current === threadId) return;
+    {
+      if (!sourceIds.length) setSourceIds(context.sourceIds ?? []);
       if (context.durationMinutes) setDuration(context.durationMinutes);
       if (context.audience) setAudience(context.audience);
       restoredContext.current = threadId;
     }
-    if (model) return;
+    if (model || new URLSearchParams(location.search).get('modelSelection') === 'none') return;
     const privateId = context.privateModelId;
     const assetId = context.assetId ?? context.asset?.id;
     if (!privateId && !assetId) return;
@@ -264,7 +266,35 @@ export function PersonalLearningAgent() {
     url.searchParams.set(privateId ? 'model' : 'asset', (privateId ?? assetId)!);
     window.history.replaceState(null, '', url.pathname + url.search);
   }, [task.data?.task.id, threadId]);
-  const running = !!taskId && !['completed', 'failed'].includes(task.data?.task.status ?? '');
+  const running =
+    !!taskId && !['completed', 'failed', 'cancelled'].includes(task.data?.task.status ?? '');
+  useEffect(() => {
+    if (!running || task.data?.task.kind !== 'agent_turn' || typeof EventSource === 'undefined')
+      return;
+    const events = new EventSource(`${API_PUBLIC_BASE}/learning/agent/runs/${taskId}/events`, {
+      withCredentials: true,
+    });
+    events.onmessage = () => {
+      void task.refetch();
+    };
+    events.addEventListener('terminal', () => {
+      events.close();
+      void task.refetch();
+      void thread.refetch();
+    });
+    events.onerror = () => events.close(); // Existing polling remains the recovery path.
+    return () => events.close();
+  }, [taskId, running, task.data?.task.kind]);
+  function chooseModel(next: string) {
+    restoredContext.current = threadId;
+    setModel(next);
+    const url = new URL(location.href);
+    for (const key of ['model', 'asset', 'modelSelection']) url.searchParams.delete(key);
+    if (next.startsWith('private:')) url.searchParams.set('model', next.slice(8));
+    else if (next.startsWith('asset:')) url.searchParams.set('asset', next.slice(6));
+    else url.searchParams.set('modelSelection', 'none');
+    window.history.replaceState(null, '', url.pathname + url.search);
+  }
   async function send(e?: FormEvent) {
     e?.preventDefault();
     if (!message.trim() || busy || running || (threadId && !thread.data)) return;
@@ -283,7 +313,18 @@ export function PersonalLearningAgent() {
         url.searchParams.set('thread', current.id);
         window.history.replaceState(null, '', url.pathname + url.search);
       }
-      const event = pending.current ?? { eventKey: crypto.randomUUID(), message: message.trim() };
+      if (model.startsWith('private:') && /annotat|\blabel|\bpin(?:s)?\b/i.test(message)) {
+        sessionStorage.setItem(`void-annotation-prompt:${current.id}`, message.trim());
+        router.push(
+          `/console/learn/library/${model.slice(8)}/annotate?thread=${current.id}&compose=1`,
+        );
+        setMessage('');
+        return;
+      }
+      const event =
+        pending.current?.message === message.trim()
+          ? pending.current
+          : { eventKey: crypto.randomUUID(), message: message.trim() };
       pending.current = event;
       const r = await apiFetch<{ taskId: string }>(
         `/learning/agent/threads/${current.id}/messages`,
@@ -304,7 +345,7 @@ export function PersonalLearningAgent() {
       pending.current = null;
       setTaskId(r.taskId);
       setMessage('');
-      await thread.refetch();
+      await client.invalidateQueries({ queryKey: ['agent-thread', current.id] });
       await list.refetch();
       setAttachments(false);
     } catch (e) {
@@ -321,25 +362,35 @@ export function PersonalLearningAgent() {
     restoredContext.current = '';
     setThreadId(id);
     setModel('');
+    setSourceIds([]);
     setPlanId('');
     setTaskId('');
     setError('');
     pending.current = null;
-    setHistory(true);
+    setHistory(false);
     setHistoryTab('conversations');
     window.history.replaceState(null, '', `/console/learn/agent?thread=${id}`);
   }
   return (
-    <div className={'agent-room' + (history ? ' has-history' : '')}>
+    <div className={'agent-room' + (!threadId && !taskId ? ' is-start' : '')}>
       <div className="agent-room-heading">
-        <h1>Ask AI</h1>
+        <div>
+          <h1>Ask AI</h1>
+          <p className="agent-room-description">
+            Plan lessons, explore models and revise saved work.
+          </p>
+        </div>
         <div className="agent-room-actions">
           <button
             className="agent-pill"
             disabled={
               busy || running || !message.trim() || !activity.data?.pages[0]?.imageAvailable
             }
-            title="Describe an illustration in the message box, then generate it with Flux"
+            title={
+              activity.data?.pages[0]?.imageAvailable
+                ? 'Describe an illustration in the message box, then generate it with Flux'
+                : 'Image generation is unavailable for now. You can upload images in My sources.'
+            }
             onClick={async () => {
               setBusy(true);
               setError('');
@@ -364,7 +415,7 @@ export function PersonalLearningAgent() {
             }}
           >
             <ImagePlus size={15} />
-            Create image
+            {activity.data?.pages[0]?.imageAvailable ? 'Create image' : 'Images unavailable'}
           </button>
           <button
             className="agent-pill"
@@ -425,6 +476,7 @@ export function PersonalLearningAgent() {
             Folder name
             <input
               className="rounded-lg border border-hairline bg-white p-2"
+              autoFocus
               maxLength={120}
               value={folderTitle}
               onChange={(e) => setFolderTitle(e.target.value)}
@@ -433,9 +485,12 @@ export function PersonalLearningAgent() {
           <button className="agent-pill primary" disabled={busy || !folderTitle.trim()}>
             Create folder
           </button>
+          <button type="button" className="agent-pill" onClick={() => setFolderForm(false)}>
+            Cancel
+          </button>
         </form>
       )}
-      {history && (
+      <LearningHistoryDialog open={history} onClose={() => setHistory(false)}>
         <section className="agent-thread-list" aria-label="Conversations">
           <header className="agent-history-header">
             <h2>History</h2>
@@ -516,7 +571,12 @@ export function PersonalLearningAgent() {
                   {t.kind === 'image_generate' && t.status === 'failed' && (
                     <button
                       className="agent-pill"
-                      disabled={busy}
+                      disabled={busy || !activity.data?.pages[0]?.imageAvailable}
+                      title={
+                        activity.data?.pages[0]?.imageAvailable
+                          ? 'Retry image generation'
+                          : 'Image generation is unavailable. You can upload an image in My sources.'
+                      }
                       onClick={async () => {
                         setBusy(true);
                         try {
@@ -587,7 +647,7 @@ export function PersonalLearningAgent() {
             </div>
           )}
         </section>
-      )}
+      </LearningHistoryDialog>
       <div className="agent-conversation-pane">
         {thread.data?.thread && (
           <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-ink-dim">
@@ -621,22 +681,28 @@ export function PersonalLearningAgent() {
         )}
         {!thread.data?.thread.messages.length ? (
           <section className="agent-hero">
-            <AgentPresence />
+            <span className="learning-eyebrow">
+              <Sparkles size={15} /> Your learning partner
+            </span>
             <h2>
-              <span>Hello, what’s on</span> your mind?
+              What would you like
+              <br />
+              to teach or learn?
             </h2>
-            <p>
-              Your personal learning agent. Plan a lesson, explore a model, or work through an idea.
-            </p>
+            <p>Turn an idea, your notes or a 3D model into a lesson you can explore.</p>
           </section>
         ) : (
           <section className="agent-message-list" aria-label="Conversation">
             {thread.data.thread.messages.map((m, i) => (
               <article key={`${m.taskId ?? i}-${m.role}`} className={`agent-message ${m.role}`}>
-                <span className="mb-1 block text-[10px] text-ink-dim">
+                <span className="mb-1 block text-xs text-ink-dim">
                   {m.role === 'user' ? 'You' : 'Void Space'}
                 </span>
-                {m.content}
+                {m.role === 'assistant' ? (
+                  <AgentResponse content={m.content} sources={m.result?.sources} />
+                ) : (
+                  m.content
+                )}
                 {!!m.result?.sources?.length && (
                   <details className="mt-3 whitespace-normal text-xs">
                     <summary className="cursor-pointer">Sources used</summary>
@@ -678,7 +744,7 @@ export function PersonalLearningAgent() {
                   <div className="agent-result">
                     <BookOpen size={22} />
                     <div>
-                      <p className="text-[10px] text-ink-dim">
+                      <p className="text-xs text-ink-dim">
                         {m.result.proposal ? 'Reviewable revision' : 'Private lesson draft'}
                       </p>
                       <Link
@@ -689,11 +755,11 @@ export function PersonalLearningAgent() {
                     </div>
                   </div>
                 )}
-                {m.result?.modelId && (
+                {m.result?.modelId && !m.result.planId && (
                   <div className="agent-result">
                     <Sparkles size={20} />
                     <Link
-                      href={`/console/learn/library?model=${m.result.modelId}&proposal=${m.taskId}`}
+                      href={`/console/learn/library/${m.result.modelId}/annotate?proposal=${m.taskId}`}
                     >
                       Review component labels
                     </Link>
@@ -766,18 +832,48 @@ export function PersonalLearningAgent() {
                     setMessage(thread.data!.thread.messages.at(-1)!.content);
                     setTaskId('');
                     setError('');
+                    input.current?.focus();
                   }}
                 >
-                  Retry request
+                  Edit and retry
                 </button>
               )}
             </div>
           </div>
         )}
         <div className="agent-composer-wrap">
+          {(model || sourceIds.length > 0 || planId) && (
+            <div className="agent-attachments" aria-label="Selected material">
+              {model && (
+                <button type="button" className="agent-pill" onClick={() => chooseModel('')}>
+                  <BookOpen size={14} />
+                  {selectedModel.data?.item.title ?? 'Selected model'}
+                  <X size={14} aria-label="Remove model" />
+                </button>
+              )}
+              {!!sourceIds.length && (
+                <button type="button" className="agent-pill" onClick={() => setAttachments(true)}>
+                  <Link2 size={14} />
+                  {sourceIds.length} sources
+                </button>
+              )}
+              {planId && (
+                <button type="button" className="agent-pill" onClick={() => setSettings(true)}>
+                  <BookOpen size={14} />
+                  {lessons.data?.plans.find((p) => p.id === planId)?.title ?? 'Selected lesson'}
+                </button>
+              )}
+            </div>
+          )}
           {attachments && (
             <div className="agent-drawer">
-              <LessonSources selected={sourceIds} onChange={setSourceIds} />
+              <LessonSources
+                selected={sourceIds}
+                onChange={(ids) => {
+                  restoredContext.current = threadId;
+                  setSourceIds(ids);
+                }}
+              />
               <Link className="mt-3 inline-block text-xs underline" href="/console/learn/library">
                 Upload a private 3D model in Library
               </Link>
@@ -812,14 +908,12 @@ export function PersonalLearningAgent() {
             </div>
           )}
           <form className="agent-composer" onSubmit={(e) => void send(e)}>
-            <label htmlFor="personal-agent-message" className="agent-composer-label">
-              <Sparkles size={16} />
-              <span>
-                <strong className="font-medium text-ink">Ask me anything</strong> — I’m your
-                personal learning agent.
-              </span>
+            <label htmlFor="personal-agent-message" className="sr-only">
+              Message your learning agent
             </label>
             <textarea
+              ref={input}
+              rows={1}
               id="personal-agent-message"
               value={message}
               maxLength={4000}
@@ -827,9 +921,9 @@ export function PersonalLearningAgent() {
                 setMessage(e.target.value);
                 pending.current = null;
               }}
-              placeholder="Create a 30-minute anatomy lesson using my model, with component labels and a quiz…"
+              placeholder="Ask your learning agent…"
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   void send();
                 }
@@ -846,38 +940,7 @@ export function PersonalLearningAgent() {
                   <Link2 size={13} />
                   Attach{sourceIds.length ? ` (${sourceIds.length})` : ''}
                 </button>
-                <label className="agent-compose-tool">
-                  <BookOpen size={13} />
-                  <select
-                    aria-label="Choose a model for the agent"
-                    value={model}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setModel(next);
-                      const url = new URL(location.href);
-                      url.searchParams.delete('model');
-                      url.searchParams.delete('asset');
-                      if (next.startsWith('private:')) url.searchParams.set('model', next.slice(8));
-                      else if (next.startsWith('asset:'))
-                        url.searchParams.set('asset', next.slice(6));
-                      window.history.replaceState(null, '', url.pathname + url.search);
-                    }}
-                  >
-                    <option value="">Choose a model</option>
-                    {models.data?.models.map((m) => (
-                      <option value={`private:${m.id}`} key={m.id}>
-                        {m.title} · private
-                      </option>
-                    ))}
-                    {assets.data?.items
-                      .filter((a) => ['approved', 'published'].includes(a.status))
-                      .map((a) => (
-                        <option value={`asset:${a.id}`} key={a.id}>
-                          {a.name} · workspace
-                        </option>
-                      ))}
-                  </select>
-                </label>
+                <ModelPicker value={model} onChange={chooseModel} disabled={busy || running} />
                 <label className="agent-compose-tool">
                   <select
                     aria-label="Lesson duration"
@@ -900,14 +963,46 @@ export function PersonalLearningAgent() {
                   <ChevronDown size={11} />
                 </button>
               </div>
-              <button
-                className="agent-send"
-                type="submit"
-                aria-label="Send to personal agent"
-                disabled={busy || running || !message.trim()}
-              >
-                <ArrowUp size={18} />
-              </button>
+              {running ? (
+                <button
+                  className="agent-send"
+                  type="button"
+                  aria-label={
+                    task.data?.task.kind === 'agent_turn'
+                      ? 'Stop generation'
+                      : 'Generation in progress'
+                  }
+                  disabled={busy || task.data?.task.kind !== 'agent_turn'}
+                  onClick={async () => {
+                    setBusy(true);
+                    setError('');
+                    try {
+                      await apiFetch(`/learning/agent/runs/${taskId}/cancel`, { method: 'POST' });
+                      await task.refetch();
+                      await thread.refetch();
+                    } catch (e) {
+                      setError((e as Error).message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  {task.data?.task.kind === 'agent_turn' ? (
+                    <Square size={16} fill="currentColor" aria-hidden="true" />
+                  ) : (
+                    <LoaderCircle size={18} className="animate-spin" aria-hidden="true" />
+                  )}
+                </button>
+              ) : (
+                <button
+                  className="agent-send"
+                  type="submit"
+                  aria-label="Send to personal agent"
+                  disabled={busy || !message.trim()}
+                >
+                  <ArrowUp size={19} aria-hidden="true" />
+                </button>
+              )}
             </div>
           </form>
           {!thread.data?.thread.messages.length && (
@@ -939,8 +1034,9 @@ export function PersonalLearningAgent() {
               </button>
             </div>
           )}
-          <p className="mt-3 text-center text-[10px] text-ink-dim">
-            Drafts stay private. Review facts and labels before sharing. Ctrl / ⌘ + Enter to send.
+          <p className="mt-3 text-center text-xs text-ink-dim">
+            Your work starts private. Review before sharing. Enter to send · Shift + Enter for a new
+            line.
           </p>
         </div>
       </div>

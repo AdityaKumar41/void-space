@@ -31,7 +31,7 @@ import { toggleBookmark, useBookmarks } from '../lib/bookmarks';
 import { StatusChip } from './ui/chip';
 import { SearchField } from './ui/field';
 import { EmptyState } from './ui/feedback';
-import { BellIcon, CubeIcon, HeartIcon, SearchIcon } from './ui/icons';
+import { BellIcon, HeartIcon, SearchIcon } from './ui/icons';
 import { FilterRail as UiFilterRail, type RailGroup, type RailOption } from './ui/rail';
 import { Stat, StatGrid } from './ui/stat';
 import { Avatar, initialsOf } from './ui/avatar';
@@ -39,11 +39,6 @@ import { Avatar, initialsOf } from './ui/avatar';
 /* Glyphs live in `ui/icons`; re-exported under the names the console screens already import. */
 export { SearchIcon, BellIcon, HeartIcon };
 export type { RailGroup, RailOption };
-
-/** A wireframe cube: the chain badge mark, and the placeholder when there is no render. */
-export function CubeGlyph({ size = 34 }: { readonly size?: number }) {
-  return <CubeIcon width={size} height={size} />;
-}
 
 /* ------------------------------------------------------------------------ thumbnail */
 
@@ -220,7 +215,6 @@ export function ConsoleBanner({
   );
 }
 
-
 /* ------------------------------------------------------------------------ item card */
 
 export interface ItemCardProps {
@@ -278,11 +272,7 @@ export function ItemCard({
             Ask for the content-addressed render whenever a CID exists. A missing file falls back
             inside ConsoleThumb, so an unpublished asset still shows a figure instead of a broken image.
           */}
-          <ConsoleThumb
-            cid={cid}
-            alt={`Render of ${name}`}
-            seed={assetId}
-          />
+          <ConsoleThumb cid={cid} alt={`Render of ${name}`} seed={assetId} />
         </Link>
 
         {badge ? (
@@ -362,7 +352,6 @@ export function ItemCard({
   );
 }
 
-
 /* ------------------------------------------------------------------------ filter rail */
 
 /**
@@ -432,7 +421,8 @@ export function eventKind(action: string): EventKind {
   if (/failed$|rejected|revoked|deleted|removed$|suspended/.test(action)) return 'fail';
   if (action.startsWith('chain.')) return 'chain';
   if (action.startsWith('ai.')) return 'escalate';
-  if (/approved|published|pinned|accepted|completed|minted|adopted|linked/.test(action)) return 'ok';
+  if (/approved|published|pinned|accepted|completed|minted|adopted|linked/.test(action))
+    return 'ok';
   if (/submitted|requested|manual_review|invited|revision/.test(action)) return 'wait';
   return 'plain';
 }
@@ -440,7 +430,9 @@ export function eventKind(action: string): EventKind {
 /** `asset.publish_requested` → `Publish requested`. Sentence case, per the voice rules. */
 export function eventLabel(action: string): string {
   const [namespace, ...rest] = action.split('.');
-  const words = (rest.length > 0 ? rest.join(' ') : namespace ?? action).replace(/_/g, ' ').trim();
+  const words = (rest.length > 0 ? rest.join(' ') : (namespace ?? action))
+    .replace(/_/g, ' ')
+    .trim();
   if (words.length === 0) return action;
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
@@ -525,4 +517,3 @@ export function EmptyBlock({
 
 /** Kept exported because the review screen prints the initials of an anonymous actor. */
 export { initialsOf };
-

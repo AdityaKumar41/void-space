@@ -21,7 +21,7 @@ import voidSpacePreset from '@void-space/config/tailwind/preset';
  */
 const config: Config = {
   presets: [voidSpacePreset as Config],
-  content: ['./src/**/*.{ts,tsx}', '../../packages/ui/src/**/*.{ts,tsx}'],
+  content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
@@ -116,10 +116,9 @@ const config: Config = {
           'linear-gradient(to right, var(--fc-a-4) 1px, transparent 1px), linear-gradient(to bottom, var(--fc-a-4) 1px, transparent 1px)',
         /* A single soft light source in the top-left, for a hero band that needs warmth without a
            gradient wash. */
-        'heat-glow':
-          'radial-gradient(120% 100% at 0% 0%, var(--fc-heat-12), transparent 58%)',
+        'heat-glow': 'radial-gradient(120% 100% at 0% 0%, var(--fc-heat-12), transparent 58%)',
         /* The scrim under a card overlay, so a name stays readable over any render. */
-        'scrim': 'linear-gradient(to top, rgba(10,10,10,0.94), rgba(10,10,10,0.55) 45%, transparent)',
+        scrim: 'linear-gradient(to top, rgba(10,10,10,0.94), rgba(10,10,10,0.55) 45%, transparent)',
 
         /*
          * ⚠ Custom `bg-*` image keys are safe in a plain `className`, and **not** safe inside `cn()`.
@@ -175,4 +174,3 @@ const config: Config = {
 };
 
 export default config;
-

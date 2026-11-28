@@ -29,9 +29,18 @@ export interface SketchfabModel {
   license: string;
   downloadable: boolean;
   thumbnail: string | null;
+  aiUseAllowed?: boolean;
 }
 
 export function sketchfabEmbedUrl(uid: string): string {
   if (!/^[a-f0-9]{32}$/.test(uid)) throw new Error('Invalid Sketchfab model ID');
   return `https://sketchfab.com/models/${uid}/embed?autostart=0&preload=0`;
+}
+
+/** Imported third-party models need affirmative metadata before AI processing. */
+export function modelAllowsAi(metadata: unknown): boolean {
+  const provenance = (
+    metadata as { provenance?: { provider?: string; aiUseAllowed?: boolean } } | null
+  )?.provenance;
+  return provenance?.provider !== 'sketchfab' || provenance.aiUseAllowed === true;
 }

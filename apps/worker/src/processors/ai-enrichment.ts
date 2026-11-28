@@ -1,4 +1,4 @@
-import type { TextAiConfig } from '@void-space/studio-ai/text';
+import type { TextAiConfig } from '@void-space/ai/text';
 /**
  * `ai-enrichment` processor (SRS FR-7.x, §3.10).
  *

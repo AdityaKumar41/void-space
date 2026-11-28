@@ -27,9 +27,11 @@ export async function enqueueLearningTask(
     if (
       (await db.learningTask.count({
         where: { ownerId: p.userId, status: { in: ['queued', 'active'] } },
-      })) >= 3
+      })) >= (kind === 'extract' ? 20 : 3)
     )
-      throw new ConflictError('Three tasks are already running. Wait for one to finish.');
+      throw new ConflictError(
+        'Your task limit is reached. Wait for running work to finish, then retry.',
+      );
     const id = randomUUID();
     await prepare?.(db, id);
     const t = await db.learningTask.create({
@@ -41,6 +43,15 @@ export async function enqueueLearningTask(
         input: input as Prisma.InputJsonValue,
       },
     });
+    if (kind === 'agent_turn')
+      await db.learningAgentRun.create({
+        data: {
+          id,
+          tenantId: p.tenantId,
+          ownerId: p.userId,
+          engine: process.env.LEARNING_AGENT_ENGINE === 'inngest' ? 'inngest' : 'bullmq',
+        },
+      });
     await db.job.create({
       data: {
         id,

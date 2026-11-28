@@ -13,7 +13,12 @@
  * demotion takes effect on their next refresh instead of when their token expires.
  */
 import { recordAudit, withTenant, type Prisma } from '@void-space/db';
-import { ROLE_PERMISSIONS, type AuthPrincipal, type Role, type TenantUserSummary } from '@void-space/types';
+import {
+  ROLE_PERMISSIONS,
+  type AuthPrincipal,
+  type Role,
+  type TenantUserSummary,
+} from '@void-space/types';
 
 import { ConflictError, ForbiddenError, NotFoundError } from '../../lib/errors';
 import { generateInviteToken, revokeSessionsForUser } from '../auth/sessions';
@@ -54,7 +59,10 @@ export interface UsersService {
     principal: AuthPrincipal,
     input: { email: string; fullName: string; role: Role },
   ): Promise<{ id: string; email: string; role: Role; expiresAt: string; token: string }>;
-  listInvites(principal: AuthPrincipal): Promise<
+  revokeInvite(principal: AuthPrincipal, id: string): Promise<void>;
+  listInvites(
+    principal: AuthPrincipal,
+  ): Promise<
     { id: string; email: string; role: Role; expiresAt: string; acceptedAt: string | null }[]
   >;
   setRole(
@@ -139,9 +147,9 @@ export function createUsersService(): UsersService {
       // Already a member? Re-inviting would create a second identity for one email.
       const existing = await db.user.findFirst({
         where: { tenantId: principal.tenantId, email: input.email },
-        select: { id: true },
+        select: { id: true, status: true, roles: { select: { id: true } } },
       });
-      if (existing) {
+      if (existing && (existing.status !== 'suspended' || existing.roles.length > 0)) {
         throw new ConflictError(
           'That email already belongs to a member of this workspace',
           'ALREADY_A_MEMBER',
@@ -193,6 +201,31 @@ export function createUsersService(): UsersService {
     };
   }
 
+  async function revokeInvite(principal: AuthPrincipal, id: string): Promise<void> {
+    await withTenant(principal.tenantId, async (db) => {
+      await db.$queryRaw`SELECT id FROM invites WHERE id=${id}::uuid FOR UPDATE`;
+      const invite = await db.invite.findUnique({ where: { id } });
+      if (!invite) throw new NotFoundError('Invitation');
+      if (invite.acceptedAt)
+        throw new ConflictError(
+          'This invitation was already accepted. Manage the member instead.',
+          'INVITE_ALREADY_USED',
+        );
+      await db.invite.delete({ where: { id } });
+      await recordAudit(
+        {
+          action: 'tenant.invite_revoked',
+          entityType: 'invite',
+          entityId: id,
+          actorId: principal.userId,
+          actorLabel: principal.fullName,
+          beforeState: { email: invite.email, role: invite.role },
+        },
+        db,
+      );
+    });
+  }
+
   async function listInvites(principal: AuthPrincipal) {
     const rows = await withTenant(principal.tenantId, (db) =>
       db.invite.findMany({
@@ -226,6 +259,8 @@ export function createUsersService(): UsersService {
     const actorLabel = `${principal.fullName} <${principal.email}>`;
 
     return withTenant(principal.tenantId, async (db) => {
+      // Serialize membership changes before checking the last-administrator invariant.
+      await db.$queryRaw`SELECT id FROM tenants WHERE id=${principal.tenantId}::uuid FOR UPDATE`;
       const target = await loadUser(db, principal.tenantId, userId);
       assertMayModify(principal, target);
 
@@ -285,6 +320,8 @@ export function createUsersService(): UsersService {
     const actorLabel = `${principal.fullName} <${principal.email}>`;
 
     return withTenant(principal.tenantId, async (db) => {
+      // Serialize membership changes before checking the last-administrator invariant.
+      await db.$queryRaw`SELECT id FROM tenants WHERE id=${principal.tenantId}::uuid FOR UPDATE`;
       const target = await loadUser(db, principal.tenantId, userId);
       assertMayModify(principal, target);
 
@@ -352,6 +389,8 @@ export function createUsersService(): UsersService {
     const actorLabel = `${principal.fullName} <${principal.email}>`;
 
     return withTenant(principal.tenantId, async (db) => {
+      // Serialize membership changes before checking the last-administrator invariant.
+      await db.$queryRaw`SELECT id FROM tenants WHERE id=${principal.tenantId}::uuid FOR UPDATE`;
       const target = await loadUser(db, principal.tenantId, userId);
       assertMayModify(principal, target);
 
@@ -397,5 +436,5 @@ export function createUsersService(): UsersService {
     }));
   }
 
-  return { list, invite, listInvites, setRole, setStatus, remove, roles };
+  return { list, invite, revokeInvite, listInvites, setRole, setStatus, remove, roles };
 }

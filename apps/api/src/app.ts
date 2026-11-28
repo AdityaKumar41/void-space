@@ -1,8 +1,11 @@
+import { assetStore } from '@void-space/storage';
+import { contentRoutes } from './modules/content/routes';
+import { platformRoutes } from './modules/platform/routes';
 import { publicLessonRoutes } from './modules/lesson-plans/public';
 import { learningWorkspaceRoutes } from './modules/learning-agent/workspace';
 import { learningAgentRoutes } from './modules/learning-agent/routes';
 import { privateLibraryRoutes } from './modules/learning-agent/library';
-import { isTextAiConfigured, textProviders } from '@void-space/studio-ai/text';
+import { isTextAiConfigured, textProviders } from '@void-space/ai/text';
 /**
  * Fastify application factory (SRS §3.1 "API-first").
  *
@@ -41,26 +44,16 @@ import { notificationRoutes } from './modules/notifications/routes';
 import { publicRoutes } from './modules/public/routes';
 import { socialRoutes } from './modules/social/routes';
 import { reviewRoutes } from './modules/review/routes';
-import { toolsRoutes } from './modules/tools/routes';
 import { sketchfabRoutes } from './modules/tools/sketchfab';
 import { authRoutes } from './modules/auth/routes';
 import { googleRoutes } from './modules/auth/google-routes';
 import { siweRoutes } from './modules/auth/siwe-routes';
 import { tenantRoutes } from './modules/tenant/routes';
 import { userRoutes } from './modules/users/routes';
-import { learningRoutes } from './modules/learning/routes';
-import { campusRoutes } from './modules/campus/routes';
-import { spatialRoutes } from './modules/spatial/routes';
-import { spatialWebsocketPlugin } from './modules/spatial/ws';
+import { learningAssetPickerRoutes } from './modules/learning/model-picker';
 import { iotRoutes } from './modules/iot/routes';
-import { simulatorRoutes } from './modules/simulator/routes';
-import { learningRoomRoutes } from './modules/learning-hub/rooms';
 import { lessonPlanRoutes } from './modules/lesson-plans/routes';
 import { learningHubRoutes } from './modules/learning-hub/routes';
-import { experienceRoutes } from './modules/experiences/routes';
-import { fieldGuideRoutes } from './modules/field-guides/routes';
-import { careerRoutes } from './modules/career/routes';
-import { ventureRoutes } from './modules/ventures/routes';
 import { commerceRoutes } from './modules/commerce/routes';
 import { analyticsRoutes } from './modules/analytics/routes';
 
@@ -195,15 +188,20 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   // --- health (used by nginx/compose and by the web app) --------------------
   const startedAt = Date.now();
   app.get('/api/v1/health', async (): Promise<HealthResponse> => {
-    const [postgres, ipfs, anvil] = await Promise.all([
+    const [postgres, storage, anvil] = await Promise.all([
       checkPostgres(),
-      checkHttp(`${env.IPFS_API_URL}/api/v0/version`, { method: 'POST' }),
-      checkChain(env.CHAIN_RPC_URL),
+      checkObjectStorage(),
+      env.CONTRACT_ADDRESS && env.CHAIN_ID === 43113
+        ? checkChain(env.CHAIN_RPC_URL)
+        : Promise.resolve({
+            status: 'disabled' as const,
+            detail: 'On-chain publishing is not configured',
+          }),
     ]);
 
     const dependencies = {
       postgres,
-      ipfs,
+      storage,
       chain: anvil,
       // Optional integrations degrade gracefully (NFR-REL.1).
       claude: env.ANTHROPIC_API_KEY
@@ -328,15 +326,11 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   await app.register(googleRoutes, { prefix: '/api/v1/auth', env });
   await app.register(siweRoutes, { prefix: '/api/v1/auth', env });
   await app.register(userRoutes, { prefix: '/api/v1' });
+  await app.register(platformRoutes, { prefix: '/api/v1', env });
   await app.register(tenantRoutes, { prefix: '/api/v1' });
   await app.register(auditRoutes, { prefix: '/api/v1' });
+  await app.register(contentRoutes, { prefix: '/api/v1' });
   await app.register(assetRoutes, { prefix: '/api/v1', env, producer });
-  // FR-6.1–FR-6.4 and UC-09 — the third-party tools module. It was written, tested and code-reviewed
-  // and then never mounted here, so every route in it answered 404 in a running API while its own
-  // header claimed the paths were "fixed by the specification". `routes.test.ts` now asserts they
-  // resolve, because nothing else can see an unregistered module: it typechecks, lints and passes
-  // its unit tests whether or not it is reachable.
-  await app.register(toolsRoutes, { prefix: '/api/v1', env, producer });
   await app.register(sketchfabRoutes, { prefix: '/api/v1', env });
   await app.register(reviewRoutes, { prefix: '/api/v1', env, producer });
   await app.register(licensingRoutes, { prefix: '/api/v1', env, producer });
@@ -345,23 +339,14 @@ export async function buildApp(env: ApiEnv): Promise<FastifyInstance> {
   // FR-6.5 — polling for any long-running operation, and FR-12.3 — API key management.
   await app.register(jobRoutes, { prefix: '/api/v1' });
   await app.register(developerRoutes, { prefix: '/api/v1' });
-  await app.register(learningRoutes, { prefix: '/api/v1', env, producer });
-  await app.register(campusRoutes, { prefix: '/api/v1' });
-  await app.register(spatialRoutes, { prefix: '/api/v1' });
-  await app.register(spatialWebsocketPlugin, { prefix: '/api/v1' });
+  await app.register(learningAssetPickerRoutes, { prefix: '/api/v1', env, producer });
   await app.register(iotRoutes, { prefix: '/api/v1' });
-  await app.register(simulatorRoutes, { prefix: '/api/v1' });
-  await app.register(learningRoomRoutes, { prefix:'/api/v1' });
   await app.register(learningWorkspaceRoutes, { prefix: '/api/v1' });
   await app.register(learningAgentRoutes, { prefix: '/api/v1', env, producer });
   await app.register(privateLibraryRoutes, { prefix: '/api/v1', env });
   await app.register(publicLessonRoutes, { prefix: '/api/v1', env });
   await app.register(lessonPlanRoutes, { prefix: '/api/v1', env, producer });
   await app.register(learningHubRoutes, { prefix: '/api/v1', env, producer });
-  await app.register(experienceRoutes, { prefix: '/api/v1' });
-  await app.register(fieldGuideRoutes, { prefix: '/api/v1' });
-  await app.register(careerRoutes, { prefix: '/api/v1' });
-  await app.register(ventureRoutes, { prefix: '/api/v1' });
   await app.register(commerceRoutes, { prefix: '/api/v1', env });
   await app.register(analyticsRoutes, { prefix: '/api/v1' });
   // §6.1 Public Catalog — the only unauthenticated surface, and the only one reading the
@@ -439,4 +424,21 @@ export async function preflight(env: ApiEnv): Promise<string[]> {
     warnings.push('ANTHROPIC_API_KEY unset — AI enrichment will use the offline enricher');
   }
   return warnings;
+}
+
+async function checkObjectStorage() {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      assetStore().ready(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), 2500);
+      }),
+    ]);
+    return { status: 'up' as const };
+  } catch {
+    return { status: 'down' as const, detail: 'Object storage unavailable' };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

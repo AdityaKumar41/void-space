@@ -1,8 +1,10 @@
 'use client';
+import { useClientReady } from '../../../lib/use-client-ready';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { action, control, Notice } from '../../../components/learning-ui';
 export default function Page() {
+  const ready = useClientReady();
   const [token, setToken] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -18,6 +20,7 @@ export default function Page() {
           in that invitation.
         </p>
         <form
+          method="post"
           className="grid gap-4"
           onSubmit={async (e) => {
             e.preventDefault();
@@ -39,6 +42,7 @@ export default function Page() {
           <label className="grid gap-2">
             Invitation token
             <input
+              disabled={!ready || busy}
               className={control}
               value={token}
               required
@@ -47,17 +51,30 @@ export default function Page() {
           </label>
           <label className="grid gap-2">
             Full name
-            <input className={control} name="fullName" required minLength={2} />
+            <input
+              disabled={!ready || busy}
+              className={control}
+              name="fullName"
+              required
+              minLength={2}
+            />
           </label>
           <label className="grid gap-2">
             Set a password
-            <input className={control} type="password" name="password" required minLength={12} />
+            <input
+              disabled={!ready || busy}
+              className={control}
+              type="password"
+              name="password"
+              required
+              minLength={12}
+            />
             <span className="text-xs text-ink-dim">
               At least 12 characters, with uppercase, lowercase, a number and a symbol.
             </span>
           </label>
           {error && <Notice error>{error}</Notice>}
-          <button className={action} disabled={busy}>
+          <button className={action} disabled={busy || !ready}>
             {busy ? 'Joining…' : 'Accept invitation'}
           </button>
         </form>

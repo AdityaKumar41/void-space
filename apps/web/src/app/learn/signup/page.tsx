@@ -1,9 +1,11 @@
 'use client';
+import { useClientReady } from '../../../lib/use-client-ready';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { control, action, Notice } from '../../../components/learning-ui';
 export default function LearnerSignup() {
+  const ready = useClientReady();
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [kind, setKind] = useState('individual'),
@@ -31,6 +33,7 @@ export default function LearnerSignup() {
               className="flex min-h-14 items-center gap-3 rounded-lg border border-hairline p-3"
             >
               <input
+                disabled={!ready || busy}
                 type="radio"
                 name="workspace-kind"
                 value={value}
@@ -46,6 +49,7 @@ export default function LearnerSignup() {
             <label className="grid gap-2">
               I’m joining as
               <select
+                disabled={!ready || busy}
                 className={control}
                 value={institutionRole}
                 onChange={(e) => setInstitutionRole(e.target.value)}
@@ -74,6 +78,7 @@ export default function LearnerSignup() {
         )}
         {(kind === 'individual' || institutionRole === 'owner') && (
           <form
+            method="post"
             className="grid gap-4"
             onSubmit={async (e) => {
               e.preventDefault();
@@ -102,6 +107,7 @@ export default function LearnerSignup() {
               <label className="grid gap-2">
                 Institution name
                 <input
+                  disabled={!ready || busy}
                   className={control}
                   name="organizationName"
                   required
@@ -113,6 +119,7 @@ export default function LearnerSignup() {
             <label className="grid gap-2">
               Full name
               <input
+                disabled={!ready || busy}
                 className={control}
                 name="fullName"
                 autoComplete="name"
@@ -122,11 +129,19 @@ export default function LearnerSignup() {
             </label>
             <label className="grid gap-2">
               Email
-              <input className={control} name="email" type="email" autoComplete="email" required />
+              <input
+                disabled={!ready || busy}
+                className={control}
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+              />
             </label>
             <label className="grid gap-2">
               Password
               <input
+                disabled={!ready || busy}
                 className={control}
                 aria-label="Password"
                 aria-describedby="password-help"
@@ -151,7 +166,7 @@ export default function LearnerSignup() {
               </label>
             )}
             {error && <Notice error>{error}</Notice>}
-            <button className={action} disabled={busy}>
+            <button className={action} disabled={busy || !ready}>
               {busy
                 ? 'Creating your space…'
                 : kind === 'institution'

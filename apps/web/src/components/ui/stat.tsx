@@ -83,24 +83,6 @@ export function Stat({
   );
 }
 
-/** A single figure with no chrome, for a sidebar or a footer strip. */
-export function InlineStat({
-  label,
-  value,
-  className,
-}: {
-  label: string;
-  value: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn('flex items-baseline justify-between gap-4', className)}>
-      <dt className="text-[12.5px] text-ink-faint">{label}</dt>
-      <dd className="font-mono text-[12.5px] text-ink">{value}</dd>
-    </div>
-  );
-}
-
 /**
  * A histogram, drawn with divs so it stays crisp at any width and needs no chart library.
  *

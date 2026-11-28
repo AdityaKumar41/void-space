@@ -1,8 +1,9 @@
+import { REPO_ROOT } from '@void-space/db/env';
 /**
  * Upload staging area (SRS FR-3.1, FR-8.1, NFR-SEC.3).
  *
  * The API streams an upload straight to a staging path on disk rather than buffering
- * it in memory, then hands the path to the `ipfs-pin` worker. The bytes never enter
+ * it in memory, then hands the path to the `asset-store` worker. The bytes never enter
  * Postgres — the database only ever holds the resulting CID.
  *
  * Layout: `<STAGING_DIR>/<tenantId>/<versionId>/<sanitized-file-name>`
@@ -80,7 +81,7 @@ export class StagingStorage {
   private readonly root: string;
 
   constructor(options: StorageOptions) {
-    this.root = resolve(options.stagingDir);
+    this.root = resolve(REPO_ROOT, options.stagingDir);
   }
 
   get rootPath(): string {

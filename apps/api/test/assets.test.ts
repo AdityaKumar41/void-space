@@ -137,12 +137,12 @@ describe('FR-3.1 upload acceptance', () => {
     expect(version['polycount']).toBe(FIXTURE_TRIANGLES);
 
     // `jobs[].queue` is the §3.10 vocabulary, not the `jobs.queue` column spelling: the API
-    // normalises `ipfs_pin` to `ipfs-pin` through `queueNameFromDb`, so the same job is named
+    // normalises `ipfs_pin` to `asset-store` through `queueNameFromDb`, so the same job is named
     // the same way here, in the publish response's `chainLicenseJobId` and in GET /jobs/{id}.
     // This assertion previously pinned the leaked enum value, which is how the inconsistency
     // survived: a test can preserve a bug as easily as it can catch one.
     const queues = (asset['jobs'] as { queue: string }[]).map((job) => job.queue);
-    expect(queues).toContain('ipfs-pin');
+    expect(queues).toContain('asset-store');
     expect(queues).toContain('ai-enrichment');
 
     const actions = (asset['auditTrail'] as { action: string }[]).map((entry) => entry.action);
@@ -165,7 +165,7 @@ describe('FR-3.1 upload acceptance', () => {
     expect(asset['status']).toBe('draft');
     // No AI enrichment for a draft: it is not in the review path yet.
     const queues = (asset['jobs'] as { queue: string }[]).map((job) => job.queue);
-    expect(queues).toContain('ipfs-pin');
+    expect(queues).toContain('asset-store');
     expect(queues).not.toContain('ai-enrichment');
   });
 

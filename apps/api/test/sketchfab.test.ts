@@ -2,10 +2,10 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import { describe, expect, it, vi } from 'vitest';
 import { zipSync, strToU8 } from 'fflate';
-import { sketchfabModelId } from '@void-space/types';
+import { sketchfabModelId, modelAllowsAi } from '@void-space/types';
 import { UnauthenticatedError } from '../src/lib/errors';
 import { envSchema } from '../src/env';
-import { sealedCookie, sketchfabRoutes } from '../src/modules/tools/sketchfab';
+import { sealedCookie, sketchfabRoutes, sketchfabModel } from '../src/modules/tools/sketchfab';
 import { sketchfabArchiveToGlb } from '../src/modules/tools/sketchfab-archive';
 
 const uid = '0123456789abcdef0123456789abcdef';
@@ -13,8 +13,6 @@ const env = envSchema.parse({
   DATABASE_URL: 'postgresql://test:test@localhost/test',
   PLATFORM_DATABASE_URL: 'postgresql://test:test@localhost/test',
   REDIS_URL: 'redis://localhost',
-  IPFS_API_URL: 'http://localhost:5001',
-  IPFS_GATEWAY_URL: 'http://localhost:8080',
   JWT_ACCESS_SECRET: 'test-access-secret-value',
   JWT_REFRESH_SECRET: 'test-refresh-secret-value',
   COOKIE_SECURE: 'false',
@@ -22,7 +20,6 @@ const env = envSchema.parse({
   SKETCHFAB_CLIENT_SECRET: 'private',
   SKETCHFAB_REDIRECT_URI: 'http://localhost:3000/api/v1/tools/sketchfab/callback',
   SKETCHFAB_WEB_ORIGIN: 'http://localhost:3000',
-  SKETCHFAB_STUDIO_URL: 'http://localhost:5007',
 });
 const model = {
   uid,
@@ -55,22 +52,10 @@ async function setup(fetchImpl: typeof fetch, configured = true) {
     };
   });
   app.decorate('requirePermission', () => app.authenticate);
-  const grants = new Map<string, string>();
-  const transferStore = {
-    async put(key: string, value: string) {
-      grants.set(key, value);
-    },
-    async take(key: string) {
-      const value = grants.get(key) ?? null;
-      grants.delete(key);
-      return value;
-    },
-  };
   await app.register(sketchfabRoutes, {
     prefix: '/api/v1',
     env: configured ? env : { ...env, SKETCHFAB_CLIENT_ID: undefined },
     fetchImpl,
-    transferStore,
   });
   return app;
 }
@@ -83,6 +68,28 @@ const credentials = () =>
   });
 
 describe('Sketchfab model links', () => {
+  it('chooses a crisp card preview instead of the smallest provider thumbnail', () => {
+    expect(
+      sketchfabModel({
+        ...model,
+        thumbnails: {
+          images: [
+            { url: 'https://media.sketchfab.com/tiny.jpg', width: 32 },
+            { url: 'https://media.sketchfab.com/large.jpg', width: 1920 },
+            { url: 'https://media.sketchfab.com/card.jpg', width: 640 },
+          ],
+        },
+      }).thumbnail,
+    ).toBe('https://media.sketchfab.com/card.jpg');
+  });
+  it('requires confirmed AI permission for imported Sketchfab models', () => {
+    expect(modelAllowsAi(null)).toBe(true);
+    expect(modelAllowsAi({ provenance: { provider: 'sketchfab' } })).toBe(false);
+    expect(modelAllowsAi({ provenance: { provider: 'sketchfab', aiUseAllowed: false } })).toBe(
+      false,
+    );
+    expect(modelAllowsAi({ provenance: { provider: 'sketchfab', aiUseAllowed: true } })).toBe(true);
+  });
   it('normalizes links and rejects other hosts, protocols and credentials', () => {
     expect(sketchfabModelId(`https://sketchfab.com/3d-models/test-${uid}?foo=1`)).toBe(uid);
     expect(sketchfabModelId(`https://sketchfab.com/models/${uid}/embed`)).toBe(uid);
@@ -111,7 +118,7 @@ describe('Sketchfab routes', () => {
     try {
       expect((await app.inject('/api/v1/tools/sketchfab/status')).statusCode).toBe(401);
       expect((await app.inject({ url: '/api/v1/tools/sketchfab/status', headers })).json()).toEqual(
-        { configured: false, connected: false, studioImport: true },
+        { configured: false, connected: false },
       );
       expect(
         (await app.inject({ method: 'POST', url: '/api/v1/tools/sketchfab/connect', headers }))
@@ -279,56 +286,6 @@ describe('Sketchfab routes', () => {
       expect(response.rawPayload).toEqual(glb);
       expect(response.headers['content-type']).toBe('model/gltf-binary');
       expect(response.headers['cache-control']).toBe('no-store');
-    } finally {
-      await app.close();
-    }
-  });
-  it('imports one model through a five-minute single-use capability without sharing OAuth tokens', async () => {
-    const fetcher = vi.fn(async (url: any) => {
-      if (String(url).endsWith('/download'))
-        return new Response(
-          JSON.stringify({
-            glb: { url: 'https://sketchfab-prod-media.s3.amazonaws.com/file.glb' },
-          }),
-        );
-      if (String(url).includes('s3.amazonaws.com')) return new Response(glb);
-      return new Response(JSON.stringify(model));
-    });
-    const app = await setup(fetcher);
-    try {
-      const transfer = await app.inject({
-        method: 'POST',
-        url: '/api/v1/tools/sketchfab/transfer',
-        headers: { ...headers, cookie: `void_sketchfab=${credentials()}` },
-        payload: { uid },
-      });
-      expect(transfer.statusCode).toBe(200);
-      const url = new URL(transfer.json().url);
-      expect(url.origin).toBe('http://localhost:5007');
-      expect(url.search).toBe('');
-      expect(url.hash).not.toContain('user-oauth-secret');
-      const params = new URLSearchParams(url.hash.slice(1));
-      expect(params.get('sketchfabCredit')).toContain('CC BY');
-      const ticket = params.get('sketchfabTransfer');
-      const received = await app.inject({
-        method: 'POST',
-        url: '/api/v1/tools/sketchfab/receive',
-        payload: { ticket },
-      });
-      expect(received.statusCode).toBe(200);
-      expect(received.rawPayload).toEqual(glb);
-      const replay = await app.inject({
-        method: 'POST',
-        url: '/api/v1/tools/sketchfab/receive',
-        payload: { ticket },
-      });
-      expect(replay.statusCode).toBe(403);
-      const unknown = await app.inject({
-        method: 'POST',
-        url: '/api/v1/tools/sketchfab/receive',
-        payload: { ticket: 'f'.repeat(64) },
-      });
-      expect(unknown.statusCode).toBe(403);
     } finally {
       await app.close();
     }

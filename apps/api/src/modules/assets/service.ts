@@ -40,16 +40,13 @@ import type { StagedFile, StagingStorage } from '../../lib/storage';
 
 type TenantDb = Prisma.TransactionClient;
 
-/** The Prisma enum spelling of a queue name (`ipfs-pin` → `ipfs_pin`). */
+/** The Prisma enum spelling of a queue name (`asset-store` → `ipfs_pin`). */
 const JOB_QUEUE_ENUM: Record<QueueName, string> = {
   'ai-enrichment': 'ai_enrichment',
-  'ipfs-pin': 'ipfs_pin',
-  'blender-optimize': 'blender_optimize',
+  'asset-store': 'ipfs_pin',
   'chain-license': 'chain_license',
-  'xr-publish': 'xr_publish',
   notify: 'notify',
   learning: 'learning',
-  'skill-credential': 'skill_credential',
 };
 
 /** Statuses in which a Creator may still edit metadata or upload a new version. */
@@ -110,7 +107,7 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
 
   /** FR-8.3 — reads go through the nginx-cached gateway, never the raw node. */
   function gatewayUrl(cid: string | null): string | null {
-    return cid ? `/ipfs/${cid}` : null;
+    return cid ? `/api/v1/content/${cid}` : null;
   }
 
   /**
@@ -440,7 +437,7 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
       // FR-3.1 — the bytes go to IPFS through the pin queue.
       await enqueue(db, {
         tenantId: principal.tenantId,
-        queue: 'ipfs-pin',
+        queue: 'asset-store',
         entityType: 'assetVersion',
         entityId: version.id,
         payload: { assetId, versionId: version.id, stagingPath: file.path },
@@ -869,7 +866,7 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
 
       await enqueue(db, {
         tenantId: principal.tenantId,
-        queue: 'ipfs-pin',
+        queue: 'asset-store',
         entityType: 'assetVersion',
         entityId: versionId,
         payload: { assetId, versionId, stagingPath: file.path },

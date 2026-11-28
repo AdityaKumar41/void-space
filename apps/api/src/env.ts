@@ -1,3 +1,4 @@
+import { s3Configuration } from '@void-space/storage';
 /**
  * Environment validation for the API (SRS §9.4).
  *
@@ -5,7 +6,7 @@
  * mis-set DATABASE_URL can never silently disable tenant isolation.
  */
 import { z } from 'zod';
-import { textAiEnvSchema } from '@void-space/studio-ai/text';
+import { textAiEnvSchema } from '@void-space/ai/text';
 
 const booleanish = z
   .string()
@@ -18,7 +19,7 @@ const booleanish = z
  * `VAR=` is how a blank value is written in a `.env` file, and zod cannot tell it from a real one: an
  * empty string is *present*, so `.optional()` does not apply and `.url()` rejects it. That turns a
  * line an operator believes is inert into a hard boot failure, reported as
- * `EON_API_URL: Invalid url` — a message that names the variable but not the empty assignment that
+ * `GOOGLE_REDIRECT_URI: Invalid url` — a message that names the variable but not the empty assignment that
  * caused it, and the fix ("delete the line") is not guessable from it.
  *
  * It is safe to read empty as absent here because no setting in this file has a meaningful empty
@@ -54,8 +55,6 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   PLATFORM_DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
-  IPFS_API_URL: z.string().url(),
-  IPFS_GATEWAY_URL: z.string().url(),
   /** Local Anvil is the no-credentials development default; production must configure its chain. */
   CHAIN_RPC_URL: z.preprocess(blankAsUnset, z.string().url().default('http://localhost:8545')),
   CHAIN_ID: z.coerce.number().int().positive().default(31337),
@@ -77,6 +76,9 @@ export const envSchema = z.object({
 
   ...textAiEnvSchema.shape,
   AI_IMAGE_BASE_URL: optionalUrl,
+  AI_IMAGE_ENABLED: z
+    .preprocess(blankAsUnset, z.enum(['true', 'false']).default('true'))
+    .transform((value) => value === 'true'),
   AI_IMAGE_MODEL: optionalString,
   AI_IMAGE_API_KEY: optionalString,
 
@@ -86,19 +88,12 @@ export const envSchema = z.object({
    * §4.6 third-party sourcing. All optional: absent means the adapter reports itself offline and
    * returns no results, rather than inventing listings. See `modules/tools/service.ts`.
    */
-  SKETCHFAB_API_TOKEN: optionalString,
   SKETCHFAB_CLIENT_ID: optionalString,
   SKETCHFAB_CLIENT_SECRET: optionalString,
   SKETCHFAB_REDIRECT_URI: optionalUrl,
   SKETCHFAB_WEB_ORIGIN: optionalUrl,
-  SKETCHFAB_STUDIO_URL: optionalUrl,
-  POLY_PIZZA_API_KEY: optionalString,
-  MESHY_API_KEY: optionalString,
   /** The headless Blender runner on the Compose network (FR-6.3). */
-  BLENDER_RUNNER_URL: optionalUrl,
   /** EoN Reality in real mode; absent means the documented labelled simulation. */
-  EON_API_URL: optionalUrl,
-  EON_API_KEY: optionalString,
   GOOGLE_CLIENT_ID: optionalString,
   GOOGLE_CLIENT_SECRET: optionalString,
   GOOGLE_REDIRECT_URI: optionalUrl,
@@ -121,8 +116,8 @@ export const envSchema = z.object({
 
   // --- uploads (FR-3.1) ----------------------------------------------------
   /**
-   * Where an in-flight upload is staged before the `ipfs-pin` worker streams it to
-   * IPFS. Kept out of the database for the file bytes themselves: Postgres holds the
+   * Where an in-flight upload is staged before the `asset-store` worker streams it to
+   * S3. Kept out of the database for the file bytes themselves: Postgres holds the
    * CID, never the binary (FR-8.1).
    */
   STAGING_DIR: z.string().default('.staging'),
@@ -174,9 +169,36 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ApiEnv {
   }
   if (
     parsed.data.NODE_ENV === 'production' &&
+    source.CONTRACT_ADDRESS?.trim() &&
     (!source.CHAIN_RPC_URL?.trim() || !source.CHAIN_ID?.trim())
   ) {
     throw new Error('[api] production requires explicit CHAIN_RPC_URL and CHAIN_ID configuration.');
+  }
+  if (parsed.data.NODE_ENV === 'production') {
+    const errors: string[] = [];
+    for (const key of ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'] as const) {
+      if (parsed.data[key].length < 32 || /dev-only|change-me|REPLACE/i.test(parsed.data[key]))
+        errors.push(`${key} requires a non-placeholder secret of at least 32 characters`);
+    }
+    if (parsed.data.JWT_ACCESS_SECRET === parsed.data.JWT_REFRESH_SECRET)
+      errors.push('JWT access and refresh secrets must differ');
+    if (!parsed.data.COOKIE_SECURE) errors.push('COOKIE_SECURE must be true');
+    try {
+      const origin = new URL(parsed.data.PUBLIC_WEB_ORIGIN);
+      if (origin.protocol !== 'https:' || ['localhost', '127.0.0.1'].includes(origin.hostname))
+        throw new Error();
+      if (!parsed.data.CORS_ORIGINS.includes(origin.origin))
+        errors.push('CORS_ORIGINS must include PUBLIC_WEB_ORIGIN');
+    } catch {
+      errors.push('PUBLIC_WEB_ORIGIN must be a public HTTPS origin');
+    }
+    try {
+      if (!s3Configuration(source))
+        errors.push('S3_BUCKET is required for production file storage');
+    } catch {
+      errors.push('S3 configuration is invalid');
+    }
+    if (errors.length) throw new Error(`[api] production configuration: ${errors.join('; ')}`);
   }
   return parsed.data;
 }

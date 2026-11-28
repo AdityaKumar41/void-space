@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "Prisma schema, migrations, Row-Level Security policies and seed data for VOID\u00b7SPACE (SRS \u00a75).",
+  "description": "Prisma schema, migrations, Row-Level Security policies and seed data for VOID·SPACE (SRS §5).",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -40,7 +40,7 @@
     "@prisma/client": "^6.1.0",
     "@void-space/types": "workspace:*",
     "bcryptjs": "^2.4.3",
-    "zod": "^3.24.1"
+    "@void-space/storage": "workspace:*"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

@@ -34,17 +34,6 @@ export const tenantSettingsSchema = z.object({
 });
 export type TenantSettingsInput = z.infer<typeof tenantSettingsSchema>;
 
-/** FR-18.1: Studio AI feature gates. Explicit false disables; omitted keys stay enabled. */
-export const aiFeatureFlagsSchema = z.object({
-  copilot: z.boolean().optional(),
-  readinessAudit: z.boolean().optional(),
-  generativeMesh: z.boolean().optional(),
-  generativeTexture: z.boolean().optional(),
-  /** When true, publish requires a readiness audit score ≥ 80. */
-  enforcePublishAudit: z.boolean().optional(),
-});
-export type AiFeatureFlags = z.infer<typeof aiFeatureFlagsSchema>;
-
 export interface TenantSummary {
   readonly id: string;
   readonly name: string;

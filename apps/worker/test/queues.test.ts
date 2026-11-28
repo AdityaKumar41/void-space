@@ -37,7 +37,7 @@ describe('§3.10 queue wiring', () => {
     delete process.env['WORKER_CONCURRENCY_IPFS_PIN'];
 
     try {
-      expect(concurrencyFor('ipfs-pin')).toBe(QUEUE_POLICIES['ipfs-pin'].defaultConcurrency);
+      expect(concurrencyFor('asset-store')).toBe(QUEUE_POLICIES['asset-store'].defaultConcurrency);
     } finally {
       if (previous !== undefined) process.env['WORKER_CONCURRENCY_IPFS_PIN'] = previous;
     }

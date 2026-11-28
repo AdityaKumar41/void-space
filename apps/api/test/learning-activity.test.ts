@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { learningActivitySchema, type LearningActivity } from '@void-space/types';
 import { advanceLearning, publicLearningStep } from '../src/modules/learning-hub/runtime';
-import { initialExperienceState } from '../src/modules/experiences/runtime';
+import { initialLessonActivityState as initialExperienceState } from '@void-space/types';
 const definition = () =>
   learningActivitySchema.parse({
     schemaVersion: 2,

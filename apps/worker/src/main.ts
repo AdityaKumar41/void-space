@@ -1,34 +1,20 @@
-import { textAiEnvSchema } from '@void-space/studio-ai/text';
-/**
- * Worker runtime (SRS §3.10) — imported by server.ts after the root .env is loaded.
- *
- * Runs one BullMQ Worker per queue with the documented retry policy and per-queue
- * concurrency (NFR-SCAL.2).
- *
- * Five of the six queues have a processor: `ipfs-pin`, `ai-enrichment`, `notify`,
- * `chain-license`, `xr-publish` and `blender-optimize`. If a processor is ever missing again, the
- * queue falls back to a deliberate no-op consumer that logs a warning — so a job enqueued before
- * its processor exists is visible rather than silently lost.
- *
- * The Blender runner is the one processor whose *dependency* is optional: with no
- * `BLENDER_RUNNER_URL` set it records a labelled simulation instead of converting, so the pipeline
- * stays inspectable without a 1 GB image. See `processors/blender-optimize.ts`.
- * See `docs/FR-traceability.md` for the requirement-level view.
+import { textAiEnvSchema } from '@void-space/ai/text';
+/** Active workers: asset storage, metadata enrichment, learning, licensing and notifications.
+ * Durable agent turns use Inngest; file and asset jobs use BullMQ.
  */
 import { QUEUE_NAMES, type QueueName } from '@void-space/types';
 import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import pino from 'pino';
 
-import { createLearningProcessor } from './processors/learning';
-import { createAiEnrichmentProcessor } from './processors/ai-enrichment';
-import { createBlenderOptimizeProcessor } from './processors/blender-optimize';
-import { createChainLicenseProcessor } from './processors/chain-license';
-import { createIpfsPinProcessor } from './processors/ipfs-pin';
-import { createNotifyProcessor } from './processors/notify';
-import { createXrPublishProcessor } from './processors/xr-publish';
-import { createSkillCredentialProcessor } from './processors/skill-credential';
+import { withTenant } from '@void-space/db';
+import { dispatchLearningRun, startLearningDurableRuntime } from './learning/durable';
 import { createWorkerProducer } from './lib/producer';
+import { createAiEnrichmentProcessor } from './processors/ai-enrichment';
+import { createAssetStoreProcessor } from './processors/asset-store';
+import { createChainLicenseProcessor } from './processors/chain-license';
+import { createLearningProcessor } from './processors/learning';
+import { createNotifyProcessor } from './processors/notify';
 import { concurrencyFor, createQueueRegistry, jobOptionsFor } from './queues';
 
 const logger = pino({
@@ -76,8 +62,7 @@ export async function main(): Promise<void> {
   // Creator's notification. One producer per process, sharing the Redis connection.
   const producer = createWorkerProducer(connection);
 
-  PROCESSORS['ipfs-pin'] = createIpfsPinProcessor({
-    ipfsApiUrl: process.env.IPFS_API_URL ?? 'http://localhost:5001',
+  PROCESSORS['asset-store'] = createAssetStoreProcessor({
     logger,
   }) as Processor;
 
@@ -89,7 +74,49 @@ export async function main(): Promise<void> {
     timeoutMs: Number.parseInt(process.env.ANTHROPIC_TIMEOUT_MS ?? '30000', 10),
   }) as Processor;
 
-  PROCESSORS.learning = createLearningProcessor({textAi:textAiEnvSchema.parse(process.env),stagingDir:process.env.STAGING_DIR??'.staging'}) as Processor;
+  const learningProcessor = createLearningProcessor({
+    textAi: textAiEnvSchema.parse(process.env),
+    stagingDir: process.env.STAGING_DIR ?? '.staging',
+  });
+  const harness =
+    process.env.LEARNING_AGENT_ENGINE === 'inngest'
+      ? startLearningDurableRuntime(
+          textAiEnvSchema.parse(process.env),
+          process.env.STAGING_DIR ?? '.staging',
+        )
+      : undefined;
+  PROCESSORS.learning = (async (
+    job: import('bullmq').Job<{ tenantId: string; taskId: string }>,
+  ) => {
+    const run = await withTenant(job.data.tenantId, (db) =>
+      db.learningAgentRun.findUnique({ where: { id: job.data.taskId } }),
+    );
+    if (run?.engine === 'inngest') {
+      if (run.cancelledAt) return { cancelled: true };
+      try {
+        if (!harness) throw new Error('Enable LEARNING_AGENT_ENGINE=inngest to serve this run.');
+        return await dispatchLearningRun({ ...job.data, ownerId: run.ownerId });
+      } catch (error) {
+        if (job.attemptsMade + 1 >= (job.opts.attempts ?? 2)) {
+          const message =
+            'The local learning agent is unavailable. Start pnpm learning:dev and retry from your saved conversation.';
+          await withTenant(job.data.tenantId, async (db) => {
+            const changed = await db.learningTask.updateMany({
+              where: { id: run.id, status: { in: ['queued', 'active'] } },
+              data: { status: 'failed', error: message },
+            });
+            if (changed.count)
+              await db.job.updateMany({
+                where: { id: run.id },
+                data: { status: 'failed', error: message, finishedAt: new Date() },
+              });
+          });
+        }
+        throw error;
+      }
+    }
+    return learningProcessor(job);
+  }) as Processor;
 
   PROCESSORS['notify'] = createNotifyProcessor({ logger }) as Processor;
 
@@ -100,7 +127,6 @@ export async function main(): Promise<void> {
       chainId,
       contractAddress: process.env.CONTRACT_ADDRESS!,
       privateKey: process.env.PLATFORM_SIGNER_SEED!,
-      ipfsApiUrl: process.env.IPFS_API_URL ?? 'http://localhost:5001',
       producer,
     }) as Processor;
   } else {
@@ -109,29 +135,9 @@ export async function main(): Promise<void> {
     );
   }
 
-  PROCESSORS['xr-publish'] = createXrPublishProcessor({
-    logger,
-    apiUrl: process.env.EON_API_URL,
-    apiKey: process.env.EON_API_KEY,
-    publicBaseUrl: process.env.EON_PUBLIC_BASE_URL ?? 'https://localhost/eon',
-  }) as Processor;
-
   // FR-6.3 — the headless Blender queue. `runnerUrl` unset is a supported state, not a
   // misconfiguration: the processor records a labelled simulation so the pipeline stays visible
   // without the ~1 GB image. See the processor's header for why that is preferable to failing.
-  PROCESSORS['blender-optimize'] = createBlenderOptimizeProcessor({
-    logger,
-    runnerUrl: process.env.BLENDER_RUNNER_URL,
-    jobDir: process.env.BLENDER_JOB_DIR ?? '/var/lib/void-space/blender-jobs',
-  }) as Processor;
-
-  PROCESSORS['skill-credential'] = createSkillCredentialProcessor({
-    logger,
-    rpcUrl: chainRpcUrl,
-    chainId,
-    contractAddress: process.env.CREDENTIAL_CONTRACT_ADDRESS?.trim(),
-    privateKey: process.env.PLATFORM_SIGNER_SEED?.trim(),
-  }) as Processor;
 
   const workers: Worker[] = [];
 
@@ -187,6 +193,10 @@ export async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`${signal} received — shutting down`);
     await Promise.all(workers.map((worker) => worker.close()));
+    if (harness)
+      await new Promise<void>((resolve, reject) =>
+        harness.close((error) => (error ? reject(error) : resolve())),
+      );
     await producer.close();
     await registry.close();
     await connection.quit();

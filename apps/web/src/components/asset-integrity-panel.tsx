@@ -8,7 +8,6 @@ import {
   type SceneSummary,
 } from '@/lib/geometry';
 import { CopyButton } from './copy-button';
-import { VoidStudioLaunchButton } from './studio-launch';
 
 export interface AssetIntegrityPanelProps {
   readonly asset: {
@@ -73,23 +72,27 @@ export function AssetIntegrityPanel({
   const animations = version?.stats?.animations ?? 0;
   const agreement = comparePolycount(version?.polycount ?? null, triangles ?? 0);
   const filename = `${asset.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}${
-    version?.format ? (version.format.startsWith('.') ? version.format : `.${version.format}`) : '.glb'
+    version?.format
+      ? version.format.startsWith('.')
+        ? version.format
+        : `.${version.format}`
+      : '.glb'
   }`;
 
   return (
     <aside className="overflow-hidden rounded-card border border-hairline bg-surface">
       <header className="border-b border-hairline px-5 py-4">
         <h2 className="text-base font-semibold text-ink">Model record</h2>
-        <p className="mt-1 text-sm leading-relaxed text-ink-dim">
-          {agreement.reason}
-        </p>
+        <p className="mt-1 text-sm leading-relaxed text-ink-dim">{agreement.reason}</p>
       </header>
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-5 px-5 py-5">
         <Fact
           label="Triangles"
           value={triangles !== null ? formatCount(triangles) : '—'}
-          note={meshes !== null ? `${formatNumber(meshes)} mesh${meshes === 1 ? '' : 'es'}` : undefined}
+          note={
+            meshes !== null ? `${formatNumber(meshes)} mesh${meshes === 1 ? '' : 'es'}` : undefined
+          }
         />
         <Fact label="Vertices" value={vertices !== null ? formatCount(vertices) : '—'} />
         <Fact
@@ -103,14 +106,18 @@ export function AssetIntegrityPanel({
         />
         <Fact
           label="Storage"
-          value={version?.pinStatus === 'pinned' ? 'Pinned' : (version?.pinStatus ?? '—')}
+          value={version?.pinStatus === 'pinned' ? 'Stored' : (version?.pinStatus ?? '—')}
           note={version?.pinStatus === 'pinned' ? 'Available from the content address' : undefined}
         />
         <Fact label="Materials" value={materials !== null ? formatNumber(materials) : '—'} />
         <Fact
           label="Textures"
           value={textures !== null ? formatNumber(textures) : '—'}
-          note={animations > 0 ? `${animations} animation clip${animations === 1 ? '' : 's'}` : 'No animation clips'}
+          note={
+            animations > 0
+              ? `${animations} animation clip${animations === 1 ? '' : 's'}`
+              : 'No animation clips'
+          }
         />
       </dl>
 
@@ -121,7 +128,9 @@ export function AssetIntegrityPanel({
             ? `${extent.x.toFixed(3)} × ${extent.y.toFixed(3)} × ${extent.z.toFixed(3)}`
             : 'Measured when the file is opened'}
         </p>
-        <p className="mt-1 text-xs text-ink-dim">Width, height, and depth in the model’s own units.</p>
+        <p className="mt-1 text-xs text-ink-dim">
+          Width, height, and depth in the model’s own units.
+        </p>
       </div>
 
       <dl className="space-y-3 border-t border-hairline px-5 py-4 text-sm">
@@ -153,10 +162,15 @@ export function AssetIntegrityPanel({
           <div className="min-w-0">
             <dt className="text-xs text-ink-faint">Licence</dt>
             <dd className="mt-1 text-sm text-ink">
-              {asset.license ? `Token ${asset.license.tokenId} · ${asset.license.status}` : 'No licence minted'}
+              {asset.license
+                ? `Token ${asset.license.tokenId} · ${asset.license.status}`
+                : 'No licence minted'}
             </dd>
             {asset.license?.txHash ? (
-              <dd className="mt-1 truncate font-mono text-xs text-ink-dim" title={asset.license.txHash}>
+              <dd
+                className="mt-1 truncate font-mono text-xs text-ink-dim"
+                title={asset.license.txHash}
+              >
                 {shortId(asset.license.txHash, 14)}
               </dd>
             ) : null}
@@ -166,17 +180,6 @@ export function AssetIntegrityPanel({
       </dl>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-hairline px-5 py-4">
-        <VoidStudioLaunchButton
-          assetId={asset.id}
-          name={asset.name}
-          format={version?.format}
-          filename={filename}
-          modelUrl={version?.gatewayUrl ?? undefined}
-          variant="primary"
-          size="sm"
-        >
-          Edit in Void Studio
-        </VoidStudioLaunchButton>
         {version?.gatewayUrl ? (
           <a
             href={version.gatewayUrl}

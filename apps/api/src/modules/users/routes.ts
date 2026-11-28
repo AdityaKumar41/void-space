@@ -46,6 +46,12 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(200).send({ invites });
   });
 
+  app.delete('/users/invites/:id', { preHandler: guard }, async (request, reply) => {
+    const { id } = parseParams(idParams, request.params);
+    await users.revokeInvite(principalOf(request), id);
+    return reply.status(204).send();
+  });
+
   app.patch('/users/:id', { preHandler: guard }, async (request, reply) => {
     const { id } = parseParams(idParams, request.params);
     const input = parseBody(updateUserRoleSchema, request.body);

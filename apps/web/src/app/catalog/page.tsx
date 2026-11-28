@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: 'Catalogue — licensed 3D assets · VOID·SPACE',
   description:
-    'Browse licensed 3D models with verifiable provenance. Every asset carries an ERC-721 licence and content-addressed storage on IPFS.',
+    'Browse licensed 3D models with verifiable provenance, ownership records and secure object storage.',
 };
 
 interface PageProps {

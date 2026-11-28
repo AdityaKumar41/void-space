@@ -1,0 +1,30 @@
+import { randomUUID } from 'node:crypto';
+import { beforeAll, afterAll, it, expect } from 'vitest';
+import { withTenant } from '@void-space/db';
+import { createTestApp, removeTestTenants, type TestApp } from './helpers';
+let context: TestApp;
+beforeAll(async () => { context = await createTestApp(); });
+afterAll(async () => { await removeTestTenants(); await context.close(); });
+it('searches beyond 1000 records, pages consistently and never exposes another private library', async () => {
+  const signup = async () => {
+    const response = await context.app.inject({ method: 'POST', url: '/api/v1/auth/learners', payload: { fullName: 'Test picker learner', email: `picker-${randomUUID()}@example.test`, password: 'PickerBoundary2026!', ageBand: '18+' } });
+    expect(response.statusCode).toBe(201);
+    const raw = response.headers['set-cookie'];
+    const cookie = (Array.isArray(raw) ? raw : [raw]).filter((v): v is string => typeof v === 'string').map((v) => v.split(';')[0]).join('; ');
+    return { user: response.json().user, cookie };
+  };
+  const owner = await signup(), outsider = await signup();
+  const rows = Array.from({ length: 1001 }, (_, i) => ({ id: randomUUID(), tenantId: owner.user.activeTenantId, ownerId: owner.user.id, title: `Searchable model ${String(i).padStart(4, '0')}`, mime: 'model/gltf-binary', status: 'ready', passages: [] }));
+  await withTenant(owner.user.activeTenantId, (db) => db.learningSource.createMany({ data: rows }));
+  const get = (query: string, cookie = owner.cookie) => context.app.inject({ method: 'GET', url: `/api/v1/learning/model-picker${query}`, headers: { cookie } });
+  const page = await get('?source=private'); expect(page.statusCode).toBe(200); expect(page.json().items).toHaveLength(24); expect(page.json().nextCursor).toBeTruthy();
+  const next = await get(`?source=private&cursor=${page.json().nextCursor}`);
+  expect(next.json().items).toHaveLength(24);
+  expect(next.json().items.some((x: { reference: string }) => page.json().items.some((y: { reference: string }) => y.reference === x.reference))).toBe(false);
+  const search = await get('?source=private&q=MODEL%201000'); expect(search.json().items).toHaveLength(1);
+  expect(search.json().items[0].title).toBe('Searchable model 1000');
+  expect((await get('?source=private&q=Searchable', outsider.cookie)).json().items).toEqual([]);
+  expect((await get(`/selected?reference=private:${rows[1000]!.id}`, outsider.cookie)).statusCode).toBe(404);
+  const requests = await Promise.all(Array.from({ length: 50 }, () => get('?source=private&q=Searchable')));
+  expect(requests.every((r) => r.statusCode === 200 && r.json().items.length === 24)).toBe(true);
+});

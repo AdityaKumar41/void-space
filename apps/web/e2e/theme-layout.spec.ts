@@ -71,3 +71,20 @@ for (const mobile of [false, true])
       }
     }
   });
+
+test('credential forms remain inert before JavaScript hydration', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, javaScriptEnabled: false });
+  const page = await context.newPage();
+  try {
+    for (const path of ['/learn/signup', '/login', '/learn/join-institution']) {
+      await page.goto(path);
+      await expect(page.locator('form').first()).toHaveAttribute('method', 'post');
+      const password = path === '/learn/join-institution'
+        ? page.getByLabel(/^Set a password/)
+        : page.getByLabel('Password', { exact: true });
+      await expect(password).toBeDisabled();
+    }
+  } finally {
+    await context.close();
+  }
+});

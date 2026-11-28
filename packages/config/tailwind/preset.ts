@@ -1,7 +1,7 @@
 import type { Config } from 'tailwindcss';
 
 /**
- * Shared Tailwind preset for VOID·SPACE (apps/web + packages/ui).
+ * Shared Tailwind preset for VOID·SPACE (apps/web).
  * Design tokens are CSS custom properties so light/dark theming stays a
  * runtime concern, matching the shadcn/ui "CSS variables" convention (SRS §3.2).
  */

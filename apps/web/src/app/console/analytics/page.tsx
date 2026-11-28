@@ -1,129 +1,80 @@
 'use client';
-
 import { useQuery } from '@tanstack/react-query';
-
 import { apiFetch } from '../../../lib/api';
 import { formatNumber } from '../../../lib/format';
 import { RequirePermission } from '../../../components/permission-gate';
 import { PageHead, StatCell, StatRow } from '../../../components/console-kit';
 import { Panel } from '../../../components/ui/card';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
-
-interface CohortReport {
-  readonly generatedAt: string;
-  readonly totals: {
-    readonly lessonsPublished: number;
-    readonly attempts: number;
-    readonly passedAttempts: number;
-    readonly passRate: number;
-    readonly credentialsIssued: number;
-    readonly credentialsMintedOnChain: number;
-    readonly courses: number;
-    readonly enrollments: number;
-    readonly completedEnrollments: number;
-    readonly fieldGuideRuns: number;
-  };
-  readonly lessons: readonly {
-    readonly lessonId: string;
-    readonly title: string;
-    readonly published: boolean;
-    readonly attempts: number;
-    readonly averageScore: number | null;
+interface LearningReport {
+  totals: { publishedReleases: number; studySessions: number; completedSections: number };
+  lessons: {
+    releaseId: string;
+    title: string;
+    sessions: number;
+    completedSections: number;
+    lastStudiedAt: string;
   }[];
 }
-
 export default function AnalyticsPage() {
   return (
     <RequirePermission permission="audit:view">
-      <CohortAnalytics />
+      <LearningAnalytics />
     </RequirePermission>
   );
 }
-
-function CohortAnalytics() {
+function LearningAnalytics() {
   const report = useQuery({
-    queryKey: ['analytics-cohort'],
-    queryFn: () => apiFetch<CohortReport>('/analytics/cohort'),
+    queryKey: ['shared-learning-analytics'],
+    queryFn: () => apiFetch<LearningReport>('/analytics/cohort'),
   });
-
   return (
     <div className="space-y-7">
       <PageHead
         title="Learning analytics"
-        meta={
-          report.data
-            ? `Cohort report · generated ${new Date(report.data.generatedAt).toLocaleString()}`
-            : 'Querying assessment and credential evidence'
-        }
+        meta="Shared lessons in this workspace. Private study and private lesson plans are excluded."
       />
-
-      {report.isLoading ? <LoadingBlock label="Loading cohort analytics" /> : null}
-      {report.error ? <ErrorNote message={(report.error as Error).message} /> : null}
-
-      {report.data ? (
+      {report.isLoading && <LoadingBlock label="Loading learning analytics" />}
+      {report.error && <ErrorNote message={(report.error as Error).message} />}
+      {report.data && (
         <>
           <StatRow>
             <StatCell
-              label="Published lessons"
-              value={formatNumber(report.data.totals.lessonsPublished)}
-            />
-            <StatCell label="Attempts" value={formatNumber(report.data.totals.attempts)} />
-            <StatCell
-              label="Pass rate"
-              value={`${report.data.totals.passRate}%`}
-              tone={report.data.totals.passRate >= 70 ? 'plain' : 'heat'}
+              label="Shared releases"
+              value={formatNumber(report.data.totals.publishedReleases)}
             />
             <StatCell
-              label="Credentials"
-              value={`${formatNumber(report.data.totals.credentialsIssued)} / ${formatNumber(report.data.totals.credentialsMintedOnChain)} on-chain`}
+              label="Study sessions"
+              value={formatNumber(report.data.totals.studySessions)}
+            />
+            <StatCell
+              label="Sections completed"
+              value={formatNumber(report.data.totals.completedSections)}
             />
           </StatRow>
-
-          <StatRow>
-            <StatCell label="Courses" value={formatNumber(report.data.totals.courses)} />
-            <StatCell label="Enrollments" value={formatNumber(report.data.totals.enrollments)} />
-            <StatCell
-              label="Completed programs"
-              value={formatNumber(report.data.totals.completedEnrollments)}
-            />
-            <StatCell
-              label="Field guide runs"
-              value={formatNumber(report.data.totals.fieldGuideRuns)}
-            />
-          </StatRow>
-
-          <Panel
-            title="Per-lesson assessment"
-            right={`${report.data.lessons.length} lessons with attempts`}
-          >
-            {report.data.lessons.length === 0 ? (
-              <div className="px-5 py-6 text-[13.5px]" style={{ color: 'var(--vs-fg-faint)' }}>
-                No assessment attempts recorded yet.
-              </div>
+          <Panel title="Recent shared lesson activity">
+            {!report.data.lessons.length ? (
+              <p className="px-5 py-6 text-sm text-ink-dim">
+                Activity appears here when learners study a shared lesson.
+              </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="vs-table">
                   <thead>
                     <tr>
                       <th>Lesson</th>
-                      <th>State</th>
-                      <th className="text-right">Attempts</th>
-                      <th className="text-right">Avg score</th>
+                      <th>Study sessions</th>
+                      <th>Sections completed</th>
+                      <th>Last studied</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {report.data.lessons.map((row) => (
-                      <tr key={row.lessonId}>
-                        <td>{row.title}</td>
-                        <td>
-                          <span className="chip">{row.published ? 'Published' : 'Draft'}</span>
-                        </td>
-                        <td className="text-right font-mono text-[12px]">
-                          {formatNumber(row.attempts)}
-                        </td>
-                        <td className="text-right font-mono text-[12px]">
-                          {row.averageScore === null ? '—' : `${row.averageScore}%`}
-                        </td>
+                    {report.data.lessons.map((r) => (
+                      <tr key={r.releaseId}>
+                        <td>{r.title}</td>
+                        <td>{formatNumber(r.sessions)}</td>
+                        <td>{formatNumber(r.completedSections)}</td>
+                        <td>{new Date(r.lastStudiedAt).toLocaleDateString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -132,7 +83,7 @@ function CohortAnalytics() {
             )}
           </Panel>
         </>
-      ) : null}
+      )}
     </div>
   );
 }

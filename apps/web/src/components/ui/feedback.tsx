@@ -110,30 +110,3 @@ export function EmptyState({
     </div>
   );
 }
-
-/** A reading on a scale: an AI confidence, a completeness. Colour is applied by the caller. */
-export function Meter({
-  value,
-  label,
-  className,
-}: {
-  /** 0 to 1. */
-  value: number;
-  label?: string;
-  className?: string;
-}) {
-  const percent = Math.max(0, Math.min(100, Math.round(value * 100)));
-
-  return (
-    <div
-      role="img"
-      aria-label={label ?? `${percent}%`}
-      className={cn('h-1 w-full overflow-hidden rounded-full bg-veil-8', className)}
-    >
-      <span
-        className="block h-full rounded-full bg-current transition-[width] duration-300 ease-standard"
-        style={{ width: `${percent}%` }}
-      />
-    </div>
-  );
-}

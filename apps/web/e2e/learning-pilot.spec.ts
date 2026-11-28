@@ -20,7 +20,7 @@ for (const mobile of [false, true])
     page.on('pageerror', (e) => errors.push(e.message));
     try {
       await page.goto('/');
-      await expect(page.getByRole('heading', { name: 'Ask. Explore. Understand.' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Learning, made tangible.' })).toBeVisible();
       await page
         .getByRole('textbox', { name: 'What would you like to learn?' })
         .fill('Create a 30-minute lesson about circuits');
@@ -34,7 +34,7 @@ for (const mobile of [false, true])
       await page.getByRole('button', { name: 'Create learner account' }).click();
       await expect(
         page.getByRole('textbox', {
-          name: 'Ask me anything — I’m your personal learning agent.',
+          name: 'Message your learning agent',
           exact: true,
         }),
       ).toHaveValue('Create a 30-minute lesson about circuits');

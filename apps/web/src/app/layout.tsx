@@ -18,6 +18,9 @@ import type { Metadata, Viewport } from 'next';
 import { Providers } from './providers';
 import './globals.css';
 import './agent-workspace.css';
+import './lesson-playground.css';
+import './institution.css';
+import './learning-experience.css';
 
 export const metadata: Metadata = {
   title: 'Void Space — your personal learning agent',
@@ -33,8 +36,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   // The page ground, so a mobile browser's chrome matches the page rather than framing it.
-  themeColor: '#0a0a0a',
-  colorScheme: 'dark',
+  themeColor: '#ffffff',
+  colorScheme: 'light',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

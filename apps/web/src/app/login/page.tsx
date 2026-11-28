@@ -29,7 +29,7 @@ export default async function LoginPage({
   const searchParams = await pendingSearchParams;
   const next = safeNextPath(searchParams.next);
   const error = typeof searchParams.error === 'string' ? searchParams.error : undefined;
-  const { session } = await getServerSession();
+  const { session, hasSessionCookie } = await getServerSession();
 
   if (session) redirect(next);
 
@@ -52,6 +52,7 @@ export default async function LoginPage({
       google={google}
       wallet={wallet}
       error={error}
+      resume={searchParams.resume === '1' || hasSessionCookie}
       showDemo={process.env.NODE_ENV !== 'production'}
     />
   );

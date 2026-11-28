@@ -65,11 +65,30 @@ test('conversation history is visible and preserves every saved task after reloa
       },
     });
     await page.goto('/console/learn/agent');
+    const composer = page.getByRole('textbox', {
+      name: 'Message your learning agent',
+      exact: true,
+    });
+    const initialHeight = (await composer.boundingBox())!.height;
+    await page.getByRole('button', { name: 'Search conversations' }).click();
     await expect(page.getByRole('region', { name: 'Conversations', exact: true })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expect(page.getByRole('button', { name: 'Search conversations' })).toBeFocused();
+    await page.getByRole('button', { name: 'Search conversations' }).click();
     await page.getByRole('button', { name: 'My saved visual lesson', exact: true }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expect(composer).toHaveCSS('min-height', '48px');
+    expect((await composer.boundingBox())!.height).toBe(initialHeight);
+    await composer.focus();
+    await expect(composer).toHaveCSS('outline-style', 'none');
     await expect(page.getByRole('region', { name: 'Conversation', exact: true })).toContainText(
       'Your draft is ready.',
     );
+    await page
+      .getByRole('region', { name: 'Conversation', exact: true })
+      .getByRole('button', { name: /Ready for your review/ })
+      .click();
     await expect(page.getByRole('region', { name: 'Conversation', exact: true })).toContainText(
       'Creating your lesson',
     );
@@ -77,6 +96,10 @@ test('conversation history is visible and preserves every saved task after reloa
       'Revising your lesson',
     );
     await page.reload();
+    await page
+      .getByRole('region', { name: 'Conversation', exact: true })
+      .getByRole('button', { name: /Ready for your review/ })
+      .click();
     await expect(page.getByRole('region', { name: 'Conversation', exact: true })).toContainText(
       'Creating your lesson',
     );

@@ -13,12 +13,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { recordAudit, withPlatform, withTenant } from '@void-space/db';
-import type {
-  AiFeatureFlags,
-  AuthPrincipal,
-  TenantSettingsInput,
-  TenantSummary,
-} from '@void-space/types';
+import type { AuthPrincipal, TenantSettingsInput, TenantSummary } from '@void-space/types';
 
 import { ForbiddenError, NotFoundError } from '../../lib/errors';
 import { revokeTenantSessions } from '../auth/sessions';
@@ -36,7 +31,6 @@ export interface TenantDetail {
     allowedCategories: string[];
     webhookUrl: string | null;
     webhookEvents: string[];
-    aiFeatureFlags: AiFeatureFlags;
   };
   readonly counts: { users: number; assets: number; licenses: number; pendingReview: number };
 }
@@ -47,8 +41,6 @@ export interface TenantsService {
     principal: AuthPrincipal,
     input: TenantSettingsInput,
   ): Promise<TenantDetail['settings']>;
-  getAiFlags(principal: AuthPrincipal): Promise<AiFeatureFlags>;
-  updateAiFlags(principal: AuthPrincipal, flags: AiFeatureFlags): Promise<AiFeatureFlags>;
   list(principal: AuthPrincipal): Promise<TenantSummary[]>;
   setStatus(
     principal: AuthPrincipal,
@@ -58,54 +50,49 @@ export interface TenantsService {
   ): Promise<{ tenant: TenantSummary; sessionsRevoked: number }>;
 }
 
-function asAiFlags(value: unknown): AiFeatureFlags {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  return value as AiFeatureFlags;
-}
-
 function assertSuperAdmin(principal: AuthPrincipal): void {
   if (!principal.isSuperAdmin) {
-    throw new ForbiddenError(
-      'Only a SuperAdmin can manage tenants',
-      'INSUFFICIENT_PERMISSION',
-      { required: 'tenant:manage' },
-    );
+    throw new ForbiddenError('Only a SuperAdmin can manage tenants', 'INSUFFICIENT_PERMISSION', {
+      required: 'tenant:manage',
+    });
   }
 }
 
 export function createTenantsService(): TenantsService {
   async function loadDetail(principal: AuthPrincipal): Promise<TenantDetail> {
     return withTenant(principal.tenantId, async (db) => {
-      const [tenant, settings, webhook, users, assets, licenses, pendingReview] = await Promise.all([
-        db.tenant.findUnique({
-          where: { id: principal.tenantId },
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            status: true,
-            suspendedReason: true,
-            createdAt: true,
-          },
-        }),
-        db.tenantSettings.findUnique({ where: { tenantId: principal.tenantId } }),
-        db.webhook.findFirst({
-          where: { tenantId: principal.tenantId, isActive: true },
-          orderBy: { createdAt: 'desc' },
-          select: { url: true, events: true },
-        }),
-        db.user.count({ where: { tenantId: principal.tenantId } }),
-        db.asset.count({ where: { tenantId: principal.tenantId } }),
-        db.license.count({ where: { tenantId: principal.tenantId } }),
-        db.asset.count({
-          // "Awaiting a human decision" per §5.1's lifecycle: the AI could not
-          // classify confidently, or it has been routed for review manually.
-          where: {
-            tenantId: principal.tenantId,
-            status: { in: ['pending', 'needs_manual_review'] },
-          },
-        }),
-      ]);
+      const [tenant, settings, webhook, users, assets, licenses, pendingReview] = await Promise.all(
+        [
+          db.tenant.findUnique({
+            where: { id: principal.tenantId },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              status: true,
+              suspendedReason: true,
+              createdAt: true,
+            },
+          }),
+          db.tenantSettings.findUnique({ where: { tenantId: principal.tenantId } }),
+          db.webhook.findFirst({
+            where: { tenantId: principal.tenantId, isActive: true },
+            orderBy: { createdAt: 'desc' },
+            select: { url: true, events: true },
+          }),
+          db.user.count({ where: { tenantId: principal.tenantId } }),
+          db.asset.count({ where: { tenantId: principal.tenantId } }),
+          db.license.count({ where: { tenantId: principal.tenantId } }),
+          db.asset.count({
+            // "Awaiting a human decision" per §5.1's lifecycle: the AI could not
+            // classify confidently, or it has been routed for review manually.
+            where: {
+              tenantId: principal.tenantId,
+              status: { in: ['pending', 'needs_manual_review'] },
+            },
+          }),
+        ],
+      );
 
       if (!tenant) throw new NotFoundError('Workspace');
 
@@ -122,7 +109,6 @@ export function createTenantsService(): TenantsService {
           allowedCategories: settings?.allowedCategories ?? [],
           webhookUrl: webhook?.url ?? null,
           webhookEvents: webhook?.events ?? [],
-          aiFeatureFlags: asAiFlags(settings?.aiFeatureFlags),
         },
         counts: { users, assets, licenses, pendingReview },
       };
@@ -145,7 +131,8 @@ export function createTenantsService(): TenantsService {
     principal: AuthPrincipal,
     input: TenantSettingsInput,
   ): Promise<TenantDetail['settings']> {
-    assertSuperAdmin(principal);
+    if (!principal.permissions.includes('tenant:manage-users'))
+      throw new ForbiddenError('Only the institution administrator can change workspace settings');
     const actorLabel = `${principal.fullName} <${principal.email}>`;
 
     await withTenant(principal.tenantId, async (db) => {
@@ -219,53 +206,6 @@ export function createTenantsService(): TenantsService {
     });
 
     return (await loadDetail(principal)).settings;
-  }
-
-  /** FR-18.1 — read Studio AI feature gates for the caller's workspace. */
-  async function getAiFlags(principal: AuthPrincipal): Promise<AiFeatureFlags> {
-    return withTenant(principal.tenantId, async (db) => {
-      const settings = await db.tenantSettings.findUnique({
-        where: { tenantId: principal.tenantId },
-        select: { aiFeatureFlags: true },
-      });
-      return asAiFlags(settings?.aiFeatureFlags);
-    });
-  }
-
-  /**
-   * FR-18.1 — persist Studio AI feature gates.
-   * TenantAdmin (`tenant:manage-users`) may change these; SuperAdmin may as well.
-   */
-  async function updateAiFlags(
-    principal: AuthPrincipal,
-    flags: AiFeatureFlags,
-  ): Promise<AiFeatureFlags> {
-    const actorLabel = `${principal.fullName} <${principal.email}>`;
-    return withTenant(principal.tenantId, async (db) => {
-      const before = await db.tenantSettings.findUnique({
-        where: { tenantId: principal.tenantId },
-        select: { aiFeatureFlags: true },
-      });
-      const merged = { ...asAiFlags(before?.aiFeatureFlags), ...flags };
-      await db.tenantSettings.upsert({
-        where: { tenantId: principal.tenantId },
-        create: { tenantId: principal.tenantId, aiFeatureFlags: merged },
-        update: { aiFeatureFlags: merged },
-      });
-      await recordAudit(
-        {
-          action: 'tenant.ai_flags_updated',
-          entityType: 'tenant',
-          entityId: principal.tenantId,
-          actorId: principal.userId,
-          actorLabel,
-          beforeState: asAiFlags(before?.aiFeatureFlags),
-          afterState: merged,
-        },
-        db,
-      );
-      return merged;
-    });
   }
 
   /** FR-14.1 — platform tenant list (SuperAdmin only). */
@@ -397,5 +337,5 @@ export function createTenantsService(): TenantsService {
     };
   }
 
-  return { detail, updateSettings, getAiFlags, updateAiFlags, list, setStatus };
+  return { detail, updateSettings, list, setStatus };
 }

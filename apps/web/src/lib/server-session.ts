@@ -14,7 +14,8 @@
  *
  * The distinction that matters is **no cookie** versus **stale cookie**:
  *
- *   - No `vs_access` cookie at all → definitely signed out → redirect immediately.
+ *   - No `vs_access` cookie → redirect to the sign-in boundary, which first tries
+ *     the refresh cookie through its narrow auth path. Cookie expiry alone is not logout.
  *   - Cookie present but `/auth/me` returns 401 → the access token has merely expired, and only a
  *     browser can rotate the refresh cookie (FR-2.3). So we hand over to the client, which
  *     exchanges it silently; a genuinely dead session still ends at `/login`, but fifteen-minute

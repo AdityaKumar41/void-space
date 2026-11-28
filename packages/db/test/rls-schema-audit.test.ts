@@ -74,6 +74,28 @@ describe('RLS schema audit (NFR-SEC.5)', () => {
     await platformPrisma.$disconnect();
   });
 
+  it('discovers new tenant tables so migrations cannot escape isolation coverage', async () => {
+    // These are intentionally public marketplace/lesson projections and social
+    // interactions; tenant_id records attribution rather than an access boundary.
+    const publicTables = new Set([
+      'public_catalog_entries',
+      'asset_likes',
+      'asset_comments',
+      'public_lesson_entries',
+    ]);
+    const rows = await prisma.$queryRawUnsafe<RlsRow[]>(`${RLS_QUERY}
+      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid
+        AND a.attname = 'tenant_id' AND NOT a.attisdropped)`);
+    expect(rows.length).toBeGreaterThan(TENANT_SCOPED_TABLES.length);
+    for (const row of rows) {
+      if (publicTables.has(row.table_name)) continue;
+      expect(
+        row.rls_enabled && row.rls_forced && Number(row.policy_count) > 0,
+        `${row.table_name}: every tenant table requires forced RLS and a policy`,
+      ).toBe(true);
+    }
+  });
+
   it('enables and forces RLS with a policy on every tenant-scoped table', async () => {
     const rows = await prisma.$queryRawUnsafe<RlsRow[]>(RLS_QUERY);
     const byTable = new Map(rows.map((row) => [row.table_name, row]));
@@ -141,6 +163,29 @@ describe('RLS schema audit (NFR-SEC.5)', () => {
     expect(row?.can_insert).toBe(true);
     expect(row?.can_update, 'void_app must not be able to rewrite history').toBe(false);
     expect(row?.can_delete, 'void_app must not be able to erase history').toBe(false);
+  });
+
+  it('keeps central administration credentials private and events append-only', async () => {
+    for (const table of ['platform_access', 'platform_console_sessions', 'platform_events']) {
+      const [row] = await prisma.$queryRawUnsafe<
+        {
+          app_access: boolean;
+          platform_read: boolean;
+          platform_write: boolean;
+          platform_edit: boolean;
+        }[]
+      >(
+        `SELECT has_table_privilege('void_app', $1, 'SELECT,INSERT,UPDATE,DELETE') AS app_access,
+          has_table_privilege('void_platform', $1, 'SELECT') AS platform_read,
+          has_table_privilege('void_platform', $1, 'INSERT') AS platform_write,
+          has_table_privilege('void_platform', $1, 'UPDATE,DELETE') AS platform_edit`,
+        table,
+      );
+      expect(row?.app_access, `tenant runtime must not access ${table}`).toBe(false);
+      expect(row?.platform_read, `platform must read ${table}`).toBe(true);
+      expect(row?.platform_write, `platform must write ${table}`).toBe(true);
+      expect(row?.platform_edit).toBe(table !== 'platform_events');
+    }
   });
 
   it('runs the application as a non-superuser that cannot bypass RLS', async () => {

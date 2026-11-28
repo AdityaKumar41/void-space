@@ -24,7 +24,7 @@ for (const mobile of [false, true])
       ).toBe(true);
     try {
       await page.goto('/');
-      await expect(page.getByRole('heading', { name: 'Ask. Explore. Understand.' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Learning, made tangible.' })).toBeVisible();
       await expect(
         page.getByRole('button', { name: 'Start a lesson with AI', exact: true }),
       ).toBeVisible();

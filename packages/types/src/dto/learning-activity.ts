@@ -21,6 +21,7 @@ export const learningTargetSchema = z
     explanation: z.string().trim().max(2000).default(''),
     position: point,
     meshKey: id.optional(),
+    placement: z.enum(['unplaced', 'suggested', 'confirmed']).optional(),
     sourceRefs: z.array(learningSourceRefSchema).max(10).default([]),
   })
   .strict();

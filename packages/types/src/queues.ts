@@ -10,12 +10,9 @@
 export const QUEUE_NAMES = [
   'learning',
   'ai-enrichment',
-  'ipfs-pin',
-  'blender-optimize',
+  'asset-store',
   'chain-license',
-  'xr-publish',
   'notify',
-  'skill-credential',
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
@@ -32,7 +29,13 @@ export interface QueuePolicy {
 }
 
 export const QUEUE_POLICIES: Readonly<Record<QueueName, QueuePolicy>> = {
-  learning: {name:'learning',attempts:2,backoff:{type:'fixed',delayMs:2000},policy:'Bounded source extraction and reviewed learning draft generation',defaultConcurrency:2},
+  learning: {
+    name: 'learning',
+    attempts: 2,
+    backoff: { type: 'fixed', delayMs: 2000 },
+    policy: 'Bounded source extraction and reviewed learning draft generation',
+    defaultConcurrency: 2,
+  },
   'ai-enrichment': {
     name: 'ai-enrichment',
     attempts: 2,
@@ -40,19 +43,12 @@ export const QUEUE_POLICIES: Readonly<Record<QueueName, QueuePolicy>> = {
     policy: '1 automatic retry with a stricter prompt, then flagged needs_manual_review',
     defaultConcurrency: 2,
   },
-  'ipfs-pin': {
-    name: 'ipfs-pin',
+  'asset-store': {
+    name: 'asset-store',
     attempts: 3,
     backoff: { type: 'exponential', delayMs: 2_000 },
     policy: '3 retries, exponential backoff',
     defaultConcurrency: 4,
-  },
-  'blender-optimize': {
-    name: 'blender-optimize',
-    attempts: 2,
-    backoff: { type: 'exponential', delayMs: 5_000 },
-    policy: '1 retry; failure surfaces in the job-status UI',
-    defaultConcurrency: 1,
   },
   'chain-license': {
     name: 'chain-license',
@@ -62,26 +58,12 @@ export const QUEUE_POLICIES: Readonly<Record<QueueName, QueuePolicy>> = {
       "3 retries, exponential backoff; failure keeps status at 'approved' (never silently 'published')",
     defaultConcurrency: 2,
   },
-  'xr-publish': {
-    name: 'xr-publish',
-    attempts: 3,
-    backoff: { type: 'exponential', delayMs: 3_000 },
-    policy: '3 retries, exponential backoff',
-    defaultConcurrency: 2,
-  },
   notify: {
     name: 'notify',
     attempts: 2,
     backoff: { type: 'fixed', delayMs: 1_000 },
     policy: 'Best-effort, 1 retry',
     defaultConcurrency: 4,
-  },
-  'skill-credential': {
-    name: 'skill-credential',
-    attempts: 3,
-    backoff: { type: 'exponential', delayMs: 3_000 },
-    policy: '3 retries; without CREDENTIAL_CONTRACT_ADDRESS the job marks skipped',
-    defaultConcurrency: 2,
   },
 };
 
@@ -103,73 +85,6 @@ export const BULLMQ_STATE_TO_JOB_STATUS: Readonly<Record<string, JobStatus>> = {
   failed: 'failed',
 };
 
-export interface AiEnrichmentJobData {
-  readonly tenantId: string;
-  readonly assetId: string;
-  readonly assetVersionId: string;
-  readonly fileName: string;
-  readonly category: string;
-  readonly creatorTags: readonly string[];
-  /** Set by the worker on the single permitted retry (FR-7.3). */
-  readonly stricter?: boolean;
-}
-
-export interface IpfsPinJobData {
-  readonly tenantId: string;
-  readonly assetVersionId: string;
-  /** Absolute path inside the worker container to the staged upload. */
-  readonly stagedPath: string;
-  readonly fileName: string;
-  /** true when pinning a Blender-optimized derivative rather than the original. */
-  readonly derivative?: boolean;
-}
-
-export interface BlenderOptimizeJobData {
-  readonly tenantId: string;
-  readonly assetId: string;
-  readonly assetVersionId: string;
-  readonly stagedPath: string;
-  readonly polycountBudget?: number;
-}
-
-export interface ChainLicenseJobData {
-  readonly tenantId: string;
-  readonly assetId: string;
-  readonly assetVersionId: string;
-  readonly ipfsCid: string;
-  readonly licenseTermsHash: string;
-  readonly approverUserId: string;
-  readonly approverRef: string;
-}
-
-export interface XrPublishJobData {
-  readonly tenantId: string;
-  readonly assetId: string;
-  readonly assetVersionId: string;
-  readonly licenseTokenId: string;
-  readonly ipfsCid: string;
-}
-
-export type NotificationEventType =
-  | 'asset.submitted'
-  | 'asset.needs_manual_review'
-  | 'asset.approved'
-  | 'asset.rejected'
-  | 'asset.revision'
-  | 'asset.published'
-  | 'asset.revoked'
-  | 'job.failed';
-
-export interface NotifyJobData {
-  readonly tenantId: string;
-  readonly eventType: NotificationEventType;
-  readonly entityType: 'asset' | 'job';
-  readonly entityId: string;
-  /** Recipients resolved by the producer (Creator and/or Assessors). */
-  readonly recipientUserIds: readonly string[];
-  readonly payload: Record<string, unknown>;
-}
-
 /**
  * The `jobs.queue` column is a Prisma enum, so it stores the underscore spelling
  * (`chain_license`) while every other surface — the queue names above, the SRS §3.10 table,
@@ -181,9 +96,9 @@ export interface NotifyJobData {
  * `GET /jobs/:id` (FR-6.5) read through it, so the wire format is the §3.10 vocabulary
  * everywhere and a client never has to know how the column is typed.
  */
-export const JOB_QUEUE_DB_TO_NAME: Readonly<Record<string, QueueName>> = {
+export const JOB_QUEUE_DB_TO_NAME: Readonly<Record<string, string>> = {
   ai_enrichment: 'ai-enrichment',
-  ipfs_pin: 'ipfs-pin',
+  ipfs_pin: 'asset-store',
   blender_optimize: 'blender-optimize',
   chain_license: 'chain-license',
   xr_publish: 'xr-publish',

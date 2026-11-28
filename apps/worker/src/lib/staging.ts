@@ -1,8 +1,9 @@
+import { REPO_ROOT } from '@void-space/db/env';
 /**
  * Staging-area helpers for the worker (SRS FR-3.1, FR-8.1).
  *
  * The worker reads the file the API staged, then removes it once the content is durably
- * on IPFS. Paths are treated as untrusted: a job payload comes from Redis, so the worker
+ * in object storage. Paths are treated as untrusted: a job payload comes from Redis, so the worker
  * only ever deletes inside the configured staging root.
  */
 import { rm } from 'node:fs/promises';
@@ -10,7 +11,7 @@ import { resolve } from 'node:path';
 
 /** The configured staging root, resolved once per process. */
 export function stagingRoot(): string {
-  return resolve(process.env['STAGING_DIR'] ?? '.staging');
+  return resolve(REPO_ROOT, process.env['STAGING_DIR'] ?? '.staging');
 }
 
 export function isInsideStaging(path: string): boolean {

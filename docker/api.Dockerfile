@@ -2,8 +2,8 @@
 # Fastify API image (SRS §9.2). This is the *containerized* alternative to
 # running `pnpm dev` natively; the native path is the primary developer loop.
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS base
-RUN corepack enable && apk add --no-cache libc6-compat openssl curl
+FROM node:24-alpine AS base
+RUN npm install --global pnpm@9.15.9 && apk add --no-cache libc6-compat openssl curl
 WORKDIR /app
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -16,9 +16,8 @@ COPY apps/worker/package.json ./apps/worker/package.json
 COPY packages/db/package.json ./packages/db/package.json
 COPY packages/types/package.json ./packages/types/package.json
 COPY packages/config/package.json ./packages/config/package.json
-COPY packages/ui/package.json ./packages/ui/package.json
-COPY packages/studio-ai/package.json ./packages/studio-ai/package.json
-COPY packages/studio-engine/package.json ./packages/studio-engine/package.json
+COPY packages/ai/package.json ./packages/ai/package.json
+COPY packages/storage/package.json ./packages/storage/package.json
 RUN pnpm install --frozen-lockfile
 
 # ---- runtime --------------------------------------------------------------
@@ -31,7 +30,9 @@ ENV PORT=4000
 EXPOSE 4000
 
 # Non-root runtime user (§2.5 minimises the local attack surface).
-RUN addgroup -S void && adduser -S void -G void && chown -R void:void /app
+RUN mkdir -p /var/lib/void-space/uploads/staging \
+  && addgroup -S void && adduser -S void -G void \
+  && chown -R void:void /var/lib/void-space
 USER void
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \

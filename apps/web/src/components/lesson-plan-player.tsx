@@ -1,5 +1,9 @@
 'use client';
 import Link from 'next/link';
+import { LessonSectionMark } from './lesson-section-mark';
+import { LessonPresentationControls } from './lesson-presentation-controls';
+import { PlaygroundFullscreen } from './playground-fullscreen';
+import { ArrowLeft, BookOpen, Clapperboard, Wand2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -21,6 +25,7 @@ interface Progress {
   };
 }
 interface Release {
+  planId?: string;
   id: string;
   tenantId: string;
   owner: boolean;
@@ -44,6 +49,7 @@ interface Task {
 export function LessonPlanPlayer({ id }: { id: string }) {
   const [tenant, setTenant] = useState(''),
     [present, setPresent] = useState(false),
+    [presenterTools, setPresenterTools] = useState(false),
     [sectionId, setSectionId] = useState(''),
     [progress, setProgress] = useState<Progress | null>(null),
     [error, setError] = useState(''),
@@ -55,8 +61,7 @@ export function LessonPlanPlayer({ id }: { id: string }) {
     [answerTarget, setAnswerTarget] = useState(''),
     [coachBusy, setCoachBusy] = useState(false),
     [taskId, setTaskId] = useState(''),
-    [remaining, setRemaining] = useState(0),
-    [timerOn, setTimerOn] = useState(false),
+    [presentationTarget, setPresentationTarget] = useState<string | null>(null),
     [showAnswers, setShowAnswers] = useState(false);
   const pending = useRef<{
     eventKey: string;
@@ -107,22 +112,11 @@ export function LessonPlanPlayer({ id }: { id: string }) {
     s = def?.sections.find((s) => s.id === sectionId) ?? def?.sections[0],
     index = def?.sections.findIndex((x) => x.id === s?.id) ?? 0;
   useEffect(() => {
-    setRemaining((s?.minutes ?? 0) * 60);
-    setTimerOn(false);
+    setPresentationTarget(null);
     setShowAnswers(false);
     setAnswer('');
     setAnswerTarget('');
   }, [s?.id, s?.minutes]);
-  useEffect(() => {
-    if (!timerOn) return;
-    const end = Date.now() + remaining * 1000;
-    const t = setInterval(() => {
-      const next = Math.max(0, Math.ceil((end - Date.now()) / 1000));
-      setRemaining(next);
-      if (!next) setTimerOn(false);
-    }, 250);
-    return () => clearInterval(t);
-  }, [timerOn]);
   async function work(fn: () => Promise<void>) {
     setBusy(true);
     setError('');
@@ -190,6 +184,7 @@ export function LessonPlanPlayer({ id }: { id: string }) {
   };
   return (
     <LearningLayout
+      playground={true}
       title={def?.title ?? 'Open lesson'}
       description={
         present
@@ -226,25 +221,72 @@ export function LessonPlanPlayer({ id }: { id: string }) {
         </Notice>
       )}
       {def && r && s && (
-        <>
+        <div
+          className={
+            'lesson-playground lesson-playback' +
+            (present ? ' is-presenting' : '') +
+            (presenterTools ? ' show-presenter-tools' : '')
+          }
+        >
+          <header className="playground-header">
+            <div className="playground-title">
+              <Link href="/console/learn" aria-label="Back to lessons">
+                <ArrowLeft size={18} />
+              </Link>
+              <div>
+                <span>{present ? 'Presenting lesson' : 'Study playground'}</span>
+                <h1>{def.title}</h1>
+              </div>
+            </div>
+            <nav className="playground-modes" aria-label="Lesson modes">
+              {r.owner && r.planId && (
+                <Link href={`/console/learn/drafts/${r.planId}`}>
+                  <Wand2 size={15} />
+                  Create
+                </Link>
+              )}
+              <a
+                aria-current={!present ? 'page' : undefined}
+                aria-label={present ? 'Switch to study' : 'Study mode'}
+                href={`/console/learn/lessons/${id}?tenant=${tenant}`}
+              >
+                <BookOpen size={15} />
+                Study
+              </a>
+              {r.owner && (
+                <a
+                  aria-current={present ? 'page' : undefined}
+                  aria-label="Present lesson"
+                  href={`/console/learn/lessons/${id}?tenant=${tenant}&present=true`}
+                >
+                  <Clapperboard size={15} />
+                  Present
+                </a>
+              )}
+            </nav>
+            {present && (
+              <button
+                className={action}
+                aria-pressed={presenterTools}
+                onClick={() => setPresenterTools(!presenterTools)}
+              >
+                {presenterTools ? 'Hide presenter tools' : 'Presenter tools'}
+              </button>
+            )}
+            <PlaygroundFullscreen />
+          </header>
           {!r.reviewed && (
             <Notice>
               Private study snapshot · this material has not been published or verified. It cannot
               be shared with other learners.
             </Notice>
           )}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="playground-toolbar">
             <span className="text-sm text-ink-dim">
               {def.durationMinutes} min · {def.audience}
             </span>
             {r.owner && (
               <>
-                <a
-                  className={action}
-                  href={`/console/learn/lessons/${id}?tenant=${tenant}${present ? '' : '&present=true'}`}
-                >
-                  {present ? 'Switch to study' : 'Present lesson'}
-                </a>
                 <Link className={action} href="/console/learn">
                   My lesson drafts
                 </Link>
@@ -258,15 +300,8 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                   : `${completed}/${def.sections.length} sections saved`}
             </span>
           </div>
-          <div
-            className={
-              'lesson-session-grid ' +
-              (present
-                ? 'lg:grid-cols-[12rem_minmax(0,1fr)]'
-                : 'lg:grid-cols-[15rem_minmax(0,1fr)]')
-            }
-          >
-            <nav aria-label="Lesson sections" className="lesson-session-steps">
+          <div className="playground-playback-body">
+            <nav aria-label="Lesson sections" className="playground-timeline">
               {def.sections.map((x, i) => (
                 <button
                   key={x.id}
@@ -279,15 +314,18 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                   aria-current={s.id === x.id ? 'step' : undefined}
                   onClick={() => setSectionId(x.id)}
                 >
-                  <span>
-                    {i + 1}. {x.title}
-                    {progress?.state.completed.includes(x.id) ? ' ✓' : ''}
+                  <span className="playground-step-title">
+                    <LessonSectionMark kind={x.kind} />
+                    <span>
+                      {i + 1}. {x.title}
+                      {progress?.state.completed.includes(x.id) ? ' ✓' : ''}
+                    </span>
                   </span>
                   <span className="text-xs">{x.minutes}m</span>
                 </button>
               ))}
             </nav>
-            <div className="min-w-0 space-y-5">
+            <div className="playground-stage space-y-5">
               <Panel>
                 <header className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -303,16 +341,6 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                       {s.title}
                     </h2>
                   </div>
-                  {present && (
-                    <div className="flex items-center gap-2">
-                      <output className="tabular-nums" aria-label="Section timer">
-                        {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}
-                      </output>
-                      <button className={action} onClick={() => setTimerOn(!timerOn)}>
-                        {timerOn ? 'Pause timer' : 'Start timer'}
-                      </button>
-                    </div>
-                  )}
                 </header>
                 <p
                   className={
@@ -324,6 +352,7 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                 {(s.activity || companionSection?.activity) && (
                   <LessonActivity
                     key={s.id}
+                    presentationTarget={present ? presentationTarget : undefined}
                     activity={s.activity ?? companionSection!.activity!}
                     companion={
                       s.activity?.scene.kind === 'none' ? companionSection?.activity : undefined
@@ -380,13 +409,13 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                   <SketchfabWorkbench compact initialLink={def.sketchfabUrl} />
                 )}
                 {present && r.owner && s.notes && (
-                  <details>
+                  <details className="presentation-extra">
                     <summary className="cursor-pointer py-2">Speaker notes</summary>
                     <p className="whitespace-pre-wrap">{s.notes}</p>
                   </details>
                 )}
                 {present && r.owner && s.activity && (
-                  <div className="space-y-3">
+                  <div className="space-y-3 presentation-extra">
                     <button className={action} onClick={() => setShowAnswers(!showAnswers)}>
                       {showAnswers ? 'Hide answers' : 'Reveal reviewed answers'}
                     </button>
@@ -423,42 +452,31 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                   </div>
                 )}
                 {!present && (
-                  <button
-                    className={action}
-                    disabled={
-                      busy ||
-                      !!pending.current ||
-                      (['quiz', 'practice'].includes(s.kind) && state.status !== 'completed')
-                    }
-                    onClick={() =>
-                      void work(async () => {
-                        await event('complete');
-                      })
-                    }
-                  >
-                    {progress?.state.completed.includes(s.id)
-                      ? 'Continue'
-                      : s.kind === 'recap'
-                        ? 'Finish lesson'
-                        : 'Save and continue'}
-                  </button>
-                )}
-                {present && (
-                  <div className="flex gap-3">
+                  <div className="space-y-2" aria-busy={busy}>
                     <button
                       className={action}
-                      disabled={index <= 0}
-                      onClick={() => setSectionId(def.sections[index - 1]!.id)}
+                      disabled={
+                        busy ||
+                        !!pending.current ||
+                        (['quiz', 'practice'].includes(s.kind) && state.status !== 'completed')
+                      }
+                      onClick={() =>
+                        void work(async () => {
+                          await event('complete');
+                        })
+                      }
                     >
-                      Previous section
+                      {progress?.state.completed.includes(s.id)
+                        ? 'Continue'
+                        : s.kind === 'recap'
+                          ? 'Finish lesson'
+                          : 'Save and continue'}
                     </button>
-                    <button
-                      className={action}
-                      disabled={index === def.sections.length - 1}
-                      onClick={() => setSectionId(def.sections[index + 1]!.id)}
-                    >
-                      Next section
-                    </button>
+                    {busy && (
+                      <p role="status" className="text-sm text-ink-dim">
+                        Saving your progress…
+                      </p>
+                    )}
                   </div>
                 )}
               </Panel>
@@ -513,171 +531,189 @@ export function LessonPlanPlayer({ id }: { id: string }) {
                   {answer && !answerTarget && <Notice>{answer}</Notice>}
                 </Panel>
               )}
-            </div>
-          </div>
-          {(done || s.kind === 'recap') && (
-            <Panel>
-              <h2 className="text-2xl font-semibold">
-                {done ? 'Your lesson recap' : 'Recap and next steps'}
-              </h2>
-              <p>{def.summary}</p>
-              <ul className="list-disc space-y-2 pl-5">
-                {def.objectives.map((x) => (
-                  <li key={x}>{x}</li>
-                ))}
-              </ul>
-              {Object.entries(progress?.state.activities ?? {})
-                .filter(([, v]) => v.mistakes > 0)
-                .map(([sid, v]) => (
-                  <p key={sid}>
-                    Revisit {def.sections.find((x) => x.id === sid)?.title}: {v.mistakes} incorrect
-                    interactions before completion.
-                  </p>
-                ))}
-              <p className="text-sm text-ink-dim">
-                Your practice feedback is formative. It is not a certificate or professional
-                assessment.
-              </p>
-            </Panel>
-          )}
-          <details className="lesson-options" open={done || s.kind === 'recap'}>
-            <summary>Export and sharing</summary>
-            <div className="space-y-4 pt-4">
-              <h2 className="text-lg font-semibold">Keep or share this lesson</h2>
-              {r.owner && r.reviewed && (
-                <label className="grid max-w-xl gap-2">
-                  Lesson visibility
-                  <select
-                    className={control}
-                    value={r.visibility}
-                    disabled={busy}
-                    onChange={(e) =>
-                      void work(async () => {
-                        await apiFetch(`/learning/lesson-plans/releases/${id}/visibility`, {
-                          method: 'PATCH',
-                          body: { visibility: e.target.value },
-                        });
-                        await q.refetch();
-                      })
-                    }
-                  >
-                    <option value="private">Private · explicit invitations only</option>
-                    <option value="institution">Institution-only · workspace members</option>
-                    <option value="public">Public to everyone</option>
-                  </select>
-                </label>
-              )}
-
-              <div className="flex flex-wrap gap-3">
-                {[
-                  ['pdf', 'student', 'Download personal PDF'],
-                  ...(r.owner
-                    ? [
-                        ['pdf', 'teacher', 'Export teacher PDF'],
-                        ['pptx', 'teacher', 'Export editable PPTX'],
-                      ]
-                    : []),
-                ].map(([format, audience, label]) => (
-                  <button
-                    className={action}
-                    key={`${format}-${audience}`}
-                    disabled={busy || ['queued', 'active'].includes(task.data?.task.status ?? '')}
-                    onClick={() =>
-                      void work(async () => {
-                        const value = await apiFetch<{ task: Task }>(
-                          `/learning/lesson-plans/releases/${id}/exports?tenant=${tenant}`,
-                          { method: 'POST', body: { format, audience } },
-                        );
-                        setTaskId(value.task.id);
-                      })
-                    }
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {taskId && (
-                <Notice>
-                  {task.data?.task.status === 'completed' ? (
-                    <button className={action} onClick={() => void work(download)}>
-                      Save export file
-                    </button>
-                  ) : task.data?.task.status === 'failed' ? (
-                    task.data.task.error
-                  ) : (
-                    'Preparing your file in the background…'
-                  )}
-                </Notice>
-              )}
-              {r.owner && r.reviewed && (
-                <div className="space-y-3 border-t border-hairline pt-4">
+              {(done || s.kind === 'recap') && (
+                <Panel>
+                  <h2 className="text-2xl font-semibold">
+                    {done ? 'Your lesson recap' : 'Lesson takeaways'}
+                  </h2>
+                  <p>{def.summary}</p>
+                  <ul className="list-disc space-y-2 pl-5">
+                    {def.objectives.map((x) => (
+                      <li key={x}>{x}</li>
+                    ))}
+                  </ul>
+                  {Object.entries(progress?.state.activities ?? {})
+                    .filter(([, v]) => v.mistakes > 0)
+                    .map(([sid, v]) => (
+                      <p key={sid}>
+                        Revisit {def.sections.find((x) => x.id === sid)?.title}: {v.mistakes}{' '}
+                        incorrect interactions before completion.
+                      </p>
+                    ))}
                   <p className="text-sm text-ink-dim">
-                    Students sign in and open this code. It grants only lesson access; their answers
-                    stay private.
+                    Your practice feedback is formative. It is not a certificate or professional
+                    assessment.
                   </p>
-                  <button
-                    className={action}
-                    disabled={busy}
-                    onClick={() =>
-                      void work(async () => {
-                        const value = await apiFetch<{ code: string; shareId: string }>(
-                          `/learning/lesson-plans/releases/${id}/shares`,
-                          { method: 'POST' },
-                        );
-                        setCode(value.code);
-                        setShareId(value.shareId);
-                        await shares.refetch();
-                      })
-                    }
-                  >
-                    Create lesson link
-                  </button>
-                  {code && (
-                    <div className="space-y-3">
-                      <label className="grid gap-2">
-                        Lesson sharing link
-                        <input
-                          readOnly
-                          className={control}
-                          value={`${location.origin}/learn/join?code=${code}`}
-                        />
-                      </label>
-                      <label className="grid gap-2">
-                        Lesson code
-                        <input readOnly className={control} value={code} />
-                      </label>
-                    </div>
+                </Panel>
+              )}
+              <details className="lesson-options" open={done || s.kind === 'recap'}>
+                <summary>Export and sharing</summary>
+                <div className="space-y-4 pt-4">
+                  <h2 className="text-lg font-semibold">Keep or share this lesson</h2>
+                  {r.owner && r.reviewed && (
+                    <label className="grid max-w-xl gap-2">
+                      Lesson visibility
+                      <select
+                        className={control}
+                        value={r.visibility}
+                        disabled={busy}
+                        onChange={(e) =>
+                          void work(async () => {
+                            await apiFetch(`/learning/lesson-plans/releases/${id}/visibility`, {
+                              method: 'PATCH',
+                              body: { visibility: e.target.value },
+                            });
+                            await q.refetch();
+                          })
+                        }
+                      >
+                        <option value="private">Private · explicit invitations only</option>
+                        <option value="institution">Institution-only · workspace members</option>
+                        <option value="public">Public to everyone</option>
+                      </select>
+                    </label>
                   )}
-                  {shares.data?.shares
-                    .filter((x) => !x.revokedAt)
-                    .map((x) => (
+
+                  <div className="flex flex-wrap gap-3">
+                    {[
+                      ['pdf', 'student', 'Download personal PDF'],
+                      ...(r.owner
+                        ? [
+                            ['pdf', 'teacher', 'Export teacher PDF'],
+                            ['pptx', 'teacher', 'Export editable PPTX'],
+                          ]
+                        : []),
+                    ].map(([format, audience, label]) => (
                       <button
-                        key={x.id}
+                        className={action}
+                        key={`${format}-${audience}`}
+                        disabled={
+                          busy || ['queued', 'active'].includes(task.data?.task.status ?? '')
+                        }
+                        onClick={() =>
+                          void work(async () => {
+                            const value = await apiFetch<{ task: Task }>(
+                              `/learning/lesson-plans/releases/${id}/exports?tenant=${tenant}`,
+                              { method: 'POST', body: { format, audience } },
+                            );
+                            setTaskId(value.task.id);
+                          })
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {taskId && (
+                    <Notice>
+                      {task.data?.task.status === 'completed' ? (
+                        <button className={action} onClick={() => void work(download)}>
+                          Save export file
+                        </button>
+                      ) : task.data?.task.status === 'failed' ? (
+                        task.data.task.error
+                      ) : (
+                        'Preparing your file in the background…'
+                      )}
+                    </Notice>
+                  )}
+                  {r.owner && r.reviewed && (
+                    <div className="space-y-3 border-t border-hairline pt-4">
+                      <p className="text-sm text-ink-dim">
+                        Students sign in and open this code. It grants only lesson access; their
+                        answers stay private.
+                      </p>
+                      <button
                         className={action}
                         disabled={busy}
                         onClick={() =>
                           void work(async () => {
-                            await apiFetch(`/learning/lesson-plans/shares/${x.id}`, {
-                              method: 'DELETE',
-                            });
-                            if (x.id === shareId) setCode('');
+                            const value = await apiFetch<{ code: string; shareId: string }>(
+                              `/learning/lesson-plans/releases/${id}/shares`,
+                              { method: 'POST' },
+                            );
+                            setCode(value.code);
+                            setShareId(value.shareId);
                             await shares.refetch();
                           })
                         }
                       >
-                        Revoke {x.id === shareId ? 'this link' : `link ${x.id.slice(0, 6)}`}
+                        Create lesson link
                       </button>
-                    ))}
+                      {code && (
+                        <div className="space-y-3">
+                          <label className="grid gap-2">
+                            Lesson sharing link
+                            <input
+                              readOnly
+                              className={control}
+                              value={`${location.origin}/learn/join?code=${code}`}
+                            />
+                          </label>
+                          <label className="grid gap-2">
+                            Lesson code
+                            <input readOnly className={control} value={code} />
+                          </label>
+                        </div>
+                      )}
+                      {shares.data?.shares
+                        .filter((x) => !x.revokedAt)
+                        .map((x) => (
+                          <button
+                            key={x.id}
+                            className={action}
+                            disabled={busy}
+                            onClick={() =>
+                              void work(async () => {
+                                await apiFetch(`/learning/lesson-plans/shares/${x.id}`, {
+                                  method: 'DELETE',
+                                });
+                                if (x.id === shareId) setCode('');
+                                await shares.refetch();
+                              })
+                            }
+                          >
+                            Revoke {x.id === shareId ? 'this link' : `link ${x.id.slice(0, 6)}`}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                  {def.attribution && (
+                    <p className="whitespace-pre-wrap text-sm text-ink-dim">
+                      Attribution: {def.attribution}
+                    </p>
+                  )}
                 </div>
-              )}
-              {def.attribution && (
-                <p className="whitespace-pre-wrap text-sm text-ink-dim">
-                  Attribution: {def.attribution}
-                </p>
-              )}
+              </details>
             </div>
-          </details>
-        </>
+          </div>
+          {present && (
+            <LessonPresentationControls
+              section={s}
+              index={index}
+              sections={def.sections}
+              targets={
+                ['exploration', 'explanation', 'practice'].includes(s.kind)
+                  ? ((s.activity ?? companionSection?.activity)?.targets.filter(
+                      (t) => t.placement !== 'unplaced',
+                    ) ?? [])
+                  : []
+              }
+              onNavigate={setSectionId}
+              onTarget={setPresentationTarget}
+            />
+          )}
+        </div>
       )}
     </LearningLayout>
   );

@@ -11,7 +11,7 @@
  * hang on the word "session" — and console HTML was served to callers with no cookie at all.
  *
  * Now:
- *   - no session cookie        → 307 to `/login?next=<intended>`, carrying the destination;
+ *   - no access cookie         → sign-in boundary attempts refresh before asking for credentials;
  *   - cookie, `/auth/me` OK    → the session is passed down so the first paint is already complete;
  *   - cookie, `/auth/me` 401   → the access token expired. Only a browser can rotate the refresh
  *                                cookie (FR-2.3), so the shell renders and the client exchanges it.
@@ -29,7 +29,9 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
   const { session, hasSessionCookie } = await getServerSession();
 
   if (!hasSessionCookie) {
-    redirect(`/login?next=${encodeURIComponent(await intendedPath())}`);
+    // A browser drops vs_access at expiry while its narrowly scoped refresh
+    // cookie remains valid. Let the login boundary try restoration first.
+    redirect(`/login?next=${encodeURIComponent(await intendedPath())}&resume=1`);
   }
 
   return <AppShell initialSession={session}>{children}</AppShell>;

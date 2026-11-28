@@ -4,7 +4,6 @@ import { AgentWorkspaceShell } from './agent-workspace-shell';
 import { SessionProvider, useSession } from '../lib/session';
 import type { SessionView } from '../lib/session-types';
 import { ErrorNote } from './ui/feedback';
-export { VoidStudioLaunchButton } from './studio-launch';
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { session, isLoading, error } = useSession();

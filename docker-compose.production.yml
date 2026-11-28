@@ -1,0 +1,63 @@
+# External PostgreSQL, Redis and S3 are configured in the ignored .env.production.
+# TLS is terminated by your hosting provider's HTTPS reverse proxy.
+name: void-space-production
+x-app: &app
+  image: void-space-api:${RELEASE_TAG:-local}
+  env_file: .env.production
+  environment:
+    NODE_ENV: production
+    STAGING_DIR: /var/lib/void-space/uploads/staging
+  volumes:
+    - uploads:/var/lib/void-space/uploads
+  restart: unless-stopped
+services:
+  migrate:
+    <<: *app
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command:
+      [
+        'sh',
+        '-c',
+        'pnpm --filter @void-space/db migrate:deploy && pnpm --filter @void-space/db rls:apply',
+      ]
+    restart: 'no'
+    healthcheck:
+      disable: true
+  api:
+    <<: *app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+  worker:
+    <<: *app
+    image: void-space-worker:${RELEASE_TAG:-local}
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # With bullmq no external harness is required. For Inngest, provide signing/event
+    # keys and route its signed requests to worker:4030/api/inngest over private networking.
+  web:
+    image: void-space-web:${RELEASE_TAG:-local}
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        API_INTERNAL_URL: http://api:4000
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:4000
+      NEXT_PUBLIC_API_BASE_URL: /api/v1
+    depends_on:
+      api:
+        condition: service_healthy
+    # Only the web origin is published, on loopback for the host's TLS reverse proxy.
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3000}:3000'
+    restart: unless-stopped
+volumes:
+  uploads:

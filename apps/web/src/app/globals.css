@@ -89,6 +89,7 @@
 
 /* Shared light palette for learning, marketplace and asset tools. */
 :root {
+  --radius: 10px;
   --vs-bg: #fff;
   --vs-surface: #fff;
   --vs-surface-2: #f7f7f7;
@@ -219,15 +220,15 @@ body {
 }
 
 /*
- * `vs-card-well` holds thumbnails and model canvases. A studio drop is a flat neutral with a soft
+ * `vs-card-well` holds thumbnails and model canvases. A viewer backdrop is a flat neutral with a soft
  * top light — the same trick a photographer uses so the object separates from its background.
  */
-.studio-viewport {
+.model-viewer-viewport {
   background: radial-gradient(120% 90% at 50% 0%, #1e1e24 0%, #131317 52%, #0c0c0f 100%);
 }
 
 /* ============================================================================================
- * 3D STUDIO
+ * 3D VIEWER
  *
  * The viewer is the product, so its chrome is dense, monospaced where it counts, and out of the
  * way. Every control here answers a question a 3D artist actually asks of a file they are about to
@@ -235,7 +236,7 @@ body {
  * the real dimensions, how many materials and textures are in it, and does it animate.
  * ========================================================================================== */
 
-.studio {
+.model-viewer {
   position: relative;
   width: 100%;
   height: 100%;
@@ -243,20 +244,20 @@ body {
   background: #0c0c0f;
 }
 
-.studio-viewport {
+.model-viewer-viewport {
   position: absolute;
   inset: 0;
   touch-action: none;
 }
 
-.studio-viewport canvas {
+.model-viewer-viewport canvas {
   display: block;
   outline: none;
 }
 
 /* --- top toolbar: segmented controls, left aligned ---------------------------------------- */
 
-.studio-top {
+.model-viewer-top {
   position: absolute;
   top: 10px;
   left: 10px;
@@ -269,11 +270,11 @@ body {
   pointer-events: none;
 }
 
-.studio-top > * {
+.model-viewer-top > * {
   pointer-events: auto;
 }
 
-.studio-group {
+.model-viewer-group {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -285,11 +286,11 @@ body {
   -webkit-backdrop-filter: blur(8px);
 }
 
-.studio-top .studio-spacer {
+.model-viewer-top .model-viewer-spacer {
   margin-left: auto;
 }
 
-.studio-btn {
+.model-viewer-btn {
   border: 0;
   background: transparent;
   color: var(--vs-fg-faint);
@@ -305,24 +306,24 @@ body {
     color 120ms var(--vs-ease);
 }
 
-.studio-btn:hover {
+.model-viewer-btn:hover {
   color: var(--vs-fg);
   background: var(--vs-surface-3);
 }
 
-.studio-btn[aria-pressed='true'] {
+.model-viewer-btn[aria-pressed='true'] {
   color: var(--vs-accent-ink);
   background: var(--vs-fg);
   font-weight: 600;
 }
 
-.studio-btn:focus-visible {
+.model-viewer-btn:focus-visible {
   outline: 2px solid var(--vs-accent);
   outline-offset: 1px;
 }
 
 /* A label that names a group without shouting. */
-.studio-group-label {
+.model-viewer-group-label {
   font-family: var(--vs-font-sans);
   font-size: 10.5px;
   font-weight: 600;
@@ -337,7 +338,7 @@ body {
 
 /* --- bottom strip: identity + integrity ---------------------------------------------------- */
 
-.studio-bottom {
+.model-viewer-bottom {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -352,7 +353,7 @@ body {
   background: linear-gradient(to top, rgba(8, 8, 10, 0.94), rgba(8, 8, 10, 0.35) 70%, transparent);
 }
 
-.studio-meta {
+.model-viewer-meta {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
@@ -363,26 +364,26 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.studio-meta a {
+.model-viewer-meta a {
   color: var(--vs-fg-faint);
   text-decoration: none;
 }
 
-.studio-meta a:hover {
+.model-viewer-meta a:hover {
   color: var(--vs-fg);
 }
 
-.studio-ok {
+.model-viewer-ok {
   color: var(--vs-signal);
 }
 
-.studio-warn {
+.model-viewer-warn {
   color: var(--vs-rejected);
 }
 
 /* --- hint --------------------------------------------------------------------------------- */
 
-.studio-hint {
+.model-viewer-hint {
   position: absolute;
   bottom: 46px;
   left: 50%;
@@ -399,14 +400,14 @@ body {
 }
 
 @media (max-width: 720px) {
-  .studio-hint {
+  .model-viewer-hint {
     display: none;
   }
 }
 
 /* --- stats panel -------------------------------------------------------------------------- */
 
-.studio-panel {
+.model-viewer-panel {
   position: absolute;
   top: 56px;
   right: 10px;
@@ -422,7 +423,7 @@ body {
   box-shadow: var(--vs-shadow-lg);
 }
 
-.studio-panel-head {
+.model-viewer-panel-head {
   position: sticky;
   top: 0;
   display: flex;
@@ -437,19 +438,19 @@ body {
   color: var(--vs-fg);
 }
 
-.studio-panel-body {
+.model-viewer-panel-body {
   padding: 4px 12px 12px;
 }
 
-.studio-section {
+.model-viewer-section {
   padding-top: 11px;
 }
 
-.studio-section + .studio-section {
+.model-viewer-section + .model-viewer-section {
   border-top: 1px solid var(--vs-line);
 }
 
-.studio-row {
+.model-viewer-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -459,7 +460,7 @@ body {
   color: var(--vs-fg-faint);
 }
 
-.studio-row b {
+.model-viewer-row b {
   font-family: var(--vs-font-mono);
   font-weight: 400;
   font-variant-numeric: tabular-nums;
@@ -467,7 +468,7 @@ body {
   letter-spacing: -0.01em;
 }
 
-.studio-swatch {
+.model-viewer-swatch {
   width: 11px;
   height: 11px;
   border-radius: 3px;
@@ -478,7 +479,7 @@ body {
   margin-right: 6px;
 }
 
-.studio-mat {
+.model-viewer-mat {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -488,13 +489,13 @@ body {
   color: var(--vs-fg-dim);
 }
 
-.studio-mat span {
+.model-viewer-mat span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.studio-mat em {
+.model-viewer-mat em {
   font-style: normal;
   font-family: var(--vs-font-mono);
   font-size: 11px;
@@ -504,7 +505,7 @@ body {
 
 /* --- animation transport ------------------------------------------------------------------- */
 
-.studio-transport {
+.model-viewer-transport {
   position: absolute;
   left: 10px;
   right: 10px;
@@ -521,14 +522,14 @@ body {
   -webkit-backdrop-filter: blur(9px);
 }
 
-.studio-transport input[type='range'] {
+.model-viewer-transport input[type='range'] {
   flex: 1;
   min-width: 80px;
   accent-color: var(--vs-accent);
   height: 3px;
 }
 
-.studio-transport select {
+.model-viewer-transport select {
   background: var(--vs-surface-2);
   border: 1px solid var(--vs-line-strong);
   border-radius: 5px;
@@ -538,7 +539,7 @@ body {
   max-width: 168px;
 }
 
-.studio-clip-time {
+.model-viewer-clip-time {
   font-family: var(--vs-font-mono);
   font-size: 11px;
   color: var(--vs-fg-faint);
@@ -548,7 +549,7 @@ body {
 
 /* --- loading + fault ---------------------------------------------------------------------- */
 
-.studio-loading {
+.model-viewer-loading {
   position: absolute;
   inset: 0;
   z-index: 14;
@@ -560,7 +561,7 @@ body {
   background: rgba(8, 8, 10, 0.72);
 }
 
-.studio-loading-track {
+.model-viewer-loading-track {
   width: 168px;
   height: 3px;
   border-radius: 2px;
@@ -568,14 +569,14 @@ body {
   overflow: hidden;
 }
 
-.studio-loading-track i {
+.model-viewer-loading-track i {
   display: block;
   height: 100%;
   background: var(--vs-accent);
   transition: width 180ms linear;
 }
 
-.studio-fault {
+.model-viewer-fault {
   display: flex;
   height: 100%;
   align-items: center;
@@ -584,11 +585,11 @@ body {
   overflow-y: auto;
 }
 
-.studio-fault-inner {
+.model-viewer-fault-inner {
   max-width: 430px;
 }
 
-.studio-fault code {
+.model-viewer-fault code {
   display: block;
   margin-top: 12px;
   padding: 9px 11px;
@@ -603,26 +604,26 @@ body {
 
 /* --- fullscreen --------------------------------------------------------------------------- */
 
-.studio:fullscreen {
+.model-viewer:fullscreen {
   border-radius: 0;
   background: #0a0a0c;
 }
 
 /* Below 860px the toolbar would collide with the panel: hide the panel instead of stacking. */
 @media (max-width: 860px) {
-  .studio-panel {
+  .model-viewer-panel {
     display: none;
   }
 }
 
 /*
- * The studio fills whatever stage it is dropped into. Scoped to `.studio` rather than any child
+ * The viewer fills whatever stage it is dropped into. Scoped to `.model-viewer` rather than any child
  * div: the hero already supplies its own frame, and a blanket rule would stretch unrelated
  * children of the same box.
  */
 
 /* ------------------------------------------------------------------------------------------------
-   Studio controls, v2 — a real inspection tool.
+   Viewer controls, v2 — a real inspection tool.
 
    The control bar now carries every professional viewing mode, so it grew from 15 to 23 buttons. Three
    changes keep that from reading as clutter: the keyboard shortcut is printed on every button (so the
@@ -631,7 +632,7 @@ body {
    ------------------------------------------------------------------------------------------------ */
 
 /* The shortcut chip. Deliberately low-contrast: it is a mnemonic, not a label. */
-.studio-btn kbd {
+.model-viewer-btn kbd {
   margin-left: 5px;
   padding: 1px 3px;
   border: 1px solid var(--vs-line-strong);
@@ -646,19 +647,19 @@ body {
 }
 
 /* On the active control the chip inverts with the button, or it disappears into the fill. */
-.studio-btn[aria-pressed='true'] kbd {
+.model-viewer-btn[aria-pressed='true'] kbd {
   border-color: rgba(0, 0, 0, 0.22);
   background: rgba(0, 0, 0, 0.12);
   color: inherit;
   opacity: 0.75;
 }
 
-.studio-btn:disabled kbd {
+.model-viewer-btn:disabled kbd {
   opacity: 0.4;
 }
 
 /* Separates a modifier (projection) from the set it modifies (viewpoints). */
-.studio-divider {
+.model-viewer-divider {
   width: 1px;
   align-self: stretch;
   margin: 2px 4px;
@@ -666,7 +667,7 @@ body {
 }
 
 /* Tiny preview of the current backdrop, so cycling it is not a blind click. */
-.studio-swatch {
+.model-viewer-swatch {
   display: inline-block;
   width: 11px;
   height: 11px;
@@ -676,19 +677,19 @@ body {
   vertical-align: -1px;
 }
 
-.studio-swatch[data-backdrop='stage'] {
+.model-viewer-swatch[data-backdrop='stage'] {
   background: linear-gradient(160deg, #3a3a44, #14141a);
 }
 
-.studio-swatch[data-backdrop='night'] {
+.model-viewer-swatch[data-backdrop='night'] {
   background: #08080a;
 }
 
-.studio-swatch[data-backdrop='paper'] {
+.model-viewer-swatch[data-backdrop='paper'] {
   background: linear-gradient(160deg, #fbfbfd, #c9c9d0);
 }
 
-.studio-hint-sep {
+.model-viewer-hint-sep {
   display: inline-block;
   width: 1px;
   height: 10px;
@@ -698,25 +699,25 @@ body {
   vertical-align: -1px;
 }
 
-.studio-hint strong {
+.model-viewer-hint strong {
   color: var(--vs-fg);
   font-weight: 600;
 }
 
 /* Tighter buttons: 23 of them have to fit two rows on a laptop, not four. */
-.studio-btn {
+.model-viewer-btn {
   padding: 4px 7px;
   font-size: 11.5px;
 }
 
-.studio-group-label {
+.model-viewer-group-label {
   letter-spacing: 0.04em;
   text-transform: lowercase;
   font-style: italic;
 }
 
 /* ============================================================================================
- * Readability pass over the 3D studio chrome
+ * Readability pass over the 3D viewer chrome
  * --------------------------------------------------------------------------------------------
  * The group labels ("surface", "camera", "overlays") were rendering in `--vs-fg-faint` at 10.5px,
  * which measures about 2.6:1 against the toolbar — below the 4.5:1 that body text needs, and these
@@ -724,7 +725,7 @@ body {
  * shading versus which changes the camera. There are two competing rule sets for this element in
  * this file, so the fix is stated once, last, and with the reasoning attached.
  */
-.studio-group-label {
+.model-viewer-group-label {
   color: var(--vs-fg-dim);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -732,16 +733,16 @@ body {
 
 /* The keyboard chips on the buttons are secondary information, but they were faded to the point of
    being unreadable. They still sit behind the labels, just legibly. */
-.studio-btn kbd {
+.model-viewer-btn kbd {
   color: var(--vs-fg-dim);
 }
 
-.studio-btn[aria-pressed='true'] kbd {
+.model-viewer-btn[aria-pressed='true'] kbd {
   color: var(--vs-fg);
 }
 
 /* ============================================================================================
- * STUDIO LAYOUT — the chrome gets its own space
+ * VIEWER LAYOUT — the chrome gets its own space
  * --------------------------------------------------------------------------------------------
  * Every control in this viewer used to float *on top of* the model: the toolbar, the transport,
  * the inventory panel and the integrity strip were absolutely positioned over the canvas. That is a
@@ -749,7 +750,7 @@ body {
  * sits behind buttons cannot be judged — you cannot tell a lighting artefact from a toolbar shadow,
  * and an object that a control covers is an object you have not inspected.
  *
- * So the studio is now a grid of named regions, and each piece of chrome occupies one. DOM order is
+ * So the viewer is now a grid of named regions, and each piece of chrome occupies one. DOM order is
  * unchanged (the viewport is still first), because grid areas place items independently of order —
  * which is what makes this a layout change rather than a rewrite of the markup.
  *
@@ -758,7 +759,7 @@ body {
  * The `dock` column only exists when the inventory is open: the second track is `auto`, so an absent
  * panel collapses to zero width instead of leaving a gutter beside the canvas.
  * ========================================================================================== */
-.studio {
+.model-viewer {
   display: grid;
   grid-template-areas:
     'toolbar'
@@ -772,7 +773,7 @@ body {
 }
 
 @media (min-width: 1080px) {
-  .studio {
+  .model-viewer {
     grid-template-areas:
       'toolbar   toolbar'
       'transport transport'
@@ -785,12 +786,12 @@ body {
 }
 
 /* The one genuine overlay that remains, and only while bytes are in flight. */
-.studio-loading {
+.model-viewer-loading {
   grid-area: viewport;
 }
 
 /* --- toolbar: a real row above the canvas ------------------------------------------------ */
-.studio-top {
+.model-viewer-top {
   grid-area: toolbar;
   position: static;
   inset: auto;
@@ -806,14 +807,14 @@ body {
  * solid surface, the blur is both pointless and expensive — `backdrop-filter` forces a compositor
  * layer per group for an effect nobody can see.
  */
-.studio-group {
+.model-viewer-group {
   background: var(--vs-surface-3);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
 /* --- viewport: the model, and nothing else ------------------------------------------------ */
-.studio-viewport {
+.model-viewer-viewport {
   grid-area: viewport;
   position: relative;
   inset: auto;
@@ -822,7 +823,7 @@ body {
 }
 
 /* --- inventory dock ----------------------------------------------------------------------- */
-.studio-dock {
+.model-viewer-dock {
   grid-area: dock;
   overflow-y: auto;
   max-height: 46vh;
@@ -831,7 +832,7 @@ body {
 }
 
 @media (min-width: 1080px) {
-  .studio-dock {
+  .model-viewer-dock {
     width: 304px;
     max-height: none;
     border-top: 0;
@@ -840,7 +841,7 @@ body {
 }
 
 /* --- animation transport: its own row, tight under the toolbar ---------------------------- */
-.studio-transport {
+.model-viewer-transport {
   grid-area: transport;
   position: static;
   inset: auto;
@@ -857,7 +858,7 @@ body {
 }
 
 /* --- hint: a caption line, not a chip over the model --------------------------------------- */
-.studio-hint {
+.model-viewer-hint {
   grid-area: hint;
   position: static;
   inset: auto;
@@ -873,7 +874,7 @@ body {
 }
 
 /* --- status strip: identity + integrity ---------------------------------------------------- */
-.studio-bottom {
+.model-viewer-bottom {
   grid-area: status;
   position: static;
   inset: auto;
@@ -883,16 +884,16 @@ body {
 }
 
 /* Full screen: the same regions, filling the display. */
-.studio:fullscreen {
+.model-viewer:fullscreen {
   height: 100vh;
   background: #0c0c0f;
 }
 
 /*
- * The studio toolbar: wraps smoothly without horizontal scroll drift or swinging.
+ * The viewer toolbar: wraps smoothly without horizontal scroll drift or swinging.
  * Controls stay dockable, stable, and completely discoverable without trackpad jank.
  */
-.studio-top {
+.model-viewer-top {
   flex-wrap: wrap;
   overflow-x: visible;
   overflow-y: visible;
@@ -901,35 +902,35 @@ body {
 }
 
 /* Denser controls, still above the 4.5:1 contrast floor set earlier for these labels. */
-.studio-btn {
+.model-viewer-btn {
   padding: 4px 8px;
   font-size: 11.5px;
 }
 
-.studio-group {
+.model-viewer-group {
   padding: 2px;
   flex: none;
 }
 
 /* The actions sit at the end of the row and stay reachable without scrolling past every mode. */
-.studio-top {
+.model-viewer-top {
   align-items: flex-start;
   min-width: 0;
 }
 
-.studio-top .studio-spacer {
+.model-viewer-top .model-viewer-spacer {
   margin-left: auto;
 }
 
 /* Groups stay inside the stage. A single unwrapped row clipped Left, Right, Top,
    Bottom and Shadow against the viewport edge, so those controls looked dead. */
-.studio-group {
+.model-viewer-group {
   flex-wrap: wrap;
   max-width: 100%;
   align-items: center;
 }
 
-.studio-btn {
+.model-viewer-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1176,7 +1177,7 @@ input[type='checkbox'] {
  * Turntable onto the canvas. Each group is now its own full-width row, and the
  * canvas starts below the toolbar.
  */
-.studio {
+.model-viewer {
   display: grid;
   grid-template-areas:
     'toolbar'
@@ -1190,7 +1191,7 @@ input[type='checkbox'] {
   min-height: 0;
   overflow: hidden;
 }
-.studio-top {
+.model-viewer-top {
   grid-area: toolbar;
   position: relative;
   top: auto;
@@ -1205,20 +1206,20 @@ input[type='checkbox'] {
   padding: 8px;
   pointer-events: auto;
 }
-.studio-transport {
+.model-viewer-transport {
   grid-area: transport;
 }
-.studio-viewport,
-.studio-loading {
+.model-viewer-viewport,
+.model-viewer-loading {
   grid-area: viewport;
 }
-.studio-hint {
+.model-viewer-hint {
   grid-area: hint;
 }
-.studio-bottom {
+.model-viewer-bottom {
   grid-area: status;
 }
-.studio-dock {
+.model-viewer-dock {
   grid-area: viewport;
   justify-self: end;
   z-index: 3;
@@ -1226,29 +1227,29 @@ input[type='checkbox'] {
   max-height: 100%;
   overflow: auto;
 }
-.studio-top > *,
-.studio-group,
-.studio-top .studio-spacer {
+.model-viewer-top > *,
+.model-viewer-group,
+.model-viewer-top .model-viewer-spacer {
   margin-left: 0;
   width: 100%;
   max-width: 100%;
 }
-.studio-group {
+.model-viewer-group {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 2px;
 }
-.studio-viewport {
+.model-viewer-viewport {
   position: relative;
   inset: auto;
   min-width: 0;
   min-height: 0;
   height: auto;
 }
-.studio-hint,
-.studio-bottom,
-.studio-transport {
+.model-viewer-hint,
+.model-viewer-bottom,
+.model-viewer-transport {
   position: relative;
   inset: auto;
 }

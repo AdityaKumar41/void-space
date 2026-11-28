@@ -3,7 +3,7 @@
 # One-command local bring-up (SRS §9.1).
 #
 #   1. ensure .env + development TLS certificate exist
-#   2. start the infra services (postgres, redis, ipfs) and the edge
+#   2. start the infra services (postgres, redis) and the edge
 #   3. wait for readiness
 #   4. apply Prisma migrations, then the RLS policies/grants
 #   5. use the already-deployed Avalanche Fuji AssetLicenseRegistry address
@@ -36,13 +36,11 @@ if [ ! -f docker/certs/void-space.crt ]; then
 fi
 
 # --- 2. containers ----------------------------------------------------------
-info "starting VOID·SPACE infra + edge (postgres, redis, ipfs, nginx)"
+info "starting VOID·SPACE infra + edge (postgres, redis, nginx)"
 EDGE_WEB_UPSTREAM=host.docker.internal:3000 \
 EDGE_API_UPSTREAM=host.docker.internal:4000 \
   docker compose --profile infra --profile edge up -d
 
-info "starting VOID·STUDIO infra + edge (studio-postgres, studio-redis, studio-ipfs, studio-nginx)"
-docker compose -f docker-compose.studio.yml up -d
 
 # --- 3. readiness -----------------------------------------------------------
 wait_for_service() {
@@ -58,23 +56,8 @@ wait_for_service() {
   fail "${service} did not become ready in time"
 }
 
-wait_for_studio_service() {
-  local service="$1" probe="$2" attempts="${3:-60}"
-  info "waiting for studio ${service} to become ready"
-  for _ in $(seq 1 "${attempts}"); do
-    if docker compose -f docker-compose.studio.yml exec -T "${service}" sh -c "${probe}" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 2
-  done
-  docker compose -f docker-compose.studio.yml logs --tail=40 "${service}" || true
-  fail "${service} did not become ready in time"
-}
-
 wait_for_service postgres "pg_isready -U ${POSTGRES_USER:-voidspace} -d ${POSTGRES_DB:-voidspace}"
 wait_for_service redis "redis-cli ping"
-wait_for_studio_service studio-postgres "pg_isready -U ${STUDIO_POSTGRES_USER:-voidstudio} -d ${STUDIO_POSTGRES_DB:-voidstudio}"
-wait_for_studio_service studio-redis "redis-cli ping"
 
 # --- 4. databases -----------------------------------------------------------
 info "generating VOID·SPACE Prisma client"
@@ -86,15 +69,6 @@ pnpm --silent db:migrate
 info "applying VOID·SPACE Row-Level Security policies and grants"
 pnpm --silent db:rls
 
-info "generating VOID·STUDIO Prisma client"
-pnpm --silent studio:db:generate
-
-info "applying VOID·STUDIO database migrations"
-pnpm --silent studio:db:migrate
-
-info "applying VOID·STUDIO Row-Level Security policies and grants"
-pnpm --silent studio:db:rls
-
 # --- 5. Avalanche Fuji contract --------------------------------------------
 if [ -z "${CHAIN_RPC_URL:-}" ] || [ -z "${CONTRACT_ADDRESS:-}" ]; then
   warn "Avalanche Fuji contract is not configured. Set CHAIN_RPC_URL and CONTRACT_ADDRESS in .env."
@@ -105,18 +79,13 @@ fi
 
 cat <<'EOF'
 
-  ✔ local stack is up (VOID·SPACE & VOID·STUDIO).
+  ✔ local stack is up (VOID·SPACE).
 
-    next:  pnpm dev         # starts VOID·SPACE + VOID·STUDIO together in watch mode
+    next:  pnpm dev         # starts VOID·SPACE in watch mode
            pnpm db:seed     # demo tenant, users and sample assets
 
     VOID·SPACE:
       web:   http://localhost:3000   (or https://localhost)
       api:   http://localhost:4000   (or https://localhost/api/v1/health)
-      ipfs:  http://localhost:8080/ipfs/<cid>
-
-    VOID·STUDIO:
-      web:   http://localhost:5007   (or https://localhost:8443)
-      api:   http://localhost:4100/studio/api/v1/health
 
 EOF

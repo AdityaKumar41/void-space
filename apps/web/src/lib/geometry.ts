@@ -35,13 +35,6 @@ export interface Traversable {
   traverse: (visit: (object: unknown) => void) => void;
 }
 
-export const EMPTY_GEOMETRY: DecodedGeometry = {
-  meshes: 0,
-  triangles: 0,
-  vertices: 0,
-  extent: { x: 0, y: 0, z: 0 },
-};
-
 /**
  * Measures a loaded scene: mesh count, triangles, vertices, and the bounds of the geometry itself.
  *
@@ -171,7 +164,7 @@ export function formatCount(value: number): string {
  * counted here rather than guessed at in the viewer.
  * ----------------------------------------------------------------------------------------- */
 
-/** One material as it will be presented in the studio's inventory panel. */
+/** One material as it will be presented in the viewer's inventory panel. */
 export interface MaterialSummary {
   readonly name: string;
   /** `#rrggbb`, or null when the material carries no colour (e.g. an untextured physical sheet). */

@@ -41,8 +41,7 @@ export interface AccessTokenPayload {
   readonly kid?: string;
   readonly typ: 'access';
   /**
-   * The person's display name. Present on the Studio handoff so VOID·STUDIO can
-   * mirror the Creator instead of inventing "Creator <id>".
+   * The person's display name, used for attribution.
    */
   readonly name?: string;
 }

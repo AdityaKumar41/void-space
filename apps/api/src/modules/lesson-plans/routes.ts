@@ -1,7 +1,11 @@
+import { sendAssetContent } from '../content/routes';
+import { sendPrivateFile } from '../../lib/private-files';
+import { readLearningFile, isLearningStoragePath } from '@void-space/db';
+import { lessonAnnotationRoutes } from './annotations';
 import { lessonPreview } from './preview';
 import { syncLessonListing } from './public';
 import { randomBytes } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+
 import { resolve } from 'node:path';
 import { withTenant, learningStorageRoot } from '@void-space/db';
 import {
@@ -61,6 +65,7 @@ export async function lessonPlanRoutes(
   app: FastifyInstance,
   { env, producer }: { env: ApiEnv; producer: JobProducer },
 ) {
+  lessonAnnotationRoutes(app, { env, producer });
   const auth = { preHandler: app.authenticate };
   const enqueue = (p: AuthPrincipal, kind: string, input: unknown) =>
     enqueueLearningTask(env, producer, p, kind, input);
@@ -349,6 +354,14 @@ export async function lessonPlanRoutes(
       before = await owned(p, id),
       def = parsePlan(before.definition),
       excerpts = await validatePlan(p, def);
+    if (
+      def.sections.some((s) =>
+        s.activity?.targets.some((t) => t.placement && t.placement !== 'confirmed'),
+      )
+    )
+      throw new ValidationError(
+        'Confirm or remove proposed annotation positions in the lesson before publishing.',
+      );
     const release = await withTenant(p.tenantId, async (db) => {
       await db.$queryRaw`SELECT id FROM lesson_plans WHERE id=${id}::uuid FOR UPDATE`;
       const plan = await ownedPlan(db, p, id);
@@ -417,7 +430,7 @@ export async function lessonPlanRoutes(
         where: {
           id: input.taskId,
           ownerId: p.userId,
-          kind: { in: ['plan_generate', 'agent_turn'] },
+          kind: { in: ['plan_generate', 'plan_annotate', 'agent_turn'] },
           status: 'completed',
         },
       }),
@@ -467,6 +480,14 @@ export async function lessonPlanRoutes(
     const before = await owned(p, id),
       def = parsePlan(before.definition),
       excerpts = await validatePlan(p, def);
+    if (
+      def.sections.some((s) =>
+        s.activity?.targets.some((t) => t.placement && t.placement !== 'confirmed'),
+      )
+    )
+      throw new ValidationError(
+        'Confirm or remove proposed annotation positions in the lesson before publishing.',
+      );
     const release = await withTenant(p.tenantId, async (db) => {
       await db.$queryRaw`SELECT id FROM lesson_plans WHERE id=${id}::uuid FOR UPDATE`;
       const plan = await ownedPlan(db, p, id);
@@ -526,6 +547,7 @@ export async function lessonPlanRoutes(
         id,
         tenantId: tenant,
         owner,
+        ...(owner ? { planId: r.planId } : {}),
         reviewed: r.reviewed,
         visibility: r.visibility,
         definition:
@@ -633,6 +655,14 @@ export async function lessonPlanRoutes(
         : a?.scene.kind === 'model'
           ? a.scene.privateModelId
           : undefined;
+    if (
+      a?.scene.kind === 'model' &&
+      !a.scene.privateModelId &&
+      !a.scene.builtin &&
+      a.scene.assetId &&
+      a.scene.media?.cid
+    )
+      return sendAssetContent(request, reply, a.scene.media.cid);
     if (!imageId) throw new NotFoundError('Lesson visual');
     const source = await withTenant(tenant, (db) =>
       db.learningSource.findFirst({
@@ -642,14 +672,10 @@ export async function lessonPlanRoutes(
     if (
       !source?.storagePath ||
       !['image/png', 'image/jpeg', 'image/webp', 'model/gltf-binary'].includes(source.mime) ||
-      !resolve(source.storagePath).startsWith(learningStorageRoot(env.STAGING_DIR) + '/')
+      !isLearningStoragePath(source.storagePath, env.STAGING_DIR)
     )
       throw new NotFoundError('Lesson visual');
-    return reply
-      .header('cache-control', 'private, no-store')
-      .header('x-content-type-options', 'nosniff')
-      .type(source.mime)
-      .send(await readFile(source.storagePath));
+    return sendPrivateFile(request, reply, source.storagePath, source.mime, env.STAGING_DIR);
   });
   app.post('/learning/lesson-plans/releases/:id/events', auth, async (request) => {
     const p = request.principal!,
@@ -856,7 +882,11 @@ export async function lessonPlanRoutes(
     await accessibleRelease(p, input.releaseTenantId, input.releaseId);
     const result = t.result as { path: string; format: 'pdf' | 'pptx' };
     const root = resolve(learningStorageRoot(env.STAGING_DIR), p.tenantId, 'exports');
-    if (!resolve(result.path).startsWith(root + '/')) throw new NotFoundError('Export file');
+    if (
+      !isLearningStoragePath(result.path, env.STAGING_DIR) ||
+      (!result.path.startsWith('s3://') && !resolve(result.path).startsWith(root + '/'))
+    )
+      throw new NotFoundError('Export file');
     reply
       .header('cache-control', 'private, no-store')
       .header('x-content-type-options', 'nosniff')
@@ -867,6 +897,6 @@ export async function lessonPlanRoutes(
           ? 'application/pdf'
           : 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       )
-      .send(await readFile(result.path));
+      .send(await readLearningFile(result.path, env.STAGING_DIR));
   });
 }

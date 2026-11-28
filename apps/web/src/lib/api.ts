@@ -29,6 +29,7 @@ export class ApiRequestError extends Error {
 }
 
 interface RequestOptions {
+  readonly signal?: AbortSignal;
   readonly method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   readonly body?: unknown;
   /** Absolute URL used by server components; defaults to the proxied browser path. */
@@ -144,6 +145,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
 
   return fetch(url, {
     method: options.method ?? 'GET',
+    signal: options.signal,
     headers: {
       accept: 'application/json',
       ...(options.body === undefined ? {} : { 'content-type': 'application/json' }),

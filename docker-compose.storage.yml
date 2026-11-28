@@ -1,0 +1,19 @@
+services:
+  minio:
+    build:
+      context: .
+      dockerfile: docker/minio/Dockerfile
+    restart: unless-stopped
+    env_file: .env.storage.local
+    ports:
+      - '127.0.0.1:9000:9000'
+      - '127.0.0.1:9001:9001'
+    volumes:
+      - private_objects:/data
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:9000/minio/health/live']
+      interval: 10s
+      timeout: 3s
+      retries: 12
+volumes:
+  private_objects:

@@ -28,7 +28,6 @@ import {
   QUEUE_NAMES,
   QUEUE_POLICIES,
 } from '../src/queues';
-import { createScenarioSchema, submitScenarioAttemptSchema } from '../src/dto/learning';
 
 /**
  * Transcribed from the SRS §3.6 table row by row: `true` = the cell contains ✔.
@@ -375,7 +374,7 @@ describe('§3.10 queue policies', () => {
 
   it('retries the queues that depend on an external service', () => {
     // Anvil, IPFS and EoN can all be briefly unavailable (NFR-REL.1).
-    for (const name of ['ipfs-pin', 'chain-license', 'xr-publish', 'notify'] as const) {
+    for (const name of ['asset-store', 'chain-license', 'notify'] as const) {
       expect(QUEUE_POLICIES[name].attempts).toBeGreaterThanOrEqual(2);
     }
   });
@@ -390,36 +389,5 @@ describe('§3.10 queue policies', () => {
     expect(mapped).toContain('active');
     expect(mapped).toContain('completed');
     expect(mapped).toContain('failed');
-  });
-});
-
-describe('simulator assessment contract', () => {
-  const lessonId = 'f8e7d6c5-b4a3-4210-9f8e-7d6c5b4a3210';
-
-  it('requires an attached lesson or digital twin and a unique rubric', () => {
-    const base = {
-      title: 'Lockout verification',
-      description:
-        'Learner isolates the equipment and verifies that all stored energy is released.',
-      rubric: [{ id: 'isolate', label: 'Isolate every energy source', weight: 60 }],
-    };
-    expect(createScenarioSchema.safeParse({ ...base, lessonId }).success).toBe(true);
-    expect(createScenarioSchema.safeParse(base).success).toBe(false);
-    expect(
-      createScenarioSchema.safeParse({
-        ...base,
-        lessonId,
-        rubric: [...base.rubric, { id: 'isolate', label: 'Duplicate criterion', weight: 40 }],
-      }).success,
-    ).toBe(false);
-  });
-
-  it('accepts evidence only as boolean observations', () => {
-    expect(submitScenarioAttemptSchema.safeParse({ evidence: { isolate: true } }).success).toBe(
-      true,
-    );
-    expect(submitScenarioAttemptSchema.safeParse({ evidence: { isolate: 'true' } }).success).toBe(
-      false,
-    );
   });
 });

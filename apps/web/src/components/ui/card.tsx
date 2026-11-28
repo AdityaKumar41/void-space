@@ -56,28 +56,6 @@ export function CardHeader({
   );
 }
 
-/** The card's content area. 20px of padding is the documented 24px minus the border's optical weight. */
-export function CardBody({
-  className,
-  children,
-}: {
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return <div className={cn('px-5 py-5', className)}>{children}</div>;
-}
-
-/** A full-bleed row inside a card, for a table or a list that should meet the card's edges. */
-export function CardSection({
-  className,
-  children,
-}: {
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return <div className={cn('border-t border-hairline', className)}>{children}</div>;
-}
-
 /**
  * A card with its heading row handled — the console's workhorse.
  *

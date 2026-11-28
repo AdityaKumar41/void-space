@@ -83,8 +83,32 @@ if (!migrateUrl) {
   process.exit(2);
 }
 
-const appPassword = process.env.APP_DB_PASSWORD ?? 'void_app_pw';
-const platformPassword = process.env.PLATFORM_DB_PASSWORD ?? 'void_platform_pw';
+function runtimePassword(url, expectedUser, explicit, developmentDefault) {
+  if (url) {
+    const parsed = new URL(url);
+    if (decodeURIComponent(parsed.username) !== expectedUser)
+      throw new Error(`[rls] runtime URL must use ${expectedUser}, not a migration/owner account`);
+    const password = decodeURIComponent(parsed.password);
+    if (explicit && password && explicit !== password)
+      throw new Error(`[rls] password settings disagree for ${expectedUser}`);
+    if (password || explicit) return explicit ?? password;
+  }
+  if (process.env.NODE_ENV === 'production')
+    throw new Error(`[rls] supply a password for ${expectedUser} before applying database roles`);
+  return explicit ?? developmentDefault;
+}
+const appPassword = runtimePassword(
+  process.env.DATABASE_URL,
+  'void_app',
+  process.env.APP_DB_PASSWORD,
+  'void_app_pw',
+);
+const platformPassword = runtimePassword(
+  process.env.PLATFORM_DATABASE_URL,
+  'void_platform',
+  process.env.PLATFORM_DB_PASSWORD,
+  'void_platform_pw',
+);
 
 const require = createRequire(import.meta.url);
 const { PrismaClient } = require(resolve(packageDir, 'generated/client/index.js'));
@@ -122,21 +146,26 @@ async function main() {
   console.log(`[rls] applying ${statements.length} statements from prisma/sql/rls.sql`);
 
   let summary = [];
-  for (const [index, statement] of statements.entries()) {
-    const head = statement.split('\n')[0].slice(0, 72).replace(/\s+/g, ' ');
-    if (/^select/i.test(statement)) {
-      summary = await prisma.$queryRawUnsafe(statement);
-      console.log(`[rls] ${index + 1}/${statements.length} ${head} … (${summary.length} rows)`);
-    } else {
-      await prisma.$executeRawUnsafe(statement);
-      console.log(`[rls] ${index + 1}/${statements.length} ${head} …`);
-    }
-  }
+  // Publish the grants and policy changes together. No request may observe the
+  // intermediate blanket runtime grant or the platform role's empty privileges.
+  await prisma.$transaction(
+    async (tx) => {
+      for (const [index, statement] of statements.entries()) {
+        const head = statement.split('\n')[0].slice(0, 72).replace(/\s+/g, ' ');
+        if (/^select/i.test(statement)) {
+          summary = await tx.$queryRawUnsafe(statement);
+          console.log(`[rls] ${index + 1}/${statements.length} ${head} … (${summary.length} rows)`);
+        } else {
+          await tx.$executeRawUnsafe(statement);
+          console.log(`[rls] ${index + 1}/${statements.length} ${head} …`);
+        }
+      }
+    },
+    { timeout: 30_000 },
+  );
 
   const tenantScoped = summary.filter((row) => row.rls_enabled);
-  const unprotected = summary.filter(
-    (row) => row.rls_enabled && Number(row.policy_count) === 0,
-  );
+  const unprotected = summary.filter((row) => row.rls_enabled && Number(row.policy_count) === 0);
   console.log(
     `[rls] ${tenantScoped.length} tables have RLS enabled; ${summary.length} tables inspected`,
   );

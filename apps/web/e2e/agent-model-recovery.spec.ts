@@ -74,15 +74,33 @@ test('selected model survives a conversation reload and provider failure returns
     await page.goto(`/console/learn/agent?thread=${threadId}`);
     await expect(page).toHaveURL(new RegExp(`model=${model.id}`));
     await page.reload();
-    await expect(page.getByRole('combobox', { name: 'Choose a model for the agent' })).toHaveValue(
-      `private:${model.id}`,
+    await expect(page.getByRole('button', { name: 'Choose a model for the agent' })).toContainText(
+      'recovery-model',
+    );
+    await page.getByRole('button', { name: /Remove model/ }).click();
+    await expect(page).not.toHaveURL(new RegExp(`model=${model.id}`));
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Choose a model for the agent' })).toContainText(
+      'Choose a model',
+    );
+    // An explicit selection after removal must also survive reload.
+    await page.getByRole('button', { name: 'Choose a model for the agent' }).click();
+    await page.getByRole('searchbox', { name: 'Search models' }).fill('recovery-model');
+    await page
+      .getByRole('dialog', { name: 'Choose a learning model' })
+      .getByRole('button', { name: /recovery-model/ })
+      .click();
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Choose a model for the agent' })).toContainText(
+      'recovery-model',
     );
     await page
       .getByRole('link', { name: 'Continue with this model without AI', exact: true })
       .click();
     await expect(page).toHaveURL(new RegExp(`/library\\?model=${model.id}`));
+    await page.getByText('More actions', { exact: true }).click();
     await expect(
-      page.getByRole('button', { name: 'Start an editable lesson', exact: true }),
+      page.getByRole('button', { name: 'Start lesson manually', exact: true }),
     ).toBeVisible();
   } finally {
     if (tenant) await db.tenant.deleteMany({ where: { id: tenant } });

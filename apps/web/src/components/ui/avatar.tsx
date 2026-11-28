@@ -51,33 +51,3 @@ export function Avatar({
     </span>
   );
 }
-
-/**
- * A name with a face and one line of context.
- *
- * `sub` is mono because it is always an identifier or a timestamp — an email, a role list, "5m ago" —
- * and never a sentence. Prose belongs in a paragraph, not in a table cell.
- */
-export function PersonCell({
-  name,
-  sub,
-  size = 'md',
-  className,
-}: {
-  name: string;
-  sub?: React.ReactNode;
-  size?: 'sm' | 'md';
-  className?: string;
-}) {
-  return (
-    <span className={cn('flex min-w-0 items-center gap-2.5', className)}>
-      <Avatar name={name} size={size} />
-      <span className="min-w-0">
-        <span className="block truncate text-[13.5px] font-semibold text-ink">{name}</span>
-        {sub === undefined ? null : (
-          <span className="block truncate font-mono text-[11px] text-ink-faint">{sub}</span>
-        )}
-      </span>
-    </span>
-  );
-}

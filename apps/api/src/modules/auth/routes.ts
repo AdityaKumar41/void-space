@@ -1,3 +1,5 @@
+import { digest } from '../platform/totp';
+import { withPlatform } from '@void-space/db';
 /**
  * Authentication routes (SRS FR-2.1–2.7, §3.7).
  *
@@ -43,7 +45,7 @@ import { parseDurationSeconds } from '../../lib/duration';
 import { parseBody, requestContext } from '../../lib/http';
 import {
   buildAuthService,
-  loadMemberships,
+  loadVerifiedMemberships,
   type AuthenticatedResult,
   type TenantSelectionRequired,
 } from './service';
@@ -163,6 +165,17 @@ export async function authRoutes(app: FastifyInstance, options: AuthRoutesOption
   // --------------------------------------------------------------------- logout
   app.post('/logout', async (request, reply) => {
     await auth.logout(request.cookies[REFRESH_COOKIE]);
+    const platformToken = request.cookies.void_platform_console;
+    if (platformToken)
+      await withPlatform((db) =>
+        db.platformConsoleSession.deleteMany({ where: { tokenHash: digest(platformToken) } }),
+      );
+    reply.clearCookie('void_platform_console', {
+      path: '/api/v1',
+      httpOnly: true,
+      secure,
+      sameSite: 'strict',
+    });
     clearAuthCookies(reply, secure);
     clearOnboardingCookie(reply, secure);
     return reply.status(204).send();
@@ -174,6 +187,24 @@ export async function authRoutes(app: FastifyInstance, options: AuthRoutesOption
     if (!principal) return reply.status(401).send({ code: 'UNAUTHENTICATED' });
 
     const revoked = await auth.logoutAll(principal);
+    await withPlatform((db) =>
+      db.platformConsoleSession.deleteMany({
+        where: {
+          OR: [
+            { userId: principal.userId },
+            ...(request.cookies.void_platform_console
+              ? [{ tokenHash: digest(request.cookies.void_platform_console) }]
+              : []),
+          ],
+        },
+      }),
+    );
+    reply.clearCookie('void_platform_console', {
+      path: '/api/v1',
+      httpOnly: true,
+      secure,
+      sameSite: 'strict',
+    });
     clearAuthCookies(reply, secure);
     return reply.status(200).send({ sessionsRevoked: revoked });
   });
@@ -216,7 +247,11 @@ export async function authRoutes(app: FastifyInstance, options: AuthRoutesOption
 
     // The workspace list is read on every call rather than carried in the token: a membership added
     // or removed elsewhere must show up without waiting for the access token to expire (FR-1.4).
-    const memberships = await loadMemberships(principal.email);
+    const memberships = await loadVerifiedMemberships({
+      email: principal.email,
+      userId: principal.userId,
+      tenantId: principal.tenantId,
+    });
 
     const session: SessionUser = {
       id: principal.userId,
@@ -250,6 +285,12 @@ export async function authRoutes(app: FastifyInstance, options: AuthRoutesOption
     const input = parseBody(changePasswordSchema, request.body);
     const revoked = await auth.changePassword(principal, input);
     // FR-2.7 — the caller's own session is revoked too, so drop the cookies.
+    reply.clearCookie('void_platform_console', {
+      path: '/api/v1',
+      httpOnly: true,
+      secure,
+      sameSite: 'strict',
+    });
     clearAuthCookies(reply, secure);
     return reply.status(200).send({
       sessionsRevoked: revoked,
@@ -275,46 +316,4 @@ export async function authRoutes(app: FastifyInstance, options: AuthRoutesOption
     return completeAuth(reply, result, 201);
   });
 
-  // ----------------------------------------------------------- studio-token handoff
-  /**
-   * Mints or exchanges the active session for a short-lived bearer token
-   * to launch and authenticate VOID·STUDIO (VS2-SRS-1.0 §3.5.1).
-   */
-  app.post('/studio-token', async (request, reply) => {
-    await app.authenticate(request);
-    const principal = request.principal;
-    if (!principal) return reply.status(401).send({ code: 'UNAUTHENTICATED' });
-
-    const accessToken = app.signAccessToken({
-      sub: principal.userId,
-      tid: principal.tenantId,
-      roles: [...principal.roles],
-      perms: [...principal.permissions],
-      amr: principal.authMethod === 'apikey' ? 'apikey' : 'password',
-      typ: 'access',
-      name: principal.fullName,
-    });
-
-    const studioUrl =
-      process.env.VOID_STUDIO_URL || process.env.STUDIO_URL || 'http://localhost:5007';
-
-    return reply.status(200).send({
-      accessToken,
-      token: accessToken,
-      tokenType: 'Bearer',
-      expiresIn: accessMaxAgeSeconds,
-      studioUrl,
-      user: {
-        id: principal.userId,
-        fullName: principal.fullName,
-        email: principal.email,
-        roles: [...principal.roles],
-      },
-      tenant: {
-        id: principal.tenantId,
-        name: principal.tenantName,
-        slug: principal.tenantSlug,
-      },
-    });
-  });
 }

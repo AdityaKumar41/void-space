@@ -71,31 +71,3 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ),
 );
 Button.displayName = 'Button';
-
-/**
- * A square icon button.
- *
- * Carried as its own component rather than a button size because an icon button that forgets its
- * `aria-label` is invisible to a screen reader, and a component that requires one cannot forget.
- */
-export function IconButton({
-  className,
-  label,
-  children,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className={cn(
-        'relative inline-flex h-9 w-9 items-center justify-center rounded-control border border-hairline bg-surface text-ink-dim transition-all duration-200 ease-standard hover:border-hairline-strong hover:bg-surface-raised hover:text-ink',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}

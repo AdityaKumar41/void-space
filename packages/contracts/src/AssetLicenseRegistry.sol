@@ -233,6 +233,13 @@ contract AssetLicenseRegistry {
         if (_owners[tokenId] == address(0)) revert TokenDoesNotExist(tokenId);
         LicenseRecord storage record = _licenses[tokenId];
         if (!record.metadataSet) revert MetadataNotSet(tokenId);
+        bytes memory uriBytes = bytes(record.metadataCid);
+        // New releases store an HTTPS object-gateway URI. Historical CIDs retain their original meaning.
+        if (uriBytes.length >= 8 && uriBytes[0] == "h" && uriBytes[1] == "t" &&
+            uriBytes[2] == "t" && uriBytes[3] == "p" && uriBytes[4] == "s" &&
+            uriBytes[5] == ":" && uriBytes[6] == "/" && uriBytes[7] == "/") {
+            return record.metadataCid;
+        }
         return string.concat("ipfs://", record.metadataCid);
     }
 

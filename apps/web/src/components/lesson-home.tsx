@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useLearningProfile } from '../lib/learning-profile';
-import { Box, Clock3, ArrowUpRight, Plus, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Clock3, ArrowUpRight, Sparkles, Search, BookOpen } from 'lucide-react';
+import { LearningPathVisual } from './learning-path-visual';
 import { LessonCover, type LessonVisualKind } from './lesson-cover';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -75,29 +76,62 @@ export function LessonHome() {
           : 'Create a lesson around an asset or an idea. Study it and keep what you learn.'
       }
     >
-      <div className="learning-start-bar">
+      {q.data && !q.data.plans.length && !q.data.shared.length && (
+        <section className="lesson-home-intro">
+          <div className="lesson-home-intro-copy">
+            <span className="learning-eyebrow">
+              <Sparkles size={14} /> A little curiosity goes a long way
+            </span>
+            <h2>
+              {teacher ? (
+                <>
+                  Turn what you know
+                  <br />
+                  into something they can explore.
+                </>
+              ) : (
+                <>
+                  Go beyond the page.
+                  <br />
+                  See how it all fits together.
+                </>
+              )}
+            </h2>
+            <p>
+              {teacher
+                ? 'A model, your notes, or just an idea. Build a lesson with AI, bring its parts to life, and make understanding hands-on.'
+                : 'Start with a question or a model. Explore its parts, try a few questions, and build understanding at your own pace.'}
+            </p>
+            <div className="learning-inline-actions">
+              <Link className="learning-primary" href="/console/learn/agent?intent=lesson">
+                <Sparkles size={16} />
+                Create lesson
+                <ArrowUpRight size={16} />
+              </Link>
+              <Link className="learning-text-link" href="/console/learn/library">
+                Choose a 3D model <ArrowUpRight size={15} />
+              </Link>
+            </div>
+          </div>
+          <LearningPathVisual compact />
+        </section>
+      )}
+      <div className="lesson-shelf-heading">
         <div>
-          <Box size={25} />
-          <span>
-            <strong>{teacher ? 'Bring your lesson to life.' : 'Learn by exploring.'}</strong>
-            <small>Choose a model, then turn it into a session.</small>
-          </span>
+          <span className="learning-eyebrow">Your workspace</span>
+          <h2>{teacher ? 'My teaching materials' : 'My lessons'}</h2>
         </div>
-        <Link className="learning-primary" href="/console/learn/library">
-          Choose a 3D model <ArrowUpRight size={16} />
-        </Link>
-      </div>
-      <div className="flex flex-wrap gap-3">
-        <Link
-          className={action + ' bg-brand text-[#262626]'}
-          href="/console/learn/agent?intent=lesson"
-        >
-          <Sparkles className="inline mr-2" size={15} />
-          Create lesson
-        </Link>
-        <Link className={action} href="/console/learn/join">
-          Open a lesson code
-        </Link>
+        <div className="learning-inline-actions">
+          {!!q.data && (q.data.plans.length > 0 || q.data.shared.length > 0) && (
+            <Link className="learning-primary" href="/console/learn/agent?intent=lesson">
+              <Sparkles size={16} />
+              Create lesson
+            </Link>
+          )}
+          <Link className="learning-text-link" href="/console/learn/join">
+            Open a lesson code <ArrowUpRight size={15} />
+          </Link>
+        </div>
       </div>
       {error && <Notice error>{error}</Notice>}
       {q.error && (
@@ -105,9 +139,10 @@ export function LessonHome() {
           {q.error.message} <button onClick={() => void q.refetch()}>Retry</button>
         </Notice>
       )}
-      <div className="flex flex-wrap gap-3">
-        <label className="grid gap-1 text-sm">
-          Find a lesson
+      <div className="lesson-shelf-controls">
+        <label className="lesson-shelf-search">
+          <Search size={17} />
+          <span className="sr-only">Find a lesson</span>
           <input
             className={control}
             value={search}
@@ -115,8 +150,8 @@ export function LessonHome() {
             placeholder="Search your lessons"
           />
         </label>
-        <label className="grid gap-1 text-sm">
-          Show
+        <label className="lesson-shelf-filter">
+          <span>Show</span>
           <select className={control} value={filter} onChange={(e) => setFilter(e.target.value)}>
             <option value="all">All lessons</option>
             <option value="drafts">Drafts</option>
@@ -140,7 +175,7 @@ export function LessonHome() {
                   key={s.id}
                   href={`/console/learn/lessons/${s.id}?tenant=${s.tenantId}`}
                 >
-                  <LessonCover kind={s.preview?.kind} />
+                  <LessonCover kind={s.preview?.kind} title={s.title} />
                   <div className="learning-lesson-card-copy">
                     <span className="font-semibold">{s.title}</span>
                     <span className="text-sm text-ink-dim">
@@ -169,9 +204,6 @@ export function LessonHome() {
       )}
       {filter !== 'shared' && (
         <section className="space-y-3">
-          <h2 className="text-xl font-semibold">
-            {teacher ? 'My teaching materials' : 'My lessons'}
-          </h2>
           <div className="learning-lesson-grid">
             {q.data?.plans
               .filter(
@@ -183,7 +215,7 @@ export function LessonHome() {
               )
               .map((p) => (
                 <article key={p.id} className="learning-lesson-card">
-                  <LessonCover kind={p.preview?.kind} />
+                  <LessonCover kind={p.preview?.kind} title={p.title} />
                   <div className="learning-lesson-card-copy">
                     <h3 className="font-semibold">{p.title}</h3>
                     {p.preview && <p className="learning-card-summary">{p.preview.summary}</p>}
@@ -221,15 +253,28 @@ export function LessonHome() {
                 </article>
               ))}
           </div>
-          {q.data && !q.data.plans.length && (
-            <Panel>
-              <h3 className="font-semibold">Start with something you want to explain</h3>
-              <p className="text-ink-dim">
-                Choose a model, add your topic and ask the agent for a 30- or 60-minute lesson. You
-                can review every section before sharing.
-              </p>
-            </Panel>
-          )}
+          {q.data &&
+            !q.data.plans.some(
+              (p) =>
+                p.title.toLowerCase().includes(search.toLowerCase()) &&
+                (filter !== 'drafts' ||
+                  !p.releases.some((r) => r.reviewed && r.revision === p.revision)) &&
+                (filter !== 'published' || p.releases.some((r) => r.reviewed)),
+            ) && (
+              <Panel>
+                <BookOpen size={24} />
+                <h3 className="font-semibold">
+                  {search || filter !== 'all'
+                    ? 'No lessons match this view'
+                    : 'Start with something you want to explain'}
+                </h3>
+                <p className="text-ink-dim">
+                  {search || filter !== 'all'
+                    ? 'Try another search or show all lessons.'
+                    : 'Tell the agent what you want to teach. You can review and change every section before sharing.'}
+                </p>
+              </Panel>
+            )}
         </section>
       )}
       {!!q.data?.legacyLessons?.length && (

@@ -1,12 +1,13 @@
 'use client';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '../lib/api';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowUpRight,
   Bell,
   BookOpen,
-  ChevronDown,
   ChevronLeft,
   CircleHelp,
   Compass,
@@ -21,20 +22,21 @@ import {
   ShieldCheck,
   ShoppingBag,
   Sparkles,
-  X,
   Boxes,
+  Building2,
   History,
   Radio,
   Users,
 } from 'lucide-react';
+import { isLessonPlaygroundRoute } from '../lib/lesson-playground-route';
 import { useSession } from '../lib/session';
+import { useClientReady } from '../lib/use-client-ready';
 import { useLearningProfile } from '../lib/learning-profile';
 import { Avatar } from './ui/avatar';
-import { VoidStudioLaunchButton } from './studio-launch';
 import type { Permission } from '@void-space/types';
 const groups = [
   {
-    title: 'Overview',
+    title: 'Workspace',
     items: [
       { href: '/console/learn/agent', label: 'Ask AI', icon: MessageCircle },
       { href: '/console/learn', label: 'My lessons', icon: BookOpen },
@@ -42,7 +44,7 @@ const groups = [
     ],
   },
   {
-    title: 'Learning tools',
+    title: 'Explore & learn',
     items: [
       { href: '/console/learn/discover', label: 'Discover lessons', icon: Compass },
       { href: '/console/learn/progress', label: 'My progress', icon: LayoutGrid },
@@ -59,6 +61,7 @@ const groups = [
   },
 ];
 export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
+  const ready = useClientReady();
   const pathname = usePathname(),
     { session, memberships, switchTenant, signOut, can } = useSession(),
     [open, setOpen] = useState(false),
@@ -66,7 +69,15 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
     [search, setSearch] = useState(''),
     [error, setError] = useState('');
   const profile = useLearningProfile();
+  const platform = useQuery({
+    queryKey: ['platform-access'],
+    enabled: !!session,
+    queryFn: () =>
+      apiFetch<{ granted: boolean; elevated: boolean; role: string | null }>('/platform/access'),
+    staleTime: 30000,
+  });
   const teacher = profile.data?.persona === 'teacher';
+  const platformMode = pathname.startsWith('/console/platform');
   const learningGroups = groups.map((group) => ({
     ...group,
     items: group.items
@@ -149,7 +160,7 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
       },
       { href: '/console/audit', label: 'Audit', icon: History, permission: 'audit:view' },
       { href: '/console/admin', label: 'Team', icon: Users, permission: 'tenant:manage-users' },
-      { href: '/console/tenants', label: 'Workspaces', icon: Users, permission: 'tenant:manage' },
+
       {
         href: '/console/learn/settings',
         label: 'Settings',
@@ -162,7 +173,35 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
     pathname !== '/console/catalog' &&
     pathname !== '/console/models';
   const navGroups = assetPage
-    ? [{ title: 'Asset workspace', items: assetItems.filter((i) => can(i.permission)) }]
+    ? platformMode
+      ? [
+          {
+            title: 'Platform',
+            items: [
+              { href: '/console/platform', label: 'Overview', icon: ShieldCheck },
+              ...(platform.data?.elevated && platform.data.role === 'PlatformAdmin'
+                ? [
+                    {
+                      href: '/console/platform#platform-workspaces',
+                      label: 'Workspaces',
+                      icon: Building2,
+                    },
+                    {
+                      href: '/console/platform#platform-accounts',
+                      label: 'Accounts and access',
+                      icon: Users,
+                    },
+                    {
+                      href: '/console/platform#platform-audit',
+                      label: 'Platform audit',
+                      icon: History,
+                    },
+                  ]
+                : []),
+            ],
+          },
+        ]
+      : [{ title: 'Asset workspace', items: assetItems.filter((i) => can(i.permission)) }]
     : learningGroups;
   const selected =
     [
@@ -171,19 +210,32 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
       { href: '/console/catalog', label: 'Marketplace' },
       { href: '/console/models', label: 'Find a model' },
     ].find((i) => i.href === pathname)?.label ??
-    (pathname.includes('/notifications')
-      ? 'Notifications'
-      : pathname.includes('/settings')
-        ? 'Settings'
-        : pathname.includes('/help')
-          ? 'Help'
-          : pathname.includes('/assets/')
-            ? 'Model details'
-            : pathname.includes('/drafts/')
-              ? 'Lesson workspace'
-              : pathname.includes('/lessons/')
-                ? 'Learning session'
-                : 'Ask AI');
+    (pathname.startsWith('/console/learn/library/')
+      ? 'Library / Model'
+      : pathname.includes('/notifications')
+        ? 'Notifications'
+        : pathname.includes('/settings')
+          ? 'Settings'
+          : pathname.includes('/help')
+            ? 'Help'
+            : pathname.includes('/assets/')
+              ? 'Model details'
+              : pathname.includes('/drafts/')
+                ? 'Lesson playground'
+                : pathname.includes('/lessons/')
+                  ? 'Learning session'
+                  : 'Ask AI');
+  if (isLessonPlaygroundRoute(pathname))
+    return (
+      <div className="agent-workspace agent-playground-shell">
+        <main
+          id="main"
+          aria-label={pathname.includes('/annotate') ? 'Annotation editor' : 'Lesson playground'}
+        >
+          {children}
+        </main>
+      </div>
+    );
   return (
     <div className={'agent-workspace ' + (collapsed ? 'agent-sidebar-collapsed' : '')}>
       {open && (
@@ -194,11 +246,12 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
         />
       )}
       <aside
+        id="workspace-navigation"
         ref={aside}
         className={'agent-sidebar ' + (open ? 'is-open' : '')}
         aria-label={assetPage ? 'Asset navigation' : 'Learning navigation'}
       >
-        <Link href="/console/learn/agent" className="agent-brand">
+        <Link href="/console/learn/agent" className="agent-brand" aria-label="Void Space">
           <span className="agent-brand-mark">
             <Sparkles size={20} />
           </span>
@@ -238,16 +291,20 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
         <nav aria-label="Workspace sections" className="agent-nav">
           {navGroups.map((group) => (
             <section key={group.title}>
-              <h2>
-                {group.title}
-                <ChevronDown size={13} />
-              </h2>
+              <h2>{group.title}</h2>
               {group.items.map((item) => (
                 <Link
                   onClick={() => setOpen(false)}
                   href={item.href}
+                  aria-label={item.label}
+                  title={collapsed ? item.label : undefined}
                   key={item.href}
-                  aria-current={pathname === item.href ? 'page' : undefined}
+                  aria-current={
+                    pathname === item.href ||
+                    (item.href === '/console/learn/library' && pathname.startsWith(item.href + '/'))
+                      ? 'page'
+                      : undefined
+                  }
                 >
                   <item.icon size={18} strokeWidth={1.5} />
                   <span>{item.label}</span>
@@ -266,6 +323,8 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
           <section className="agent-market-link">
             <Link
               href="/console/catalog"
+              aria-label="Marketplace"
+              title={collapsed ? 'Marketplace' : undefined}
               aria-current={pathname === '/console/catalog' ? 'page' : undefined}
               onClick={() => setOpen(false)}
             >
@@ -275,6 +334,8 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
             </Link>
             <Link
               href="/console/library"
+              aria-label="Asset workspace"
+              title={collapsed ? 'Asset workspace' : undefined}
               onClick={() => {
                 localStorage.setItem('void-workspace-mode', 'assets');
                 window.dispatchEvent(new Event('void-workspace-mode'));
@@ -286,24 +347,27 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
             </Link>
           </section>
         </nav>
+        {platform.data?.granted && (
+          <Link className="agent-platform-link" href="/console/platform">
+            <ShieldCheck size={17} />
+            Platform administration
+          </Link>
+        )}
         <div className="agent-account-card">
-          <div className="agent-help">
-            <h3>{teacher ? 'What will you teach next?' : 'What would you like to learn?'}</h3>
-            <p>Start with an idea. Build it together.</p>
-            <Link href="/console/learn/agent">
-              <Sparkles size={15} /> Chat with AI
-            </Link>
-          </div>
           <div className="agent-person">
             <Avatar name={session?.user.fullName ?? 'Learner'} />
             <div>
               <strong>{session?.user.fullName}</strong>
               <span>
-                {profile.data?.persona === 'teacher'
-                  ? 'Teacher'
-                  : profile.data?.persona === 'student'
-                    ? 'Student'
-                    : 'Individual'}{' '}
+                {!profile.data
+                  ? 'Loading access…'
+                  : profile.data.workspace.kind === 'organization' && can('tenant:manage-users')
+                    ? 'Administrator'
+                    : profile.data.persona === 'teacher'
+                      ? 'Teacher'
+                      : profile.data?.persona === 'student'
+                        ? 'Student'
+                        : 'Individual'}{' '}
                 · {session?.tenant.name}
               </span>
             </div>
@@ -342,15 +406,19 @@ export function AgentWorkspaceShell({ children }: { children: ReactNode }) {
             ref={menu}
             className="agent-mobile-menu"
             aria-label="Open navigation"
+            aria-expanded={open}
+            aria-controls="workspace-navigation"
+            disabled={!ready}
             onClick={() => setOpen(true)}
           >
             <Menu size={20} />
           </button>
-          <span>Overview</span>
+          <span>
+            {assetPage ? 'Asset workspace' : (session?.tenant.name ?? 'Learning workspace')}
+          </span>
           <span aria-hidden>/</span>
           <strong>{selected}</strong>
           <div className="agent-topbar-actions">
-            {assetPage && can('asset:upload-own') && <VoidStudioLaunchButton variant="nav" />}
             <Link href="/console/learn/notifications" aria-label="Notifications">
               <Bell size={18} />
             </Link>

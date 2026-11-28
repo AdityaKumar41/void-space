@@ -22,7 +22,9 @@ export function LessonActivity({
   companion,
   companionVisualUrl,
   coaching,
+  presentationTarget,
 }: {
+  presentationTarget?: string | null;
   activity: LearningActivity;
   state: ExperienceState;
   onAction: (a: LessonAction) => void;
@@ -43,7 +45,7 @@ export function LessonActivity({
   const [previewState, setPreviewState] = useState<ExperienceState>(initialLessonActivityState),
     [previewError, setPreviewError] = useState('');
   const state = preview ? previewState : persistedState;
-  const [selected, setSelected] = useState<string | null>(null),
+  const [manualSelected, setSelected] = useState<string | null>(null),
     [ids, setIds] = useState<string[]>([]),
     [pairs, setPairs] = useState<Record<string, string>>({}),
     [order, setOrder] = useState<string[]>([]),
@@ -51,6 +53,7 @@ export function LessonActivity({
     [meshCount, setMeshCount] = useState<number | null>(
       display.scene.kind === 'model' && display.scene.builtin ? 3 : null,
     );
+  const selected = presentationTarget ?? manualSelected;
   const step = activity.steps[state.stepIndex],
     target = display.targets.find((t) => t.id === selected);
   const arranged =
@@ -193,6 +196,14 @@ export function LessonActivity({
           <aside className="learning-component-detail" aria-label="Selected component">
             <h3 className="font-semibold">{target.label}</h3>
             <p className="mt-2 leading-relaxed">{target.explanation}</p>
+            {target.placement && target.placement !== 'confirmed' && (
+              <p className="text-sm text-ink-dim">
+                Draft component ·{' '}
+                {target.placement === 'unplaced'
+                  ? 'position not supplied by the author'
+                  : 'identity and position awaiting review'}
+              </p>
+            )}
             {coaching?.targetId === target.id && (coaching.busy || coaching.answer) && (
               <div className="learning-component-coach" role="status">
                 {coaching.busy ? 'Looking at the lesson material…' : coaching.answer}

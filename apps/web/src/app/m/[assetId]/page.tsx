@@ -1,7 +1,7 @@
 /**
  * Model page — the public listing for one licensed asset (§6.1, FR-9.6).
  *
- * A Server Component. The only interactive part is the studio, so the licence terms, the token id and
+ * A Server Component. The only interactive part is the viewer, so the licence terms, the token id and
  * the transaction hash are present in the initial HTML: those are the facts a buyer came for, and
  * they should not depend on a client bundle running.
  *
@@ -26,7 +26,6 @@ import {
   thumbnailUrl,
 } from '../../../lib/public-api';
 import { CheckIcon } from '../../../components/ui/icons';
-import { VoidStudioLaunchButton } from '../../../components/studio-launch';
 import { MarketplaceEngagement } from '../../../components/marketplace-engagement';
 import { CheckoutButton } from '../../../components/checkout-button';
 import { WebArButton } from '../../../components/web-ar-button';
@@ -342,7 +341,12 @@ export default async function ModelPage({ params }: PageProps) {
                 page changes.
               </div>
 
-              <Link className="mb-3 block rounded-lg border border-hairline p-3 text-center text-sm" href={`/console/learn/agent?asset=${item.assetId}`}>Create lesson with this model</Link>
+              <Link
+                className="mb-3 block rounded-lg border border-hairline p-3 text-center text-sm"
+                href={`/console/learn/agent?asset=${item.assetId}`}
+              >
+                Create lesson with this model
+              </Link>
               <CheckoutButton
                 assetId={item.assetId}
                 priceCents={item.priceCents ?? 0}
@@ -370,19 +374,6 @@ export default async function ModelPage({ params }: PageProps) {
                 </Link>
               </div>
 
-              <VoidStudioLaunchButton
-                assetId={item.assetId}
-                name={item.name}
-                format={item.format}
-                filename={`${item.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}${item.format ? (item.format.startsWith('.') ? item.format : `.${item.format}`) : '.glb'}`}
-                modelUrl={gatewayUrl(item.ipfsCid)}
-                variant="secondary"
-                size="md"
-                className="mt-2 w-full justify-center"
-              >
-                Remix in Void Studio
-              </VoidStudioLaunchButton>
-
               <p
                 className="mt-4 text-[12px] leading-relaxed"
                 style={{ color: 'var(--vs-fg-faint)' }}
@@ -403,14 +394,14 @@ export default async function ModelPage({ params }: PageProps) {
               */}
               <div className="mt-4 flex flex-col gap-3.5 text-[13px] text-state-published">
                 <Verified>
-                  <b>Pinned, not stored.</b> The file resolves from content address{' '}
+                  <b>Stored with a content fingerprint.</b> The file resolves through the authorized gateway at{' '}
                   <span className="font-mono text-[12px] text-ink-dim">
                     {shortCid(item.ipfsCid)}
                   </span>
                   .
                 </Verified>
                 <Verified>
-                  <b>Measured in the viewer.</b> The studio counts the geometry it actually decoded,
+                  <b>Measured in the viewer.</b> The viewer counts the geometry it actually decoded,
                   so the record above can be checked against the file rather than trusted.
                 </Verified>
                 <Verified>

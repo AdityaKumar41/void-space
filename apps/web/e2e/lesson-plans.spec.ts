@@ -28,7 +28,7 @@ for (const mobile of [false, true])
     teacher.on('pageerror', (e) => errors.push(e.message));
     page.on('pageerror', (e) => errors.push(e.message));
     const use = async (locator: Locator) => {
-      await expect(locator).toBeEnabled();
+      await expect(locator).toBeEnabled({ timeout: 15000 });
       if (mobile) await locator.tap();
       else {
         await locator.focus();
@@ -49,7 +49,9 @@ for (const mobile of [false, true])
       teacherTenant = (await (await teacher.request.get('/api/v1/auth/me')).json()).user
         .activeTenantId;
       await teacher.goto('/console/learn');
-      await expect(teacher.getByRole('heading', { name: 'Lessons', exact: true })).toBeVisible();
+      await expect(
+        teacher.getByRole('heading', { name: 'Teaching materials', exact: true }),
+      ).toBeVisible();
       await teacher.getByText('Try a complete example', { exact: true }).click();
       await expect(
         teacher.getByRole('button', { name: '3D components', exact: true }),

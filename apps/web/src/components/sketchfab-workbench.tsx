@@ -1,12 +1,42 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { Box, Play } from 'lucide-react';
 import { sketchfabEmbedUrl, sketchfabModelId, type SketchfabModel } from '@void-space/types';
 import { apiFetch, apiDownload } from '../lib/api';
 import { useSession } from '../lib/session';
 import { Button } from './ui/button';
 
 const field = 'w-full rounded-control border border-hairline bg-base p-3 text-sm text-ink';
+
+function SearchPreview({ model }: { model: SketchfabModel }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="sketchfab-result-preview">
+      {model.thumbnail && !failed ? (
+        // Third-party thumbnails use the browser directly; no server image proxy is needed.
+        <img
+          src={model.thumbnail}
+          alt={model.name}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span className="sketchfab-preview-missing">
+          <Box size={32} aria-hidden="true" />
+          Preview unavailable
+        </span>
+      )}
+      <span className="sketchfab-preview-action">
+        <Play size={14} aria-hidden="true" />
+        View in 3D
+      </span>
+    </span>
+  );
+}
 
 /** Shared exploration surface. No assessment state or answers enter this component. */
 export function SketchfabWorkbench({
@@ -17,13 +47,14 @@ export function SketchfabWorkbench({
   compact?: boolean;
 }) {
   const { can } = useSession();
+  const router = useRouter();
+  const canImportPrivate = can('learning:generate-private') || can('learning:manage');
   const [input, setInput] = useState(initialLink);
   const [model, setModel] = useState<SketchfabModel | null>(null);
   const [results, setResults] = useState<SketchfabModel[]>([]);
   const [status, setStatus] = useState<{
     configured: boolean;
     connected: boolean;
-    studioImport?: boolean;
   } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,12 +64,15 @@ export function SketchfabWorkbench({
   const [loaded, setLoaded] = useState(false);
   const [frameVersion, setFrameVersion] = useState(0);
   const sequence = useRef(0);
+  const viewer = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (model && results.length)
+      viewer.current?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  }, [model?.uid, results.length]);
   useEffect(() => {
     if (compact) return;
     let active = true;
-    apiFetch<{ configured: boolean; connected: boolean; studioImport?: boolean }>(
-      '/tools/sketchfab/status',
-    )
+    apiFetch<{ configured: boolean; connected: boolean }>('/tools/sketchfab/status')
       .then((value) => {
         if (active) setStatus(value);
       })
@@ -81,6 +115,9 @@ export function SketchfabWorkbench({
     setBusy(true);
     setError('');
     setAnswer('');
+    setResults([]);
+    setModel(null);
+    setLoaded(false);
     try {
       const uid = sketchfabModelId(input);
       if (!uid && (/^https?:/i.test(input.trim()) || /^[a-z]+:\/\//i.test(input)))
@@ -138,22 +175,6 @@ export function SketchfabWorkbench({
       setBusy(false);
     }
   }
-  async function sendToStudio() {
-    if (!model || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const result = await apiFetch<{ url: string }>('/tools/sketchfab/transfer', {
-        method: 'POST',
-        body: { uid: model.uid },
-      });
-      // Navigate only to the administrator-configured Studio destination returned by the API.
-      window.location.assign(result.url);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not prepare Studio import');
-      setBusy(false);
-    }
-  }
   async function download() {
     if (!model || busy) return;
     setBusy(true);
@@ -169,7 +190,7 @@ export function SketchfabWorkbench({
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30000);
       setAnswer(
-        `Downloaded ${model.name}. Open Studio and use File → Import to edit it. Attribution: ${model.name} by ${model.author}, ${model.license}, ${model.url}. Keep this attribution with your project and follow the license.`,
+        `Downloaded ${model.name}. Use a compatible 3D editor to edit it. Attribution: ${model.name} by ${model.author}, ${model.license}, ${model.url}. Keep this attribution with your project and follow the license.`,
       );
       setAnswerMode('Download');
     } catch (caught) {
@@ -275,13 +296,15 @@ export function SketchfabWorkbench({
         </p>
       )}
       {results.length > 0 && (
-        <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="sketchfab-results" aria-label="Sketchfab search results">
           {results.map((result) => (
             <li key={result.uid}>
               <button
                 type="button"
                 disabled={busy}
-                className={`${field} h-full text-left hover:border-brand`}
+                className="sketchfab-result-card"
+                aria-label={`Preview ${result.name}`}
+                aria-pressed={model?.uid === result.uid}
                 onClick={() => {
                   sequence.current++;
                   setBusy(false);
@@ -291,9 +314,12 @@ export function SketchfabWorkbench({
                   setError('');
                 }}
               >
-                {result.name}
-                <span className="mt-1 block text-xs text-ink-dim">
-                  {result.author} · {result.license}
+                <SearchPreview key={`${result.uid}:${result.thumbnail}`} model={result} />
+                <span className="sketchfab-result-caption">
+                  <strong>{result.name}</strong>
+                  <span>
+                    {result.author} · {result.license}
+                  </span>
                 </span>
               </button>
             </li>
@@ -302,7 +328,10 @@ export function SketchfabWorkbench({
       )}
       {model && (
         <>
-          <div className="overflow-hidden rounded-control border border-hairline bg-deeper">
+          <div
+            className="overflow-hidden rounded-control border border-hairline bg-deeper"
+            ref={viewer}
+          >
             <iframe
               key={`${model.uid}-${frameVersion}`}
               title={`${model.name} — interactive Sketchfab viewer`}
@@ -345,14 +374,34 @@ export function SketchfabWorkbench({
               >
                 Reset view
               </Button>
-              {!compact && can('asset:upload-own') && model.downloadable && (
+              {!compact && model.downloadable && (
                 <>
-                  <Button disabled={busy || !status?.connected} onClick={download}>
-                    Download editable GLB
-                  </Button>
-                  {status?.studioImport && (
-                    <Button disabled={busy || !status.connected} onClick={sendToStudio}>
-                      Import into Studio
+                  {canImportPrivate && (
+                    <Button
+                      disabled={busy || !status?.connected}
+                      onClick={async () => {
+                        if (!model) return;
+                        setBusy(true);
+                        setError('');
+                        try {
+                          const result = await apiFetch<{ model: { id: string } }>(
+                            `/tools/sketchfab/models/${model.uid}/import`,
+                            { method: 'POST' },
+                          );
+                          router.push(`/console/learn/library?model=${result.model.id}`);
+                        } catch (error) {
+                          setError((error as Error).message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Import to my private library
+                    </Button>
+                  )}
+                  {can('asset:upload-own') && (
+                    <Button disabled={busy || !status?.connected} onClick={download}>
+                      Download editable GLB
                     </Button>
                   )}
                 </>
@@ -404,23 +453,5 @@ export function SketchfabWorkbench({
         </>
       )}
     </section>
-  );
-}
-
-/** Author-supplied reference links stay with the released lesson and appear in programs and rooms. */
-export function LessonSketchfabReferences({ text }: { text: string }) {
-  const links = [
-    ...new Set(
-      (text.match(/https:\/\/(?:www\.)?sketchfab\.com\/[^\s<>]+/g) ?? [])
-        .map((value) => sketchfabModelId(value.replace(/[.,;)]+$/, '')))
-        .filter((value): value is string => Boolean(value)),
-    ),
-  ].slice(0, 3);
-  return (
-    <>
-      {links.map((uid) => (
-        <SketchfabWorkbench key={uid} initialLink={uid} compact />
-      ))}
-    </>
   );
 }

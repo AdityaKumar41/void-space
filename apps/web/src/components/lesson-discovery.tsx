@@ -52,7 +52,7 @@ export function LessonDiscovery() {
           .filter((l) => `${l.title} ${l.summary}`.toLowerCase().includes(search.toLowerCase()))
           .map((l) => (
             <article key={l.id} className="learning-lesson-card">
-              <LessonCover />
+              <LessonCover title={l.title} />
               <div className="learning-lesson-card-copy">
                 <h2 className="text-xl font-semibold">{l.title}</h2>
                 <p className="mt-2 max-w-prose text-sm text-ink-dim">{l.summary}</p>
@@ -84,20 +84,23 @@ export function LessonDiscovery() {
             </article>
           ))}
       </section>
-      {q.data && !q.data.lessons.length && (
-        <div className="learning-empty">
-          <Compass size={38} />
-          <h2>Your next discovery is ahead.</h2>
-          <p>
-            No public lessons have been shared yet. You can explore a complete example or open a
-            lesson code.
-          </p>
-          <Link href="/console/learn">
-            Try an interactive lesson <ArrowUpRight size={16} />
-          </Link>
-          <Link href="/console/learn/join">Open a lesson code</Link>
-        </div>
-      )}
+      {q.data &&
+        !q.data.lessons.some((l) =>
+          `${l.title} ${l.summary}`.toLowerCase().includes(search.toLowerCase()),
+        ) && (
+          <div className="learning-empty">
+            <Compass size={38} />
+            <h2>{search ? 'No lessons match this subject' : 'Your next discovery is ahead.'}</h2>
+            <p>
+              No public lessons have been shared yet. You can explore a complete example or open a
+              lesson code.
+            </p>
+            <Link href="/console/learn">
+              Try an interactive lesson <ArrowUpRight size={16} />
+            </Link>
+            <Link href="/console/learn/join">Open a lesson code</Link>
+          </div>
+        )}
     </LearningLayout>
   );
 }

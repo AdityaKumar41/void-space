@@ -1,4 +1,4 @@
-import { generateText, isTextAiConfigured, type TextAiConfig } from '@void-space/studio-ai/text';
+import { generateText, isTextAiConfigured, type TextAiConfig } from '@void-space/ai/text';
 
 interface Context {
   title?: string;

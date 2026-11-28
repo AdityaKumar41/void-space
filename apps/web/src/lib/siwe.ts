@@ -14,10 +14,6 @@ function getEthereum(): EthereumProvider | null {
   return eth ?? null;
 }
 
-export function hasInjectedWallet(): boolean {
-  return getEthereum() !== null;
-}
-
 export interface SiweLoginResult {
   readonly user?: { readonly tenants: readonly Membership[] };
   readonly requiresTenantSelection?: boolean;

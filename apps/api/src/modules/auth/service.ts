@@ -212,6 +212,42 @@ export async function loadMemberships(email: string): Promise<PersonMembership[]
   }));
 }
 
+/** A shared email is discovery data, never proof that two tenant accounts have one owner. */
+export async function loadVerifiedMemberships(identity: {
+  email: string;
+  userId: string;
+  tenantId: string;
+}): Promise<PersonMembership[]> {
+  const [source, memberships] = await Promise.all([
+    withTenant(identity.tenantId, (db) =>
+      db.user.findUniqueOrThrow({
+        where: { id: identity.userId },
+        select: { id: true, googleId: true, passwordHash: true },
+      }),
+    ),
+    loadMemberships(identity.email),
+  ]);
+  const candidates = await withPlatform((db) =>
+    db.user.findMany({
+      where: { id: { in: memberships.map((m) => m.userId) } },
+      select: { id: true, googleId: true, passwordHash: true, learningProfile: true },
+    }),
+  );
+  return memberships.filter((m) => {
+    if (m.status !== 'active' || m.tenantStatus !== 'active') return false;
+    if (m.userId === source.id) return true;
+    const target = candidates.find((c) => c.id === m.userId);
+    const peers = (target?.learningProfile as { verifiedLearningPeers?: unknown } | null)
+      ?.verifiedLearningPeers;
+    return (
+      !!target &&
+      (Boolean(source.googleId && source.googleId === target.googleId) ||
+        Boolean(source.passwordHash && source.passwordHash === target.passwordHash) ||
+        (Array.isArray(peers) && peers.includes(source.id)))
+    );
+  });
+}
+
 function permissionsFor(roles: readonly Role[]): Permission[] {
   const granted = new Set<Permission>();
   for (const role of roles) {
@@ -263,7 +299,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     readonly tenantId: string;
     readonly roles: readonly Role[];
   }): Promise<SessionUser> {
-    const memberships = await loadMemberships(params.email);
+    const memberships = await loadVerifiedMemberships(params);
     const current = memberships.find((membership) => membership.userId === params.userId);
 
     return {
@@ -501,11 +537,26 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     }
 
     // A successful password check proves these memberships belong to the same account owner.
-    if(matching.length>1)for(const member of matching)await withTenant(member.tenantId,async db=>{
-      const user=await db.user.findUniqueOrThrow({where:{id:member.id}});
-      const profile=(user.learningProfile??{}) as {verifiedLearningPeers?:string[]};
-      await db.user.update({where:{id:member.id},data:{learningProfile:{...profile,verifiedLearningPeers:[...new Set([...(profile.verifiedLearningPeers??[]),...matching.map(m=>m.id)])]}}});
-    });
+    if (matching.length > 1)
+      for (const member of matching)
+        await withTenant(member.tenantId, async (db) => {
+          const user = await db.user.findUniqueOrThrow({ where: { id: member.id } });
+          const profile = (user.learningProfile ?? {}) as { verifiedLearningPeers?: string[] };
+          await db.user.update({
+            where: { id: member.id },
+            data: {
+              learningProfile: {
+                ...profile,
+                verifiedLearningPeers: [
+                  ...new Set([
+                    ...(profile.verifiedLearningPeers ?? []),
+                    ...matching.map((m) => m.id),
+                  ]),
+                ],
+              },
+            },
+          });
+        });
     const chosen =
       (input.tenantId
         ? matching.find((candidate) => candidate.tenantId === input.tenantId)
@@ -909,6 +960,16 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     const actorLabel = `${input.fullName} <${invite.email}>`;
 
     const createdUserId = await withTenant(invite.tenantId, async (db) => {
+      await db.$queryRaw`SELECT id FROM invites WHERE id=${invite.id}::uuid FOR UPDATE`;
+      const current = await db.invite.findUnique({ where: { id: invite.id } });
+      if (!current || current.tokenHash !== parsed.tokenHash) throw new NotFoundError('Invitation');
+      if (current.acceptedAt)
+        throw new ConflictError('This invitation has already been accepted', 'INVITE_ALREADY_USED');
+      if (current.expiresAt.getTime() <= Date.now())
+        throw new ConflictError('This invitation has expired', 'INVITE_EXPIRED');
+      const tenant = await db.tenant.findUniqueOrThrow({ where: { id: invite.tenantId } });
+      if (tenant.status !== 'active')
+        throw new ForbiddenError('This workspace has been suspended', 'TENANT_SUSPENDED');
       // The invitee may already exist in this tenant (re-invited after leaving).
       const existing = await db.user.findUnique({
         where: { tenantId_email: { tenantId: invite.tenantId, email: invite.email } },

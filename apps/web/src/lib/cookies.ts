@@ -6,4 +6,3 @@
  * that is where these belong if a third consumer ever appears.
  */
 export const ACCESS_COOKIE = 'vs_access';
-export const REFRESH_COOKIE = 'vs_refresh';

@@ -229,7 +229,7 @@ export function AssetQuickLook({
                 </a>
               ) : null}
               {version?.ipfsCid ? (
-                <a className="inline-flex h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard hover:bg-veil-12 border-hairline-strong bg-transparent text-ink-dim hover:bg-veil-6 hover:text-ink" href={`/ipfs/${version.ipfsCid}`} target="_blank" rel="noreferrer">
+                <a className="inline-flex h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard hover:bg-veil-12 border-hairline-strong bg-transparent text-ink-dim hover:bg-veil-6 hover:text-ink" href={`/api/v1/content/${version.ipfsCid}`} target="_blank" rel="noreferrer">
                   Raw file
                 </a>
               ) : null}

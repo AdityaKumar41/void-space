@@ -1,3 +1,6 @@
+import { modelPickerRoutes } from './model-picker';
+import { safeLearningProgress } from '../learning-hub/telemetry';
+import { learningRunRoutes } from './runs';
 import { withTenant, type Prisma } from '@void-space/db';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
@@ -14,6 +17,8 @@ export async function learningAgentRoutes(
   { env, producer }: { env: ApiEnv; producer: JobProducer },
 ) {
   const auth = { preHandler: app.authenticate };
+  await learningRunRoutes(app);
+  await modelPickerRoutes(app);
   app.get('/learning/progress', auth, async (request) => {
     const p = request.principal!,
       grants = await withTenant(p.tenantId, (db) =>
@@ -58,6 +63,11 @@ export async function learningAgentRoutes(
   app.post('/learning/agent/images', auth, async (request, reply) => {
     const p = request.principal!;
     requirePrivateAuthor(p);
+    if (!env.AI_IMAGE_ENABLED)
+      throw new ConflictError(
+        'Image generation is unavailable for now. Upload an approved image instead.',
+        'IMAGE_GENERATION_PAUSED',
+      );
     const input = z
       .object({
         prompt: z.string().trim().min(5).max(2000),
@@ -72,6 +82,11 @@ export async function learningAgentRoutes(
   app.post('/learning/agent/activity/:id/retry', auth, async (request, reply) => {
     const p = request.principal!;
     requirePrivateAuthor(p);
+    if (!env.AI_IMAGE_ENABLED)
+      throw new ConflictError(
+        'Image generation is unavailable for now. Upload an approved image instead.',
+        'IMAGE_GENERATION_PAUSED',
+      );
     const { id } = params.parse(request.params);
     const previous = await withTenant(p.tenantId, (db) =>
       db.learningTask.findFirst({
@@ -106,7 +121,7 @@ export async function learningAgentRoutes(
       }),
     );
     return {
-      imageAvailable: !!env.AI_IMAGE_BASE_URL,
+      imageAvailable: env.AI_IMAGE_ENABLED && !!env.AI_IMAGE_BASE_URL,
       nextCursor: tasks.length > 50 ? tasks[49]!.id : null,
       tasks: tasks.slice(0, 50).map((task) => {
         const input = task.input as {
@@ -127,7 +142,7 @@ export async function learningAgentRoutes(
           id: task.id,
           kind: task.kind,
           status: task.status,
-          progress: task.progress,
+          progress: safeLearningProgress(task.progress),
           error: task.error,
           createdAt: task.createdAt,
           title: (
@@ -230,7 +245,10 @@ export async function learningAgentRoutes(
         },
       }),
     );
-    return { thread, tasks };
+    return {
+      thread,
+      tasks: tasks.map((task) => ({ ...task, progress: safeLearningProgress(task.progress) })),
+    };
   });
   app.patch('/learning/agent/threads/:id', auth, async (request) => {
     requirePrivateAuthor(request.principal!);
@@ -273,9 +291,14 @@ export async function learningAgentRoutes(
         eventKey: uuid,
         revision: z.number().int().min(0),
         message: z.string().trim().min(1).max(4000),
-        sourceIds: z.array(uuid).max(5).default([]),
+        sourceIds: z.array(uuid).max(20).default([]),
         assetId: uuid.optional(),
         privateModelId: uuid.optional(),
+        annotationWorkspace: z.boolean().optional(),
+        selectedAnnotationId: z
+          .string()
+          .regex(/^[a-zA-Z0-9_-]{1,80}$/)
+          .optional(),
         durationMinutes: z.number().int().min(5).max(180).default(30),
         audience: z.string().min(3).max(200).default('Learners aged 13+'),
         planId: uuid.optional(),
@@ -323,10 +346,22 @@ export async function learningAgentRoutes(
         )
       : null;
     if (input.privateModelId && !model) throw new NotFoundError('Private model');
-    const contextPlanId =
-      input.planId ??
-      [...messages].reverse().find((m) => m.role === 'assistant' && m.result?.planId)?.result
-        ?.planId;
+    if (input.annotationWorkspace && !model)
+      throw new ValidationError('Choose a private model for the annotation workspace.');
+    if (
+      input.selectedAnnotationId &&
+      !(model?.metadata as { labels?: { id: string }[] } | null)?.labels?.some(
+        (label) => label.id === input.selectedAnnotationId,
+      )
+    )
+      throw new ValidationError(
+        'The selected annotation changed. Reload the model before asking AI to edit it.',
+      );
+    const contextPlanId = input.annotationWorkspace
+      ? undefined
+      : (input.planId ??
+        [...messages].reverse().find((m) => m.role === 'assistant' && m.result?.planId)?.result
+          ?.planId);
     const plan = contextPlanId
       ? await withTenant(p.tenantId, (db) =>
           db.lessonPlan.findFirst({ where: { id: contextPlanId, ownerId: p.userId } }),
@@ -349,9 +384,18 @@ export async function learningAgentRoutes(
         );
       else if (selected?.assetId) asset = await lessonAsset(p, selected.assetId);
     }
+    const annotation = model?.metadata as
+      { labelsReviewed?: boolean; labels?: { sourceRefs?: { sourceId: string }[] }[] } | undefined;
+    const annotationSources = annotation?.labelsReviewed
+      ? (annotation.labels ?? []).flatMap((l) => (l.sourceRefs ?? []).map((r) => r.sourceId))
+      : [];
     const selectedSources = [
-      ...new Set([...input.sourceIds, ...(selected?.sourceIds ?? [])]),
-    ].slice(0, 5);
+      ...new Set([...input.sourceIds, ...(selected?.sourceIds ?? []), ...annotationSources]),
+    ];
+    if (selectedSources.length > 20)
+      throw new ValidationError(
+        'Choose at most 20 sources across your attachments, annotations and lesson.',
+      );
 
     const task = await enqueueLearningTask(
       env,

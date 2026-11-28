@@ -1,24 +1,25 @@
+import { syncPublicCatalogEntry } from '@void-space/db';
 /**
  * `chain-license` processor (SRS §3.9, FR-9.1–FR-9.6, FR-10.1).
  *
  * The publish pipeline, in order:
  *
- *   1. build the ERC-721 metadata document for the licence and pin it to IPFS (FR-9.4);
+ *   1. build the ERC-721 metadata document for the licence and store it in S3 (FR-9.4);
  *   2. `mintLicense(assetId, ipfsCid, licenseTermsHash, recipient)` on Avalanche Fuji;
  *   3. record the `License` row with the real tx hash, block and gas (FR-9.6);
  *   4. flip the asset to `published` and stamp `publishedAt`;
- *   5. enqueue `xr-publish` so the EoN push happens independently (FR-10.1).
+ *   5. notify the asset creator.
  *
  * The asset only becomes `published` at step 4, which is the point: nothing is advertised as
  * live until a transaction receipt exists.
  */
-import { recordAudit, removePublicCatalogEntry, syncPublicCatalogEntry, withTenant } from '@void-space/db';
+import { recordAudit, removePublicCatalogEntry, withTenant } from '@void-space/db';
 import { licenseMetadataDocumentSchema, type LicenseMetadataDocument } from '@void-space/types';
 import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
 
+import { createAssetContentClient, type AssetContentClient } from '@void-space/storage';
 import { createChainClient, type ChainClient } from '../lib/chain';
-import { createIpfsClient, type IpfsClient } from '../lib/ipfs';
 import {
   attemptOf,
   createJobContext,
@@ -33,9 +34,8 @@ export interface ChainLicenseDeps {
   readonly chainId?: number;
   readonly contractAddress: string;
   readonly privateKey: string;
-  readonly ipfsApiUrl: string;
   readonly chain?: ChainClient;
-  readonly ipfs?: IpfsClient;
+  readonly content?: AssetContentClient;
   /** Needed to queue the follow-up EoN push and notification after a mint. */
   readonly producer: WorkerProducer;
 }
@@ -56,15 +56,19 @@ interface ChainLicensePayload extends JobPayload {
 }
 
 export function createChainLicenseProcessor(deps: ChainLicenseDeps) {
-  const chain = deps.chain ?? createChainClient({
-    rpcUrl: deps.rpcUrl,
-    chainId: deps.chainId,
-    contractAddress: deps.contractAddress,
-    privateKey: deps.privateKey,
-  });
-  const ipfs = deps.ipfs ?? createIpfsClient({ apiUrl: deps.ipfsApiUrl });
+  const chain =
+    deps.chain ??
+    createChainClient({
+      rpcUrl: deps.rpcUrl,
+      chainId: deps.chainId,
+      contractAddress: deps.contractAddress,
+      privateKey: deps.privateKey,
+    });
+  const content = deps.content ?? createAssetContentClient();
 
-  return async function processChainLicense(job: Job<ChainLicensePayload>): Promise<Record<string, unknown>> {
+  return async function processChainLicense(
+    job: Job<ChainLicensePayload>,
+  ): Promise<Record<string, unknown>> {
     const tenantId = String(job.data.tenantId ?? '');
     const ctx = createJobContext({
       jobId: String(job.id),
@@ -87,7 +91,13 @@ export function createChainLicenseProcessor(deps: ChainLicenseDeps) {
         return result;
       }
 
-      const result = await publish(deps, chain, ipfs, tenantId, job.data as Required<ChainLicensePayload>);
+      const result = await publish(
+        deps,
+        chain,
+        content,
+        tenantId,
+        job.data as Required<ChainLicensePayload>,
+      );
       await ctx.succeed(result);
       return result;
     } catch (error) {
@@ -133,7 +143,7 @@ type PublishPayload = ChainLicensePayload & {
 async function publish(
   deps: ChainLicenseDeps,
   chain: ChainClient,
-  ipfs: IpfsClient,
+  content: AssetContentClient,
   tenantId: string,
   payload: PublishPayload,
 ): Promise<Record<string, unknown>> {
@@ -240,7 +250,7 @@ async function publish(
     return { tokenId: onChainToken.toString(), adopted: true };
   }
 
-  // 1. The licence document that backs `tokenURI` (FR-9.4). Written to IPFS so the CID in
+  // 1. The licence document that backs `tokenURI` (FR-9.4). Stored immutably so the content address in
   //    the token cannot be swapped for different terms later.
   const tokenIdPreview = (await chain.totalMinted()) + 1n;
   const document: LicenseMetadataDocument = licenseMetadataDocumentSchema.parse({
@@ -263,7 +273,10 @@ async function publish(
   });
 
   const metadataPath = await writeTempJson(document);
-  const metadata = await ipfs.add({ filePath: metadataPath, fileName: `licence-${payload.assetId}.json` });
+  const metadata = await content.add({
+    filePath: metadataPath,
+    fileName: `licence-${payload.assetId}.json`,
+  });
 
   // 2. Mint.
   const minted = await chain.mint({
@@ -318,16 +331,32 @@ async function publish(
 
   // The token's metadata pointer must be set by the publisher (the contract allows it only
   // for the publisher role), so this is a second, cheap transaction.
-  await chain.setMetadataCid(minted.tokenId, metadata.cid).catch((error: unknown) => {
-    deps.logger.warn({ err: error, tokenId: minted.tokenId.toString() }, 'could not set token metadata CID');
-  });
+  await chain
+    .setMetadataCid(
+      minted.tokenId,
+      `${(process.env.PUBLIC_WEB_ORIGIN ?? 'https://localhost').replace(/\/$/, '')}/api/v1/content/${metadata.cid}`,
+    )
+    .catch((error: unknown) => {
+      deps.logger.warn(
+        { err: error, tokenId: minted.tokenId.toString() },
+        'could not set token metadata CID',
+      );
+    });
 
   // 4. Publish the asset.
-  await markPublished(deps.producer, chain, tenantId, payload, minted.tokenId, {
-    txHash: minted.txHash,
-    blockNumber: minted.blockNumber,
-    gasUsed: minted.gasUsed,
-  }, context.name);
+  await markPublished(
+    deps.producer,
+    chain,
+    tenantId,
+    payload,
+    minted.tokenId,
+    {
+      txHash: minted.txHash,
+      blockNumber: minted.blockNumber,
+      gasUsed: minted.gasUsed,
+    },
+    context.name,
+  );
 
   return {
     tokenId: minted.tokenId.toString(),
@@ -337,7 +366,7 @@ async function publish(
   };
 }
 
-/** Flips the asset to `published` and queues the EoN push. */
+/** Flips the asset to `published` and notifies its creator. */
 async function markPublished(
   producer: WorkerProducer,
   chain: ChainClient,
@@ -347,8 +376,6 @@ async function markPublished(
   receipt?: { txHash: string; blockNumber: bigint; gasUsed: bigint },
   assetName?: string,
 ): Promise<void> {
-  const jobId = crypto.randomUUID();
-
   await withTenant(tenantId, async (db) => {
     const asset = await db.asset.findFirst({
       where: { id: payload.assetId },
@@ -383,36 +410,6 @@ async function markPublished(
     // §6.1 — the marketplace is an anonymous read model, so the projection is written here, at the
     // only moment an asset can genuinely be listed: after a receipt exists. A takedown deletes it.
     await syncPublicCatalogEntry(db, { tenantId, assetId: payload.assetId });
-
-    if (payload.publishToXr !== false) {
-      const xrPayload = {
-        tenantId,
-        assetId: payload.assetId,
-        tokenId: tokenId.toString(),
-        ipfsCid: payload.ipfsCid,
-      };
-
-      await db.job.create({
-        data: {
-          id: jobId,
-          tenantId,
-          queue: 'xr_publish',
-          status: 'queued',
-          entityType: 'asset',
-          entityId: payload.assetId,
-          payload: xrPayload as never,
-          maxAttempts: 3,
-        },
-      });
-
-      // Queue it for real: writing the row alone left the job invisible to the worker.
-      await producer.enqueue({
-        id: jobId,
-        queue: 'xr-publish',
-        payload: xrPayload,
-        maxAttempts: 3,
-      });
-    }
 
     if (asset) {
       const notifyId = crypto.randomUUID();
@@ -477,7 +474,7 @@ async function revoke(
   return { tokenId: license.tokenId.toString(), txHash: result.txHash, revoked: true };
 }
 
-/** Writes a temporary JSON file so the IPFS client can stream it like any other content. */
+/** Writes a temporary JSON file so the object store can stream it like any other content. */
 async function writeTempJson(document: unknown): Promise<string> {
   const { writeFile, mkdtemp } = await import('node:fs/promises');
   const { join } = await import('node:path');

@@ -136,6 +136,8 @@ it('only retries an owned failed image request and keeps the previous failure', 
   const spy = vi
     .spyOn(JobProducer.prototype, 'enqueue')
     .mockResolvedValue({ id: 'test', queue: 'learning', enqueued: false });
+  const enabled = ctx.env.AI_IMAGE_ENABLED;
+  ctx.env.AI_IMAGE_ENABLED = true;
   try {
     expect(
       (
@@ -157,6 +159,7 @@ it('only retries an owned failed image request and keeps the previous failure', 
     const history = (await call('/learning/agent/activity', other)).json().tasks;
     expect(history).toHaveLength(2);
   } finally {
+    ctx.env.AI_IMAGE_ENABLED = enabled;
     spy.mockRestore();
   }
 });

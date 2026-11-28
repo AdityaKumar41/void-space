@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { savePrivateLibraryModel } from '../learning-agent/library';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { sketchfabModelId, type SketchfabModel } from '@void-space/types';
 import { z } from 'zod';
@@ -55,6 +55,9 @@ export function sketchfabModel(raw: unknown): SketchfabModel {
         .optional(),
       license: z.object({ label: z.string().optional() }).nullish(),
       isDownloadable: z.boolean().optional(),
+      tags: z
+        .array(z.object({ slug: z.string().optional(), name: z.string().optional() }))
+        .optional(),
       thumbnails: z
         .object({
           images: z.array(z.object({ url: z.string().url(), width: z.number().optional() })),
@@ -62,57 +65,33 @@ export function sketchfabModel(raw: unknown): SketchfabModel {
         .optional(),
     })
     .parse(raw);
+  const thumbnails = (data.thumbnails?.images ?? [])
+    .filter((image) => new URL(image.url).protocol === 'https:')
+    .sort((a, b) => (a.width ?? 0) - (b.width ?? 0));
   const thumbnail =
-    data.thumbnails?.images.find((image) => new URL(image.url).protocol === 'https:')?.url ?? null;
+    (thumbnails.find((image) => (image.width ?? 0) >= 640) ?? thumbnails.at(-1))?.url ?? null;
   return {
     uid: data.uid,
     name: data.name,
     author: data.user?.displayName ?? data.user?.username ?? 'Sketchfab author',
     license: data.license?.label ?? 'See model page for license',
     downloadable: data.isDownloadable === true,
+    aiUseAllowed:
+      !!data.tags &&
+      !data.tags.some((tag) =>
+        [tag.slug, tag.name].some(
+          (value) => value?.replace(/[-_\s]/g, '').toLowerCase() === 'noai',
+        ),
+      ),
     url: `https://sketchfab.com/3d-models/${data.uid}`,
     thumbnail,
   };
 }
 
-export interface SketchfabTransferStore {
-  put(ticket: string, value: string): Promise<void>;
-  take(ticket: string): Promise<string | null>;
-}
-
 export async function sketchfabRoutes(
   app: FastifyInstance,
-  {
-    env,
-    fetchImpl = fetch,
-    transferStore,
-  }: { env: ApiEnv; fetchImpl?: typeof fetch; transferStore?: SketchfabTransferStore },
+  { env, fetchImpl = fetch }: { env: ApiEnv; fetchImpl?: typeof fetch },
 ) {
-  let redis: Redis | undefined;
-  const store = transferStore ?? {
-    async put(ticket: string, value: string) {
-      redis ??= new Redis(env.REDIS_URL, {
-        lazyConnect: true,
-        maxRetriesPerRequest: 1,
-        enableOfflineQueue: false,
-      });
-      if (redis.status === 'wait') await redis.connect();
-      await redis.set(`sketchfab:transfer:${ticket}`, value, 'EX', 300);
-    },
-    async take(ticket: string) {
-      redis ??= new Redis(env.REDIS_URL, {
-        lazyConnect: true,
-        maxRetriesPerRequest: 1,
-        enableOfflineQueue: false,
-      });
-      if (redis.status === 'wait') await redis.connect();
-      return redis.getdel(`sketchfab:transfer:${ticket}`);
-    },
-  };
-  app.addHook('onClose', async () => {
-    redis?.disconnect();
-  });
-  const transfers = sealedCookie(env.JWT_REFRESH_SECRET, 'model-transfer');
   const credentials = sealedCookie(env.JWT_REFRESH_SECRET, 'credentials');
   const states = sealedCookie(env.JWT_REFRESH_SECRET, 'state');
   const cookie = {
@@ -127,11 +106,7 @@ export async function sketchfabRoutes(
     env.SKETCHFAB_REDIRECT_URI &&
     env.SKETCHFAB_WEB_ORIGIN,
   );
-  for (const setting of [
-    env.SKETCHFAB_WEB_ORIGIN,
-    env.SKETCHFAB_REDIRECT_URI,
-    env.SKETCHFAB_STUDIO_URL,
-  ]) {
+  for (const setting of [env.SKETCHFAB_WEB_ORIGIN, env.SKETCHFAB_REDIRECT_URI]) {
     if (!setting) continue;
     const url = new URL(setting);
     if (
@@ -195,7 +170,6 @@ export async function sketchfabRoutes(
     return {
       configured,
       connected: Boolean(userToken(actor, request.cookies[SESSION])),
-      studioImport: Boolean(env.SKETCHFAB_STUDIO_URL),
     };
   });
   app.post('/tools/sketchfab/connect', auth, async (request, reply) => {
@@ -213,6 +187,7 @@ export async function sketchfabRoutes(
     const url = new URL('https://sketchfab.com/oauth2/authorize/');
     url.search = new URLSearchParams({
       response_type: 'code',
+      scope: 'read',
       client_id: env.SKETCHFAB_CLIENT_ID!,
       redirect_uri: env.SKETCHFAB_REDIRECT_URI!,
       state,
@@ -310,7 +285,7 @@ export async function sketchfabRoutes(
         title: model.name,
         summary: `Model: ${model.name}. Author: ${model.author}. License: ${model.license}. This coach has metadata only and cannot see geometry or verify components.`,
         narration:
-          'Orbit by dragging, zoom with the wheel, and use the viewer controls to inspect the model. View annotations supplied by its author. Editing requires a permitted download and import into Studio. Verify attribution and license before reuse.',
+          'Orbit by dragging, zoom with the wheel, and use the viewer controls to inspect the model. View annotations supplied by its author. Editable model use requires a permitted download or private library import. Verify attribution and license before reuse.',
         outline: [
           'Compare the silhouette from multiple angles.',
           'Describe what you observe before asking for an explanation.',
@@ -374,6 +349,37 @@ export async function sketchfabRoutes(
     }
     return glb;
   }
+  app.post(
+    '/tools/sketchfab/models/:uid/import',
+    { preHandler: app.authenticate, config: { rateLimit: { max: 6, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const uid = sketchfabModelId((request.params as { uid: string }).uid);
+      if (!uid) throw new ValidationError('Invalid Sketchfab model');
+      const token = userToken(
+        `${principal.tenantId}:${principal.userId}`,
+        request.cookies[SESSION],
+      );
+      if (!token)
+        throw new ConflictError(
+          'Connect your Sketchfab account before importing.',
+          'SKETCHFAB_CONNECT_REQUIRED',
+        );
+      const model = sketchfabModel(await provider(`models/${uid}`, token));
+      if (!model.downloadable)
+        throw new ForbiddenError('The author has not enabled downloads for this model.');
+      const bytes = await downloadModel(uid, token);
+      const saved = await savePrivateLibraryModel(principal, env, bytes, model.name + '.glb', {
+        provider: 'sketchfab',
+        uid,
+        url: model.url,
+        author: model.author,
+        license: model.license,
+        aiUseAllowed: model.aiUseAllowed,
+      });
+      return reply.code(201).send({ model: saved });
+    },
+  );
   // The downloading end user, not a site-wide API token, must authorize every download.
   app.get(
     '/tools/sketchfab/models/:uid/download',
@@ -395,72 +401,6 @@ export async function sketchfabRoutes(
         .header('Cache-Control', 'no-store')
         .header('Content-Disposition', `attachment; filename="sketchfab-${uid}.glb"`);
       return reply.type('model/gltf-binary').send(glb);
-    },
-  );
-  app.post(
-    '/tools/sketchfab/transfer',
-    {
-      preHandler: app.requirePermission('asset:upload-own'),
-      config: { rateLimit: { max: 6, timeWindow: '1 minute' } },
-    },
-    async (request, reply) => {
-      const { uid } = parseBody(
-        z.object({ uid: z.string().regex(/^[a-f0-9]{32}$/) }),
-        request.body,
-      );
-      if (!configured || !env.SKETCHFAB_STUDIO_URL)
-        throw new ConflictError(
-          'Studio import destination is not configured. Download the GLB and import it through File → Sketchfab Models.',
-        );
-      const target = new URL(env.SKETCHFAB_STUDIO_URL);
-      if (
-        target.protocol !== 'https:' &&
-        !(target.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(target.hostname))
-      )
-        throw new ValidationError('Studio destination must use HTTPS');
-      const actor = `${request.principal!.tenantId}:${request.principal!.userId}`;
-      const token = userToken(actor, request.cookies[SESSION]);
-      if (!token)
-        throw new ConflictError(
-          'Connect your Sketchfab account before importing into Studio.',
-          'SKETCHFAB_CONNECT_REQUIRED',
-        );
-      const model = sketchfabModel(await provider(`models/${uid}`, token));
-      if (!model.downloadable)
-        throw new ForbiddenError('The author has not enabled downloads for this model.');
-      const ticket = randomBytes(32).toString('hex');
-      await store.put(ticket, transfers.seal({ uid, token, expires: Date.now() + 300_000 }));
-      const base = new URL('/api/v1', env.SKETCHFAB_WEB_ORIGIN!);
-      target.hash = new URLSearchParams({
-        sketchfabTransfer: ticket,
-        sketchfabApi: base.toString(),
-        sketchfabCredit: `${model.name} by ${model.author} · ${model.license} · ${model.url}`,
-      }).toString();
-      reply.header('Referrer-Policy', 'no-referrer');
-      return { url: target.toString() };
-    },
-  );
-  // A short-lived, single-use capability authorizes exactly one model. No provider token reaches Studio.
-  app.post(
-    '/tools/sketchfab/receive',
-    { config: { rateLimit: { max: 12, timeWindow: '1 minute' } } },
-    async (request, reply) => {
-      const { ticket } = parseBody(
-        z.object({ ticket: z.string().regex(/^[a-f0-9]{64}$/) }),
-        request.body,
-      );
-      const grant = z
-        .object({ uid: z.string().regex(/^[a-f0-9]{32}$/), token: z.string(), expires: z.number() })
-        .safeParse(transfers.open((await store.take(ticket)) ?? undefined));
-      if (!grant.success || grant.data.expires <= Date.now())
-        throw new ForbiddenError(
-          'This model transfer expired or was already used. Start a new import from Void Space.',
-        );
-      const glb = await downloadModel(grant.data.uid, grant.data.token);
-      return reply
-        .type('model/gltf-binary')
-        .header('Content-Disposition', 'attachment; filename="sketchfab-model.glb"')
-        .send(glb);
     },
   );
 }

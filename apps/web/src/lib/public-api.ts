@@ -14,7 +14,6 @@ import type {
   PublicCatalogItem,
   PublicCatalogPage,
   PublicCatalogSort,
-  PublicCatalogStats,
 } from '@void-space/types';
 
 import { API_INTERNAL_URL, apiFetch } from './api';
@@ -26,7 +25,10 @@ import { API_INTERNAL_URL, apiFetch } from './api';
  * rejects anything outside it, so an option added here without a server counterpart fails loudly in
  * a request rather than silently doing nothing.
  */
-export const SORT_OPTIONS: readonly { readonly value: PublicCatalogSort; readonly label: string }[] = [
+export const SORT_OPTIONS: readonly {
+  readonly value: PublicCatalogSort;
+  readonly label: string;
+}[] = [
   { value: 'newest', label: 'Newest' },
   { value: 'oldest', label: 'Oldest' },
   { value: 'triangles-desc', label: 'Most detailed' },
@@ -37,7 +39,10 @@ export const SORT_OPTIONS: readonly { readonly value: PublicCatalogSort; readonl
 /** Tolerates the API being unreachable so the storefront renders an honest empty state, not a 500. */
 async function safe<T>(path: string): Promise<T | null> {
   try {
-    return await apiFetch<T>(path, { baseUrl: `${API_INTERNAL_URL}/api/v1`, suppressErrorLog: true });
+    return await apiFetch<T>(path, {
+      baseUrl: `${API_INTERNAL_URL}/api/v1`,
+      suppressErrorLog: true,
+    });
   } catch {
     return null;
   }
@@ -71,10 +76,6 @@ export async function marketplaceFacets(): Promise<PublicCatalogFacets | null> {
   return safe<PublicCatalogFacets>('/public/facets');
 }
 
-export async function marketplaceStats(): Promise<PublicCatalogStats | null> {
-  return safe<PublicCatalogStats>('/public/stats');
-}
-
 export async function marketplaceItem(assetId: string): Promise<PublicCatalogItem | null> {
   const payload = await safe<{ item: PublicCatalogItem }>(`/public/catalog/${assetId}`);
   return payload?.item ?? null;
@@ -82,29 +83,10 @@ export async function marketplaceItem(assetId: string): Promise<PublicCatalogIte
 
 /** The content gateway. Served by nginx, which caches what it fetches from Kubo (FR-8.3). */
 export function gatewayUrl(cid: string): string {
-  return `/ipfs/${cid}`;
+  return `/api/v1/content/${cid}`;
 }
 
 /** Renders are produced ahead of time by `scripts/render-thumbnails.mjs`, keyed by content address. */
 export function thumbnailUrl(cid: string): string {
   return `/thumbnails/${cid}`;
-}
-
-/**
- * Whether a render can exist for an asset in this state.
- *
- * Renders are produced by `pnpm assets:thumbnails` (`scripts/render-thumbnails.mjs`), which walks
- * `/assets?publishedOnly=true` — deliberately, because a draft nobody can see is not worth a headless
- * browser round trip. So a card that requests `/thumbnails/<cid>` for a draft, a rejected asset or one
- * still in review is asking for a file the pipeline never wrote, and gets a 404 on every page load.
- *
- * The card copes — it falls back to a drawn figure — but a guaranteed-404 request is still a request,
- * and it made the UI audit fail on every screen that lists unpublished work. Gating on the state is what
- * makes the fallback a decision rather than a recovery.
- *
- * This is coupled to the renderer's selection rule on purpose and names it, so that if rendering is ever
- * extended to another state, both places are obvious.
- */
-export function hasRender(status: string): boolean {
-  return status === 'published';
 }

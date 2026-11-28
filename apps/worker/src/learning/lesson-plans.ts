@@ -1,10 +1,14 @@
-import { learningToolProgress } from './progress';
+import { modelAllowsAi } from '@void-space/types';
+import { readLearningFile, writeLearningFile } from '@void-space/db';
+import { retrieveLearningSources } from './sources/retrieval';
+import { learningToolProgress, learningToolUsage } from './progress';
 import {
   composeLessonDraft,
+  composeLessonSectionDraft,
   compactLessonPrompt,
   type CompositionContext,
 } from './lesson-composition';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   withTenant,
@@ -18,12 +22,12 @@ import {
   isTextAiConfigured,
   type TextAiConfig,
   type TextRequest,
-} from '@void-space/studio-ai/text';
+} from '@void-space/ai/text';
 import { UnrecoverableError } from 'bullmq';
 import PDFDocument from 'pdfkit';
 import PptxGenJS from 'pptxgenjs';
 import sharp from 'sharp';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 const clean = (text: string) =>
   text
@@ -92,8 +96,16 @@ export async function generateLessonPlanTask(
       }),
     );
     if (!model) throw new UnrecoverableError('The selected private model is unavailable.');
+    if (!modelAllowsAi(model.metadata))
+      throw new UnrecoverableError(
+        'This Sketchfab model does not permit AI processing. Use the manual lesson editor.',
+      );
     data.model = { id: model.id, title: model.title, metadata: model.metadata };
   }
+  if (data.model && !modelAllowsAi(data.model.metadata))
+    throw new UnrecoverableError(
+      'This Sketchfab model does not permit AI processing. Use the manual lesson editor.',
+    );
   const sourceIds = original?.sourceIds ?? request!.sourceIds;
   const sources = await withTenant(tenantId, (db) =>
     db.learningSource.findMany({
@@ -113,10 +125,10 @@ export async function generateLessonPlanTask(
     'working',
     'Building the sequence, explanations and knowledge checks',
   );
-  const bounded = sources.map((s) => ({
-    ...s,
-    passages: (s.passages as { id: string; page: number; text: string }[]).slice(0, 4),
-  }));
+  const bounded = retrieveLearningSources(
+    sources,
+    `${request?.topic ?? original?.title ?? ''} ${request?.instructions ?? data.instruction ?? ''}`,
+  );
   const composition: CompositionContext = {
     sourceIds,
     durationMinutes: request?.durationMinutes,
@@ -127,7 +139,11 @@ export async function generateLessonPlanTask(
     original,
   };
   const parseOutput = (text: string) => {
-    const definition = composeLessonDraft(JSON.parse(text), composition);
+    const value = JSON.parse(text);
+    const definition =
+      data.sectionId && original && value && typeof value === 'object' && 'section' in value
+        ? composeLessonSectionDraft(value, composition, data.sectionId)
+        : composeLessonDraft(value, composition);
     return validateGeneratedPlan(JSON.stringify(definition), bounded, original);
   };
   let proposal: LessonPlan | undefined;
@@ -140,12 +156,35 @@ export async function generateLessonPlanTask(
     .max(120000)
     .parse(process.env.LEARNING_GENERATION_TIMEOUT_MS ?? 90000);
   const generationRequest: TextRequest = {
-    maxTokens: 2800,
+    maxTokens: data.sectionId ? 1600 : 2800,
     json: true,
     temperature: 0.2,
     messages: [
-      { role: 'system', content: compactLessonPrompt },
-      { role: 'user', content: JSON.stringify({ ...data, sources: bounded }) },
+      {
+        role: 'system',
+        content:
+          compactLessonPrompt +
+          (data.sectionId
+            ? '\nFOCUSED EDIT: Return ONLY {section:{id,kind,title,minutes,body,notes,sourceRefs,annotations?,quiz?}} for the selected section, using the section format above. Preserve its ID, kind and minutes. Do not return lesson headers or other sections. For a quiz preserve valid explicit answers. For an explanation or recap do not add quiz or annotations.'
+            : ''),
+      },
+      {
+        role: 'user',
+        content: JSON.stringify(
+          data.sectionId && original
+            ? {
+                instruction: data.instruction,
+                selectedSection: original.sections.find((s) => s.id === data.sectionId),
+                lesson: {
+                  title: original.title,
+                  audience: original.audience,
+                  objectives: original.objectives,
+                },
+                sources: bounded,
+              }
+            : { ...data, sources: bounded },
+        ),
+      },
     ],
     validate: (text) => {
       lastInvalidText = text;
@@ -255,7 +294,7 @@ export async function generateLessonPlanTask(
           { role: 'assistant', content: lastInvalidText.slice(0, 40000) },
           {
             role: 'user',
-            content: `The draft failed validation: ${validationError.slice(0, 3000)}. Correct the JSON structure using only the supplied source passages. Use sourceRefs:[] for unsupported or model-only sections; NEVER use null or nonexistent passage IDs. Every body needs at least 10 characters. Use kind "quiz" only when its quiz object has explicit valid choices and correctIds. Do not add facts or invent answer keys. Return only corrected lesson JSON.`,
+            content: `The draft failed validation: ${validationError.slice(0, 3000)}. Correct the JSON structure using only the supplied source passages. Use sourceRefs:[] for unsupported or model-only sections; NEVER use null or nonexistent passage IDs. Every body needs at least 10 characters. Use kind "quiz" only when its quiz object has explicit valid choices and correctIds. Do not add facts or invent answer keys. Return only corrected ${data.sectionId ? 'section JSON {section:{...}}' : 'lesson JSON'}.`,
           },
         ],
       },
@@ -271,6 +310,7 @@ export async function generateLessonPlanTask(
     'Checking answers and references',
     'working',
   );
+  await learningToolUsage(tenantId, taskId, 'lesson', output);
   const definition = parseOutput(output.text);
   if (request && definition.privateModelId !== request.privateModelId)
     throw new Error('The generated lesson changed the selected private model');
@@ -565,7 +605,7 @@ export async function exportLessonPlanTask(
         }),
       );
       if (source?.storagePath && isLearningStoragePath(source.storagePath, stagingDir))
-        images[source.id] = await sharp(await readFile(source.storagePath), {
+        images[source.id] = await sharp(await readLearningFile(source.storagePath), {
           limitInputPixels: 16000000,
         })
           .rotate()
@@ -585,7 +625,13 @@ export async function exportLessonPlanTask(
   );
   const dir = join(learningStorageRoot(stagingDir), tenantId, 'exports');
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const path = join(dir, `${taskId}.${data.format}`);
-  await writeFile(path, buffer, { mode: 0o600 });
+  const path = await writeLearningFile(
+    join(dir, `${taskId}.${data.format}`),
+    buffer,
+    stagingDir,
+    data.format === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  );
   return { path, format: data.format, size: buffer.length };
 }

@@ -1,12 +1,13 @@
 'use client';
+import type { CaptureLearningViews, LearningModelView } from '../lib/model-learning-views';
 
 /**
- * 3D inspection studio (SRS §6.3, FR-5.2, FR-8.1).
+ * 3D inspection viewer (SRS §6.3, FR-5.2, FR-8.1).
  *
  * The model is fetched from `/ipfs/<cid>` — the nginx-cached gateway route (FR-8.3) — never from the
  * IPFS node directly, so a repeat preview comes from cache.
  *
- * Why this is a studio and not a spinning picture
+ * Why this is a viewer and not a spinning picture
  * ----------------------------------------------
  * The person licensing a 3D asset is a 3D artist, and they do not judge a file by how it looks under
  * one light. They want to know whether the topology is clean, whether the normals face outward,
@@ -29,17 +30,18 @@
  * the point.
  */
 import { hotspotAnchor } from '../lib/model-hotspots';
+import { SceneLabel } from './scene-label';
 import {
   ContactShadows,
   Grid,
-  Html,
   OrbitControls,
+  TransformControls,
   OrthographicCamera,
   useAnimations,
   useGLTF,
   useProgress,
 } from '@react-three/drei';
-import { Canvas, useLoader, useThree, type ThreeEvent } from '@react-three/fiber';
+import { Canvas, createPortal, useLoader, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -370,12 +372,12 @@ function applyShadeMode(
 /**
  * Image-based lighting, generated in-process.
  *
- * `RoomEnvironment` ships inside three.js, so the studio gets real PBR reflections — which is what
+ * `RoomEnvironment` ships inside three.js, so the viewer gets real PBR reflections — which is what
  * makes metal read as metal rather than as flat grey — without downloading an HDRI. That matters
  * here: the deployment target is an air-gapped network, and a viewer that silently falls back to no
  * reflections would misrepresent every metal asset in the catalogue.
  */
-function StudioEnvironment() {
+function ViewerEnvironment() {
   const gl = useThree((state) => state.gl);
   const scene = useThree((state) => state.scene);
 
@@ -414,6 +416,10 @@ export interface ClipHandle {
  * ========================================================================================== */
 
 export interface SceneInteraction {
+  editorMode?: boolean;
+  onPinMove?: (id: string, position: [number, number, number]) => void;
+  onPartsReady?: (parts: { key: string; name: string }[]) => void;
+  onCaptureReady?: (capture: CaptureLearningViews | null) => void;
   hotspots: readonly {
     id: string;
     label: string;
@@ -427,6 +433,49 @@ export interface SceneInteraction {
   disabled?: boolean;
   onSelect?: (id: string) => void;
   onSurfacePick?: (position: [number, number, number], meshKey: string) => void;
+}
+
+function PinTransform({
+  id,
+  position,
+  center,
+  span,
+  onMove,
+}: {
+  id: string;
+  position: THREE.Vector3;
+  center: THREE.Vector3;
+  span: number;
+  onMove: NonNullable<SceneInteraction['onPinMove']>;
+}) {
+  const [anchor, setAnchor] = useState<THREE.Group | null>(null);
+  const scene = useThree((state) => state.scene);
+  return (
+    <>
+      <group ref={setAnchor} position={position} />
+      {anchor &&
+        createPortal(
+          <TransformControls
+            object={anchor}
+            mode="translate"
+            size={0.7}
+            translationSnap={span * 0.001}
+            onMouseUp={() => {
+              const value = anchor.position.clone().sub(center).divideScalar(span);
+              onMove(
+                id,
+                [value.x, value.y, value.z].map((n) => Math.max(-1, Math.min(1, n))) as [
+                  number,
+                  number,
+                  number,
+                ],
+              );
+            }}
+          />,
+          scene,
+        )}
+    </>
+  );
 }
 
 interface ModelSceneProps {
@@ -571,6 +620,96 @@ function ModelScene({
     prepared.root.updateMatrixWorld(true);
     invalidate();
   }, [prepared, interaction?.exploded, interaction?.isolatedId, interaction?.hotspots, invalidate]);
+  const captureGl = useThree((state) => state.gl);
+  const captureCamera = useThree((state) => state.camera);
+  const captureScene = useThree((state) => state.scene);
+  useEffect(() => {
+    if (!interaction?.onCaptureReady) return;
+    interaction.onCaptureReady(async () => {
+      if (!surfaceGroup.current) throw new Error('Wait for the model to finish loading.');
+      const result: LearningModelView[] = [];
+      const bounds = new THREE.Box3().setFromObject(prepared.root);
+      const target = bounds.getCenter(new THREE.Vector3());
+      const radius = Math.max(bounds.getSize(new THREE.Vector3()).length() / 2, 0.001);
+      const directions = [
+        [0, 0, 1],
+        [1, 0, 0],
+        [0, 0, -1],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+      ];
+      const names = ['Front', 'Right', 'Back', 'Left', 'Top', 'Bottom'];
+      try {
+        for (let i = 0; i < directions.length; i++) {
+          const viewport = captureGl.getSize(new THREE.Vector2());
+          const camera = new THREE.PerspectiveCamera(
+            45,
+            viewport.x / Math.max(viewport.y, 1),
+            Math.max(radius / 1000, 0.00001),
+            radius * 100,
+          );
+          camera.position
+            .copy(target)
+            .add(
+              new THREE.Vector3(...(directions[i] as [number, number, number])).multiplyScalar(
+                (radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))) * 1.15,
+              ),
+            );
+          camera.up.set(0, i >= 4 ? 0 : 1, i >= 4 ? 1 : 0);
+          camera.lookAt(target);
+          camera.updateMatrixWorld(true);
+          captureGl.render(captureScene, camera);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(Math.min(512, 512 * camera.aspect)));
+          canvas.height = Math.max(1, Math.round(Math.min(512, 512 / camera.aspect)));
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('Image capture unavailable.');
+          context.drawImage(captureGl.domElement, 0, 0, canvas.width, canvas.height);
+          const ray = new THREE.Raycaster();
+          const anchors: LearningModelView['anchors'] = [];
+          for (let y = 0; y < 8; y++)
+            for (let x = 0; x < 8; x++) {
+              const px = (x + 0.5) / 8,
+                py = (y + 0.5) / 8;
+              ray.setFromCamera(new THREE.Vector2(px * 2 - 1, 1 - py * 2), camera);
+              const hit = ray.intersectObject(prepared.root, true)[0];
+              if (!hit) continue;
+              const meshKey = prepared.parts.get(hit.object as THREE.Mesh)?.key;
+              if (!meshKey) continue;
+              const at = surfaceGroup.current
+                .worldToLocal(hit.point.clone())
+                .sub(prepared.center)
+                .divideScalar(prepared.span);
+              anchors.push({
+                x: px,
+                y: py,
+                meshKey,
+                position: [at.x, at.y, at.z].map((n) =>
+                  Math.max(-1, Math.min(1, Number(n.toFixed(6)))),
+                ) as [number, number, number],
+              });
+            }
+          result.push({ name: names[i]!, image: canvas.toDataURL('image/jpeg', 0.7), anchors });
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        }
+        return result;
+      } finally {
+        captureGl.render(captureScene, captureCamera);
+      }
+    });
+    return () => interaction.onCaptureReady?.(null);
+  }, [prepared, captureGl, captureCamera, captureScene, interaction?.onCaptureReady]);
+  const partsReady = interaction?.onPartsReady;
+  useEffect(() => {
+    partsReady?.(
+      Array.from(prepared.parts, ([mesh, part]) => ({
+        key: part.key,
+        name: mesh.name || part.key,
+      })),
+    );
+    return () => partsReady?.([]);
+  }, [prepared, partsReady]);
   function pick(event: ThreeEvent<MouseEvent>) {
     if (
       !interaction?.onSurfacePick ||
@@ -606,24 +745,38 @@ function ModelScene({
         );
         const selected = interaction.selectedId === hotspot.id;
         return (
-          <Html key={hotspot.id} position={position} center zIndexRange={[20, 0]}>
-            <button
-              type="button"
-              aria-label={`Scene target ${interaction.showLabels ? hotspot.label : index + 1}`}
-              aria-pressed={selected}
-              disabled={interaction.disabled}
-              className={`flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-full border px-3 text-xs font-semibold shadow-lg transition-colors ${selected ? 'border-brand bg-brand text-white' : 'border-white/40 bg-black/85 text-white hover:border-brand'} disabled:opacity-50`}
-              onClick={(event) => {
-                event.stopPropagation();
-                interaction.onSelect?.(hotspot.id);
-              }}
-            >
-              <span>{index + 1}</span>
-              {interaction.showLabels ? (
-                <span className="whitespace-nowrap">{hotspot.label}</span>
-              ) : null}
-            </button>
-          </Html>
+          <group key={hotspot.id}>
+            {selected &&
+              interaction.onPinMove &&
+              !interaction.exploded &&
+              !interaction.isolatedId && (
+                <PinTransform
+                  id={hotspot.id}
+                  position={position}
+                  center={prepared.center}
+                  span={prepared.span}
+                  onMove={interaction.onPinMove}
+                />
+              )}
+            <SceneLabel position={position}>
+              <button
+                type="button"
+                aria-label={`Scene target ${interaction.showLabels ? hotspot.label : index + 1}`}
+                aria-pressed={selected}
+                disabled={interaction.disabled}
+                className={`flex min-h-10 min-w-10 items-center justify-center gap-2 rounded-full border px-3 text-xs font-semibold shadow-lg transition-colors ${selected ? 'border-brand bg-brand text-white' : 'border-white/40 bg-black/85 text-white hover:border-brand'} disabled:opacity-50`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  interaction.onSelect?.(hotspot.id);
+                }}
+              >
+                <span>{index + 1}</span>
+                {interaction.showLabels ? (
+                  <span className="whitespace-nowrap">{hotspot.label}</span>
+                ) : null}
+              </button>
+            </SceneLabel>
+          </group>
         );
       })}
     </group>
@@ -770,9 +923,6 @@ interface OrbitLike {
  * simpler fit that measures correctly, so it was removed rather than shipped.
  */
 export type FrameFit = 'box' | 'sphere';
-
-/** Headroom below the frame edge that the fit is expected to leave, as a fraction of the dimension. */
-export const FRAME_SAFE_MARGIN = 0.046;
 
 /**
  * Frames whatever geometry actually loaded, and answers the standard viewpoints.
@@ -946,7 +1096,7 @@ function CameraRig({
       // pressed view button updates and the model stays on the previous angle.
       invalidate();
 
-      // The studio positions its ground shadow from this, so it sits under whatever loaded.
+      // The viewer positions its ground shadow from this, so it sits under whatever loaded.
       onFramed(-half.y, box);
     });
 
@@ -1019,9 +1169,9 @@ function LoadReporter({ onSettled }: { onSettled: () => void }) {
   if (!visible) return null;
 
   return (
-    <div className="studio-loading" role="status" aria-live="polite">
+    <div className="model-viewer-loading" role="status" aria-live="polite">
       <div className="font-mono text-[12px] text-ink-dim">Decoding model</div>
-      <div className="studio-loading-track">
+      <div className="model-viewer-loading-track">
         <i style={{ width: `${Math.max(4, progress)}%` }} />
       </div>
       {total > 0 ? (
@@ -1064,8 +1214,8 @@ class ViewerBoundary extends Component<
     if (!this.state.failed) return this.props.children;
 
     return (
-      <div className="studio-fault">
-        <div className="studio-fault-inner">
+      <div className="model-viewer-fault">
+        <div className="model-viewer-fault-inner">
           <div
             className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-faint"
             style={{ color: 'var(--vs-rejected)' }}
@@ -1121,7 +1271,7 @@ function DecodeReadout({
       </span>
       {agreement.status === 'unknown' ? null : (
         <span
-          className={agreement.status === 'mismatch' ? 'studio-warn' : 'studio-ok'}
+          className={agreement.status === 'mismatch' ? 'model-viewer-warn' : 'model-viewer-ok'}
           title={agreement.reason}
         >
           {agreement.status === 'mismatch'
@@ -1247,7 +1397,7 @@ function SceneHelpers({
 
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="studio-row">
+    <div className="model-viewer-row">
       <span>{label}</span>
       <b>{value}</b>
     </div>
@@ -1280,17 +1430,22 @@ function StatsPanel({
   onClose: () => void;
 }) {
   return (
-    <aside className="studio-dock" aria-label="Model inventory">
-      <div className="studio-panel-head">
+    <aside className="model-viewer-dock" aria-label="Model inventory">
+      <div className="model-viewer-panel-head">
         <span>File inventory</span>
-        <button type="button" className="studio-btn" onClick={onClose} aria-label="Hide inventory">
+        <button
+          type="button"
+          className="model-viewer-btn"
+          onClick={onClose}
+          aria-label="Hide inventory"
+        >
           Hide
         </button>
       </div>
 
-      <div className="studio-panel-body">
+      <div className="model-viewer-panel-body">
         {decoded ? (
-          <div className="studio-section">
+          <div className="model-viewer-section">
             <StatRow label="Triangles" value={formatCount(decoded.triangles)} />
             <StatRow label="Vertices" value={formatCount(decoded.vertices)} />
             <StatRow label="Meshes" value={formatCount(decoded.meshes)} />
@@ -1301,12 +1456,12 @@ function StatsPanel({
             <StatRow label="Projection" value={ortho ? 'Orthographic' : 'Perspective'} />
           </div>
         ) : (
-          <div className="studio-section">
+          <div className="model-viewer-section">
             <StatRow label="Geometry" value="measuring…" />
           </div>
         )}
 
-        <div className="studio-section">
+        <div className="model-viewer-section">
           <StatRow label="Materials" value={formatCount(summary.materials.length)} />
           <StatRow label="Textures" value={formatCount(summary.textures)} />
           {summary.bones > 0 ? <StatRow label="Bones" value={formatCount(summary.bones)} /> : null}
@@ -1316,10 +1471,10 @@ function StatsPanel({
         </div>
 
         {summary.materials.length > 0 ? (
-          <div className="studio-section">
+          <div className="model-viewer-section">
             {summary.materials.map((material, index) => (
               <div
-                className="studio-mat"
+                className="model-viewer-mat"
                 key={`${material.name}-${material.kind}-${index}`}
                 title={`${material.kind}${material.textured ? ' · textured' : ' · no texture'}${
                   material.doubleSided ? ' · double-sided' : ''
@@ -1327,7 +1482,7 @@ function StatsPanel({
               >
                 <span>
                   {material.color ? (
-                    <i className="studio-swatch" style={{ background: material.color }} />
+                    <i className="model-viewer-swatch" style={{ background: material.color }} />
                   ) : null}
                   {material.name.length > 0 ? material.name : `Material ${index + 1}`}
                 </span>
@@ -1341,7 +1496,7 @@ function StatsPanel({
         ) : null}
 
         {clips && clips.names.length > 0 ? (
-          <div className="studio-section">
+          <div className="model-viewer-section">
             <StatRow label="Animation clips" value={formatCount(clips.names.length)} />
             <div className="mt-1 flex flex-wrap gap-1">
               {clips.names.map((name) => (
@@ -1385,10 +1540,10 @@ function Transport({
   const duration = Math.max(0.001, clips.durations[clipName] ?? 0);
 
   return (
-    <div className="studio-transport">
+    <div className="model-viewer-transport">
       <button
         type="button"
-        className="studio-btn"
+        className="model-viewer-btn"
         onClick={onToggle}
         aria-label={playing ? 'Pause animation' : 'Play animation'}
       >
@@ -1405,7 +1560,7 @@ function Transport({
         aria-label="Animation position"
       />
 
-      <span className="studio-clip-time">
+      <span className="model-viewer-clip-time">
         {time.toFixed(2)}s / {duration.toFixed(2)}s
       </span>
 
@@ -1422,7 +1577,7 @@ function Transport({
           ))}
         </select>
       ) : (
-        <span className="studio-clip-time">{clipName}</span>
+        <span className="model-viewer-clip-time">{clipName}</span>
       )}
 
       <select
@@ -1441,7 +1596,7 @@ function Transport({
 }
 
 /* ============================================================================================
- * The studio
+ * The viewer
  * ========================================================================================== */
 
 export interface ModelViewerProps {
@@ -1491,7 +1646,7 @@ export interface ModelViewerProps {
   /**
    * Presentation chrome (marketplace storefront).
    *
-   * The full studio — shading modes, camera axis buttons, measurement helpers, inventory, export —
+   * The full viewer — shading modes, camera axis buttons, measurement helpers, inventory, export —
    * is the right surface for inspecting a file, and the wrong one to greet a visitor with. A
    * storefront hero showing a file inventory panel and an "Axes" toggle reads as a developer tool,
    * so presentation mode keeps only what a *viewer* needs: the model, the orbit hint, and their own
@@ -1519,7 +1674,7 @@ export function ModelViewer({
   onGeometryDecoded,
 }: ModelViewerProps) {
   const previewable = canPreviewNatively(format);
-  const url = sourceUrl ?? (cid ? `/ipfs/${cid}` : null);
+  const url = sourceUrl ?? (cid ? `/api/v1/content/${cid}` : null);
 
   /* --- the file --------------------------------------------------------------------------- */
   const [mode, setMode] = useState<ShadeMode>('shaded');
@@ -1644,7 +1799,7 @@ export function ModelViewer({
       if (!document.fullscreenElement) await element.requestFullscreen();
       else await document.exitFullscreen();
     } catch {
-      // Fullscreen can be refused by policy; the studio stays usable without it.
+      // Fullscreen can be refused by policy; the viewer stays usable without it.
     }
   }, []);
 
@@ -1833,7 +1988,7 @@ export function ModelViewer({
   /* --- no preview possible ---------------------------------------------------------------- */
   if (!previewable || !url) {
     return (
-      <div className="studio" style={{ background: BACKDROPS[backdrop] }}>
+      <div className="model-viewer" style={{ background: BACKDROPS[backdrop] }}>
         <div className="absolute inset-0 flex flex-col items-center justify-center p-7 text-center">
           <div>
             <div className="font-medium leading-[1.1] tracking-[-0.021em] text-ink text-xl">
@@ -1866,11 +2021,11 @@ export function ModelViewer({
       ref={wrapper}
       data-exploded={interaction?.exploded ? 'true' : 'false'}
       data-isolated-target={interaction?.isolatedId ?? ''}
-      className="studio"
+      className="model-viewer"
       style={{ background: BACKDROPS[backdrop] }}
       onDoubleClick={refitInPlace}
     >
-      <div className="studio-viewport">
+      <div className="model-viewer-viewport">
         <ViewerBoundary label={label ?? 'model'} sourceUrl={url} onFault={() => setFaulted(true)}>
           <Canvas
             dpr={[1, 2]}
@@ -1902,7 +2057,7 @@ export function ModelViewer({
             camera={{ position: [14, 10, 20], fov: 42, near: 0.01, far: 5_000 }}
             onPointerDown={() => setSpinning(false)}
           >
-            <StudioEnvironment />
+            <ViewerEnvironment />
 
             {/* A key/fill/rim rig. The environment map does the reflections; these do the shaping. */}
             <hemisphereLight args={['#dfe6f5', '#1b1b22', 0.5]} />
@@ -1969,19 +2124,95 @@ export function ModelViewer({
         </ViewerBoundary>
       </div>
 
+      {interaction?.editorMode && (
+        <div className="annotation-scene-toolbar" aria-label="3D viewport controls">
+          <label>
+            View
+            <select
+              aria-label="Camera angle"
+              value={view}
+              onChange={(e) => goToView(e.target.value as CameraView)}
+            >
+              {VIEW_BUTTONS.map((entry) => (
+                <option value={entry.id} key={entry.id}>
+                  {entry.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Surface
+            <select
+              aria-label="Viewport shading"
+              value={mode}
+              onChange={(e) => setMode(e.target.value as ShadeMode)}
+            >
+              {SHADE_MODES.map((spec) => (
+                <option
+                  value={spec.id}
+                  key={spec.id}
+                  disabled={spec.id === 'edges' && edgeDisabled}
+                >
+                  {spec.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" aria-pressed={ortho} onClick={toggleOrtho}>
+            {ortho ? 'Orthographic' : 'Perspective'}
+          </button>
+          <button type="button" onClick={refitInPlace}>
+            Frame model
+          </button>
+          <details>
+            <summary>View options</summary>
+            <div>
+              <button type="button" aria-pressed={showGrid} onClick={() => setShowGrid(!showGrid)}>
+                Grid
+              </button>
+              <button type="button" aria-pressed={showAxes} onClick={() => setShowAxes(!showAxes)}>
+                Axes
+              </button>
+              <button
+                type="button"
+                aria-pressed={showBounds}
+                onClick={() => setShowBounds(!showBounds)}
+              >
+                Bounds
+              </button>
+              <button
+                type="button"
+                aria-pressed={showShadow}
+                onClick={() => setShowShadow(!showShadow)}
+              >
+                Shadow
+              </button>
+              <button
+                type="button"
+                onClick={() => setBackdrop((value) => (value === 'paper' ? 'stage' : 'paper'))}
+              >
+                Switch background
+              </button>
+              <button type="button" onClick={() => setPanelOpen(!panelOpen)}>
+                Model information
+              </button>
+            </div>
+          </details>
+        </div>
+      )}
       <LoadReporter onSettled={() => setHintVisible(false)} />
 
       {!faulted && !compact ? (
         <>
-          {!presentation ? (
-            <div className="studio-top">
-              <div className="studio-group">
-                <span className="studio-group-label">Surface</span>
+          {!presentation && !interaction?.editorMode ? (
+            <div className="model-viewer-top">
+              <div className="model-viewer-group">
+                <span className="model-viewer-group-label">Surface</span>
                 {SHADE_MODES.map((spec) => (
                   <button
                     key={spec.id}
                     type="button"
-                    className="studio-btn"
+                    className="model-viewer-btn"
                     aria-pressed={mode === spec.id}
                     aria-keyshortcuts={spec.key}
                     title={
@@ -1998,13 +2229,13 @@ export function ModelViewer({
                 ))}
               </div>
 
-              <div className="studio-group">
-                <span className="studio-group-label">Camera</span>
+              <div className="model-viewer-group">
+                <span className="model-viewer-group-label">Camera</span>
                 {VIEW_BUTTONS.map((entry) => (
                   <button
                     key={entry.id}
                     type="button"
-                    className="studio-btn"
+                    className="model-viewer-btn"
                     aria-pressed={view === entry.id}
                     aria-keyshortcuts={entry.key}
                     title={`Look at the model from the ${entry.label.toLowerCase()} and re-frame it  ·  ${entry.key}`}
@@ -2014,10 +2245,10 @@ export function ModelViewer({
                     <kbd>{entry.key}</kbd>
                   </button>
                 ))}
-                <span className="studio-divider" aria-hidden />
+                <span className="model-viewer-divider" aria-hidden />
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   aria-pressed={ortho}
                   title="Projection: orthographic shows true proportions with no perspective foreshortening — use it when measuring an export against its spec sheet  ·  V"
                   onClick={toggleOrtho}
@@ -2027,11 +2258,11 @@ export function ModelViewer({
                 </button>
               </div>
 
-              <div className="studio-group">
-                <span className="studio-group-label">Overlays</span>
+              <div className="model-viewer-group">
+                <span className="model-viewer-group-label">Overlays</span>
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   aria-pressed={showGrid}
                   aria-keyshortcuts="G"
                   title="Measurement grid, stepped to this model's scale  ·  G"
@@ -2042,7 +2273,7 @@ export function ModelViewer({
                 </button>
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   aria-pressed={showAxes}
                   aria-keyshortcuts="A"
                   title="Origin axes — X red, Y green, Z blue  ·  A"
@@ -2053,7 +2284,7 @@ export function ModelViewer({
                 </button>
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   aria-pressed={showBounds}
                   aria-keyshortcuts="O"
                   title="Bounding box of the geometry as decoded, so you can check the export fits the volume it was authored for  ·  O"
@@ -2064,7 +2295,7 @@ export function ModelViewer({
                 </button>
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   aria-pressed={showShadow}
                   aria-keyshortcuts="H"
                   title="Ground shadow, so the model does not read as a sticker  ·  H"
@@ -2075,7 +2306,7 @@ export function ModelViewer({
                 </button>
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   aria-pressed={spinning}
                   aria-keyshortcuts="P"
                   title="Turntable — stops as soon as you take control  ·  P"
@@ -2086,10 +2317,10 @@ export function ModelViewer({
                 </button>
               </div>
 
-              <div className="studio-group studio-spacer">
+              <div className="model-viewer-group model-viewer-spacer">
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   title={`Background: stage, dark or light. A dark asset needs the light one. Currently ${BACKDROP_LABEL[backdrop]}.`}
                   onClick={() =>
                     setBackdrop((value) =>
@@ -2097,12 +2328,12 @@ export function ModelViewer({
                     )
                   }
                 >
-                  <span className="studio-swatch" data-backdrop={backdrop} aria-hidden />
+                  <span className="model-viewer-swatch" data-backdrop={backdrop} aria-hidden />
                   {BACKDROP_LABEL[backdrop]}
                 </button>
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   aria-pressed={panelOpen}
                   aria-keyshortcuts="I"
                   title="File inventory — geometry, materials, textures, rig  ·  I"
@@ -2113,7 +2344,7 @@ export function ModelViewer({
                 </button>
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   aria-keyshortcuts="S"
                   title="Save the current view as a PNG at the canvas resolution  ·  S"
                   onClick={saveShot}
@@ -2123,7 +2354,7 @@ export function ModelViewer({
                 </button>
                 <button
                   type="button"
-                  className="studio-btn"
+                  className="model-viewer-btn"
                   aria-pressed={expanded}
                   aria-keyshortcuts="M"
                   title="Full screen  ·  M"
@@ -2161,7 +2392,7 @@ export function ModelViewer({
           ) : null}
 
           {hintVisible ? (
-            <div className="studio-hint">
+            <div className="model-viewer-hint">
               {presentation ? (
                 <>
                   <strong>Drag</strong> to orbit · <strong>scroll</strong> to zoom
@@ -2170,16 +2401,16 @@ export function ModelViewer({
                 <>
                   <strong>Orbit</strong> drag · <strong>Zoom</strong> scroll ·{' '}
                   <strong>Re-frame</strong> double-click
-                  <span className="studio-hint-sep" aria-hidden />
+                  <span className="model-viewer-hint-sep" aria-hidden />
                   every control is also a key — they are printed on the buttons
                 </>
               )}
             </div>
           ) : null}
 
-          {!presentation ? (
-            <div className="studio-bottom">
-              <span className="studio-meta">
+          {!presentation && !interaction?.editorMode ? (
+            <div className="model-viewer-bottom">
+              <span className="model-viewer-meta">
                 {label ? <span>{label}</span> : null}
                 <a
                   href={url}

@@ -37,7 +37,6 @@ import {
 import { Panel } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { ErrorNote, LoadingBlock } from '../../../components/ui/feedback';
-import { VoidStudioLaunchButton } from '../../../components/studio-launch';
 import { Reveal } from '../../../components/reveal';
 
 interface AssetSummaryView {
@@ -220,13 +219,14 @@ function LibraryView({
         }
         actions={
           <div className="flex items-center gap-2">
-            <VoidStudioLaunchButton variant="outline" size="md">
-              Create in Studio
-            </VoidStudioLaunchButton>
             {canUpload ? (
               <button
                 type="button"
-                className={uploading ? 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12' : 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm'}
+                className={
+                  uploading
+                    ? 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12'
+                    : 'inline-flex h-10 items-center justify-center gap-2 rounded-control border border-transparent bg-veil-8 px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:bg-veil-12 border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm'
+                }
                 aria-expanded={uploading}
                 onClick={() => setUploading((value) => !value)}
               >
@@ -275,7 +275,7 @@ function LibraryView({
                     filtering
                       ? 'Try a broader search, or click the selected row in the rail to switch that filter off.'
                       : canUpload
-                        ? 'Ingest a model to start the pipeline: it is staged, measured, pinned to IPFS and — if you submit it — placed in the review queue.'
+                        ? 'Ingest a model to start the pipeline: it is staged, measured, stored in object storage and — if you submit it — placed in the review queue.'
                         : 'Ask a workspace administrator for upload rights, or wait for a teammate to submit work.'
                   }
                   action={

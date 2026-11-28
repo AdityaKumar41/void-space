@@ -19,7 +19,15 @@ export const REVIEW_DECISIONS = ['approved', 'rejected', 'revision'] as const;
 export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
 
 /** §2.5: uploaded files are restricted to these formats, 200 MB ceiling per asset. */
-export const ALLOWED_ASSET_EXTENSIONS = ['.glb', '.gltf', '.obj', '.fbx', '.stl', '.ply', '.blend'] as const;
+export const ALLOWED_ASSET_EXTENSIONS = [
+  '.glb',
+  '.gltf',
+  '.obj',
+  '.fbx',
+  '.stl',
+  '.ply',
+  '.blend',
+] as const;
 export type AssetExtension = (typeof ALLOWED_ASSET_EXTENSIONS)[number];
 
 export const MAX_ASSET_SIZE_BYTES = 200 * 1024 * 1024; // 200 MB — FR-3.1
@@ -30,7 +38,13 @@ export const ASSET_MIME_TYPES: Readonly<Record<AssetExtension, readonly string[]
   '.gltf': ['model/gltf+json', 'application/json', 'text/plain', 'application/octet-stream'],
   '.obj': ['text/plain', 'application/octet-stream', 'model/obj', 'model/wavefront-obj'],
   '.fbx': ['application/octet-stream', 'model/fbx', 'application/x-fbx', 'model/vnd.fbx'],
-  '.stl': ['model/stl', 'application/sla', 'application/octet-stream', 'application/vnd.ms-pki.stl', 'text/plain'],
+  '.stl': [
+    'model/stl',
+    'application/sla',
+    'application/octet-stream',
+    'application/vnd.ms-pki.stl',
+    'text/plain',
+  ],
   '.ply': ['model/ply', 'application/x-ply', 'text/plain', 'application/octet-stream'],
   '.blend': ['application/octet-stream', 'application/x-blender'],
 };
@@ -77,7 +91,12 @@ export function canTransition(from: AssetStatus, to: AssetStatus): boolean {
 }
 
 /** Statuses a Creator may delete (FR-3.6: unpublished only). */
-export const DELETABLE_STATUSES: readonly AssetStatus[] = ['draft', 'pending', 'revision', 'rejected'];
+export const DELETABLE_STATUSES: readonly AssetStatus[] = [
+  'draft',
+  'pending',
+  'revision',
+  'rejected',
+];
 
 export function isDeletable(status: AssetStatus): boolean {
   return DELETABLE_STATUSES.includes(status);
@@ -115,16 +134,7 @@ export const SOURCE_TOOLS = [
   'Sketchfab',
   'Poly Pizza',
   'Meshy AI',
-  /**
-   * VOID·STUDIO is a first-class origin, not an `Other` (VS2-SRS-1.0 FR-14.2).
-   *
-   * Publish hands VOID·SPACE an asset authored in the Studio, and the Marketplace shows this
-   * value to buyers — collapsing it into `Other` would make an asset's own provenance the one
-   * thing the catalogue cannot tell you. Added here rather than forked into a Studio-local list
-   * because `@void-space/types` is the shared contract both products validate against
-   * (VS2-SRS-1.0 §3.7: shared packages are extended, not forked).
-   */
-  'VOID·STUDIO',
+
   'Other',
 ] as const;
 export type SourceTool = (typeof SOURCE_TOOLS)[number];

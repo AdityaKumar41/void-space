@@ -1,4 +1,5 @@
 'use client';
+import { useClientReady } from '../../lib/use-client-ready';
 
 /**
  * Sign-in (FR-2.1, FR-2.2, FR-1.4).
@@ -20,9 +21,9 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import { ApiRequestError, apiFetch } from '../../lib/api';
+import { ApiRequestError, apiFetch, refreshSession } from '../../lib/api';
 import { rememberMemberships, type Membership } from '../../lib/session';
 import { signInWithEthereum } from '../../lib/siwe';
 import { Wordmark } from '../../components/market-shell';
@@ -64,20 +65,45 @@ export function LoginForm({
   wallet,
   error: errorCode,
   showDemo = false,
+  resume = false,
 }: {
   next: string;
   google: boolean;
   wallet: boolean;
   error?: string;
   showDemo?: boolean;
+  resume?: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const ready = useClientReady();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [tenants, setTenants] = useState<readonly Membership[] | null>(null);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [restoring, setRestoring] = useState(resume);
+  useEffect(() => {
+    if (!resume) return;
+    let active = true;
+    void (async () => {
+      try {
+        if (await refreshSession()) {
+          // Verify the new cookie before navigating, preventing a redirect loop
+          // if browser cookie settings reject it. No token reaches client storage.
+          await apiFetch('/auth/me', { skipRefresh: true });
+          if (active) window.location.replace(next);
+          return;
+        }
+      } catch {
+        // A revoked/expired refresh session falls through to ordinary sign-in.
+      }
+      if (active) setRestoring(false);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [resume, next]);
 
   async function finishLogin(result: LoginResponse) {
     if (result.requiresTenantSelection) {
@@ -130,6 +156,13 @@ export function LoginForm({
     }
   }
 
+  if (restoring)
+    return (
+      <main id="main" className="grid min-h-screen place-content-center gap-4 p-6 text-center">
+        <p role="status">Restoring your session…</p>
+        <Link href={`/login?next=${encodeURIComponent(next)}`}>Continue to sign in</Link>
+      </main>
+    );
   return (
     <main id="main" className="agent-workspace agent-onboarding learning-signin">
       <section className="learning-signin-story" aria-label="Welcome to Void Space">
@@ -180,7 +213,7 @@ export function LoginForm({
                       type="button"
                       className="flex w-full items-center gap-3 rounded-control border border-hairline bg-surface p-3 text-left transition-all duration-150 ease-standard hover:border-hairline-strong hover:bg-surface-raised aria-pressed:border-heat-40 aria-pressed:bg-heat-8"
                       onClick={() => void submit(tenant.id)}
-                      disabled={busy}
+                      disabled={busy || !ready}
                     >
                       <Avatar name={tenant.name} />
                       <span className="min-w-0">
@@ -205,6 +238,7 @@ export function LoginForm({
               </div>
             ) : (
               <form
+                method="post"
                 className="space-y-5"
                 onSubmit={(event) => {
                   event.preventDefault();
@@ -241,7 +275,7 @@ export function LoginForm({
                     {wallet ? (
                       <button
                         type="button"
-                        disabled={busy}
+                        disabled={busy || !ready}
                         onClick={() => void submitWallet()}
                         className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-control border border-hairline-strong bg-surface px-4 text-[14px] font-semibold text-ink transition-all duration-200 ease-standard hover:border-brand hover:bg-surface-raised disabled:opacity-60"
                       >
@@ -257,6 +291,7 @@ export function LoginForm({
                 <label className="block">
                   <span className="text-[12px] tracking-[0.01em] text-ink-faint">Email</span>
                   <input
+                    disabled={!ready || busy}
                     className="h-10 w-full rounded-control border border-hairline bg-surface px-3 text-[15px] text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong focus:border-brand focus:outline-none mt-1.5"
                     type="email"
                     value={email}
@@ -269,6 +304,7 @@ export function LoginForm({
                 <label className="block">
                   <span className="text-[12px] tracking-[0.01em] text-ink-faint">Password</span>
                   <input
+                    disabled={!ready || busy}
                     className="h-10 w-full rounded-control border border-hairline bg-surface px-3 text-[15px] text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong focus:border-brand focus:outline-none mt-1.5"
                     type="password"
                     value={password}
@@ -289,7 +325,7 @@ export function LoginForm({
                 <button
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-control border px-4 text-[14px] font-semibold transition-all duration-200 ease-standard border-brand bg-brand text-white shadow-heat hover:border-brand-warm hover:bg-brand-warm w-full justify-center"
                   type="submit"
-                  disabled={busy}
+                  disabled={busy || !ready}
                 >
                   {busy ? 'Signing in…' : 'Sign in'}
                 </button>

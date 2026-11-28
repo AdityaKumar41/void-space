@@ -1,6 +1,16 @@
 import { it, expect, vi } from 'vitest';
 import sharp from 'sharp';
-import { fluxImage } from '../src/learning/images';
+import { fluxImage, generateLearningImage } from '../src/learning/images';
+it('refuses paused image jobs before contacting a provider or creating a source', async () => {
+  vi.stubEnv('AI_IMAGE_ENABLED', 'false');
+  try {
+    await expect(
+      generateLearningImage('unused', 'unused', 'unused', { prompt: 'Synthetic cube' }),
+    ).rejects.toThrow('unavailable for now');
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
 const config = { url: 'https://images.example/api/image/generate', model: 'flux' };
 it('accepts private base64 image data and validates pixels', async () => {
   const bytes = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#ffcc22' } })

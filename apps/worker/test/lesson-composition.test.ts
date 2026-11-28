@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { composeLessonDraft } from '../src/learning/lesson-composition';
+import { composeLessonDraft, composeLessonSectionDraft } from '../src/learning/lesson-composition';
 function content() {
   return {
     title: 'Spheres and their properties',
@@ -63,6 +63,31 @@ describe('trusted lesson content composition', () => {
       correctIds: ['curved'],
     });
   });
+  it('includes lesson-owned annotation explanations without inventing geometric mappings', () => {
+    const raw = content();
+    Object.assign(raw.sections[2]!, {
+      annotations: [
+        {
+          id: 'surface',
+          label: 'Curved surface',
+          explanation: 'The curved exterior encloses the sphere.',
+          sourceRefs: [],
+        },
+      ],
+    });
+    const id = randomUUID();
+    const def = composeLessonDraft(raw, {
+      sourceIds: [],
+      privateModelId: id,
+      model: { id, title: 'Sphere', metadata: {} },
+    });
+    expect(def.sections[2]!.activity!.targets[0]).toMatchObject({
+      label: 'Curved surface',
+      placement: 'unplaced',
+      position: [0, 0, 0],
+    });
+    expect(def.sections[2]!.activity!.targets[0]!.meshKey).toBeUndefined();
+  });
   it('distinguishes a selected model reference from invalid text citations', () => {
     const id = randomUUID(),
       raw = content();
@@ -105,4 +130,30 @@ describe('trusted lesson content composition', () => {
     expect(timed.durationMinutes).toBe(30);
     expect(timed.sections.reduce((n, s) => n + s.minutes, 0)).toBe(30);
   });
+});
+
+it('composes a single focused section while retaining all other lesson bytes and timing', () => {
+  const original = composeLessonDraft(content(), { sourceIds: [] });
+  const section = {
+    ...content().sections[4]!,
+    body: 'A clearer recap with a short self-check and a revision suggestion.',
+  };
+  const result = composeLessonSectionDraft({ section }, { sourceIds: [], original }, section.id);
+  expect(result.sections[4]!.body).toBe(section.body);
+  expect(result.sections.slice(0, 4)).toEqual(original.sections.slice(0, 4));
+  expect(result.durationMinutes).toBe(original.durationMinutes);
+  expect(() =>
+    composeLessonSectionDraft(
+      { section: { ...section, minutes: 10 } },
+      { sourceIds: [], original },
+      section.id,
+    ),
+  ).toThrow('timing');
+  expect(() =>
+    composeLessonSectionDraft(
+      { section, otherSections: [] },
+      { sourceIds: [], original },
+      section.id,
+    ),
+  ).toThrow();
 });

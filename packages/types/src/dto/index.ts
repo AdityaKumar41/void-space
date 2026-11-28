@@ -4,12 +4,11 @@ export * from './tenant';
 export * from './asset';
 export * from './review';
 export * from './licensing';
-export * from './tools';
 export * from './audit';
 export * from './notifications';
 export * from './developer';
 export * from './jobs';
-export * from './learning';
+export * from './iot';
 export * from './experience';
 export * from './learning-activity';
 

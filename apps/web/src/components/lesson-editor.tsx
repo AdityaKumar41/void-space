@@ -1,5 +1,18 @@
 'use client';
 import Link from 'next/link';
+import { LessonSectionMark } from './lesson-section-mark';
+import { PlaygroundFullscreen } from './playground-fullscreen';
+import {
+  ArrowLeft,
+  BookOpen,
+  Clapperboard,
+  MessageCircle,
+  Play,
+  Send,
+  Sparkles,
+  Wand2,
+} from 'lucide-react';
+import { LessonAnnotations } from './lesson-annotations';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
@@ -47,6 +60,7 @@ interface Asset {
   meshCount: number | null;
 }
 interface Task {
+  kind?: string;
   progress?: AgentActivityStep[];
   id: string;
   status: string;
@@ -69,6 +83,9 @@ export function LessonEditor({ id }: { id?: string }) {
     [dirty, setDirty] = useState(false),
     [sectionId, setSectionId] = useState(''),
     [preview, setPreview] = useState(true),
+    [annotating, setAnnotating] = useState(false),
+    [mobilePanel, setMobilePanel] = useState<'lesson' | 'assistant'>('lesson'),
+    [showProposal, setShowProposal] = useState(false),
     [before, setBefore] = useState<LessonPlan | null>(null),
     [restore, setRestore] = useState<LessonPlan | null>(null);
   const [error, setError] = useState(''),
@@ -83,6 +100,7 @@ export function LessonEditor({ id }: { id?: string }) {
   const storageKey = `lesson-draft:${session?.user.activeTenantId}:${session?.user.id}:${id ?? 'new'}`;
   function setTaskId(next: string) {
     setTaskIdState(next);
+    setShowProposal(false);
     if (next) sessionStorage.setItem(`${storageKey}:task`, next);
     else {
       sessionStorage.removeItem(`${storageKey}:task`);
@@ -100,6 +118,7 @@ export function LessonEditor({ id }: { id?: string }) {
         '',
     );
   }, [storageKey]);
+  const publishRef = useRef<HTMLDetailsElement>(null);
   const loaded = useRef('');
   const q = useQuery({
     queryKey: ['lesson-draft', id],
@@ -200,6 +219,7 @@ export function LessonEditor({ id }: { id?: string }) {
       await fn();
     } catch (e) {
       setError((e as Error).message);
+      if (draft) setMobilePanel('assistant');
     } finally {
       setBusy(false);
     }
@@ -263,19 +283,351 @@ export function LessonEditor({ id }: { id?: string }) {
     setDirty(true);
     setMessage('Editable structure created. Add reviewed subject content before sharing.');
   }
-  const companionSection = draft?.sections.find(
-    (x) => x.kind !== 'quiz' && x.activity && x.activity.scene.kind !== 'none',
-  );
+  const companionSection =
+    draft?.sections.find((s) => s.id === sectionId && s.activity?.scene.kind === 'model') ??
+    draft?.sections.find(
+      (x) => x.kind !== 'quiz' && x.activity && x.activity.scene.kind !== 'none',
+    );
   const selected = draft?.sections.find((s) => s.id === sectionId) ?? draft?.sections[0];
   const proposal = task.data?.task.result?.proposal ? task.data.task.result.definition : null;
   const sum = draft?.sections.reduce((n, s) => n + s.minutes, 0) ?? 0;
+  const stagePlan = showProposal && proposal ? proposal : draft;
+  const stageSection =
+    stagePlan?.sections.find((s) => s.id === selected?.id) ?? stagePlan?.sections[0];
+  const stageCompanion = stagePlan?.sections.find(
+    (s) => s.kind !== 'quiz' && s.activity && s.activity.scene.kind !== 'none',
+  );
+  async function openPlayground(present = false) {
+    await work(async () => {
+      const current = dirty || !id ? await save() : { id };
+      const r = await apiFetch<{ release: { id: string; tenantId: string } }>(
+        `/learning/lesson-plans/${current.id}/study`,
+        { method: 'POST' },
+      );
+      router.push(
+        `/console/learn/lessons/${r.release.id}?tenant=${r.release.tenantId}${present ? '&present=true' : ''}`,
+      );
+    });
+  }
+  const assistantPanel = draft ? (
+    <>
+      <section className="playground-assistant-content">
+        <header className="playground-assistant-heading">
+          <span>
+            <Sparkles size={18} />
+          </span>
+          <div>
+            <h2>Lesson assistant</h2>
+            <p>Make a change. Keep your place.</p>
+          </div>
+        </header>
+        {error && <Notice error>{error}</Notice>}
+        <div className="playground-quick-actions" aria-label="Lesson AI actions">
+          {[
+            [
+              'Simplify explanation',
+              'Simplify this explanation with a clear everyday example. Preserve the model, confirmed annotations, sources and timing.',
+            ],
+            [
+              'Improve quiz',
+              'Improve the quiz questions and explanations using the lesson sources. Keep explicit correct answer keys and preserve the model and timing.',
+            ],
+            [
+              'Improve recap',
+              'Rewrite the recap as clear takeaways and two revision suggestions. Preserve the model, confirmed annotations and total timing.',
+            ],
+          ].map(([label, prompt]) => (
+            <button
+              key={label}
+              className={action}
+              disabled={busy}
+              onClick={() => {
+                const kind =
+                  label === 'Improve quiz'
+                    ? 'quiz'
+                    : label === 'Improve recap'
+                      ? 'recap'
+                      : 'explanation';
+                const next = draft.sections.find((s) => s.kind === kind);
+                if (next) setSectionId(next.id);
+                setAnnotating(false);
+                setOnlySection(true);
+                setInstruction(prompt!);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          {id && (
+            <Link className={action} href={`/console/learn/agent?plan=${id}`}>
+              Chat about this lesson
+            </Link>
+          )}
+        </div>
+        <div className="playground-request">
+          <label className="grid gap-2">
+            What should change?
+            <textarea
+              className={control}
+              value={instruction}
+              maxLength={3000}
+              placeholder="Simplify this explanation and add a worked example"
+              onChange={(e) => setInstruction(e.target.value)}
+            />
+          </label>
+          <label className="flex min-h-11 items-center gap-3">
+            <input
+              type="checkbox"
+              checked={onlySection}
+              onChange={(e) => setOnlySection(e.target.checked)}
+            />
+            Change only the selected section
+          </label>
+          <button
+            className={action}
+            disabled={
+              !id ||
+              busy ||
+              instruction.trim().length < 5 ||
+              ['queued', 'active'].includes(task.data?.task.status ?? '')
+            }
+            onClick={() =>
+              void work(async () => {
+                const p = dirty ? await save() : { id, revision };
+                const r = await apiFetch<{ task: Task }>(`/learning/lesson-plans/${id}/revise`, {
+                  method: 'POST',
+                  body: {
+                    revision: p.revision,
+                    instruction,
+                    ...(onlySection && selected ? { sectionId: selected.id } : {}),
+                  },
+                });
+                setTaskId(r.task.id);
+              })
+            }
+          >
+            <Send size={15} /> Propose changes
+          </button>
+        </div>
+        <div className="playground-run" aria-label="Saved AI work">
+          {taskId ? (
+            <AgentActivity
+              steps={task.data?.task.progress ?? []}
+              status={task.data?.task.status ?? 'queued'}
+            />
+          ) : (
+            <p>
+              Ask for an explanation, a better quiz or a clearer recap. Your lesson stays here while
+              the assistant works.
+            </p>
+          )}
+          {task.data?.task.status === 'failed' && (
+            <Notice error>
+              {task.data.task.error ?? 'The assistant could not finish. Your lesson is unchanged.'}
+            </Notice>
+          )}
+        </div>
+        {!id && (
+          <p className="text-sm text-ink-dim">Save this structure before asking for revisions.</p>
+        )}
+        {proposal && (
+          <div className="space-y-3 border-t border-hairline pt-4">
+            <h3 className="font-semibold">Review the proposal</h3>
+            <p className="text-sm text-ink-dim">
+              Your current draft stays unchanged until you apply this proposal.
+            </p>
+            {proposal.sections
+              .filter(
+                (s) =>
+                  JSON.stringify(s) !== JSON.stringify(draft.sections.find((x) => x.id === s.id)),
+              )
+              .map((s) => (
+                <button
+                  key={s.id}
+                  className={action + ' playground-proposal-section'}
+                  onClick={() => {
+                    setSectionId(s.id);
+                    setAnnotating(false);
+                    setPreview(true);
+                    setAnnotating(false);
+                    setShowProposal(true);
+                    setMobilePanel('lesson');
+                  }}
+                >
+                  <Play size={14} />
+                  <span>{s.title}</span>
+                  <span>{s.minutes} min</span>
+                </button>
+              ))}
+            <button
+              className={action}
+              onClick={() => {
+                setPreview(true);
+                setAnnotating(false);
+                setShowProposal(!showProposal);
+                setMobilePanel('lesson');
+              }}
+            >
+              {showProposal ? 'View current draft' : 'Preview proposal on stage'}
+            </button>
+            <button
+              className={action}
+              disabled={busy || dirty}
+              onClick={() =>
+                void work(async () => {
+                  setBefore(draft);
+                  const r = await apiFetch<{ plan: Draft }>(`/learning/lesson-plans/${id}/apply`, {
+                    method: 'POST',
+                    body: { taskId, revision },
+                  });
+                  setDraft(r.plan.definition);
+                  setSourceIds(r.plan.definition.sourceIds);
+                  setRevision(r.plan.revision);
+                  setDirty(false);
+                  setReview({});
+                  setTaskId('');
+                  setShowProposal(false);
+                  setMessage('Proposal applied. Review it before publishing.');
+                })
+              }
+            >
+              Apply reviewed proposal
+            </button>
+            <button
+              className={action}
+              onClick={() => {
+                setTaskId('');
+                setShowProposal(false);
+              }}
+            >
+              Keep current lesson
+            </button>
+          </div>
+        )}
+        {before && (
+          <button
+            className={action}
+            onClick={() => {
+              change(before);
+              setBefore(null);
+            }}
+          >
+            Undo last agent change
+          </button>
+        )}
+      </section>
+      {can('learning:generate-private') && (
+        <Panel>
+          <details ref={publishRef} className="lesson-publish">
+            <summary>Review and publish</summary>
+            <div className="grid gap-3 pt-4">
+              <label className="grid gap-2">
+                Who can study this lesson?
+                <select
+                  className={control}
+                  value={visibility}
+                  onChange={(e) => setVisibility(e.target.value as typeof visibility)}
+                >
+                  <option value="private">
+                    Private · only me and people I deliberately invite
+                  </option>
+                  {can('learning:manage') && (
+                    <option value="institution">
+                      Institution-only · members of this workspace
+                    </option>
+                  )}
+                  <option value="public">Public to everyone · listed in Discover lessons</option>
+                </select>
+              </label>
+              {release && (
+                <>
+                  <Link
+                    className={action}
+                    href={`/console/learn/lessons/${release.id}?tenant=${release.tenantId}&present=true`}
+                  >
+                    Present published lesson
+                  </Link>
+                  <Link
+                    className={action}
+                    href={`/console/learn/lessons/${release.id}?tenant=${release.tenantId}`}
+                  >
+                    Study published lesson
+                  </Link>
+                </>
+              )}
+              {visibility === 'public' && (
+                <Notice>
+                  Anyone can view this lesson’s approved content and visuals. Original PDFs and
+                  notes stay private. Confirm that you have the right to share any model or image
+                  used here.
+                </Notice>
+              )}
+              <p className="text-sm text-ink-dim">
+                Publication creates an immutable release. Later edits stay in a new draft. Uncited
+                facts require your independent verification.
+              </p>
+              {[
+                ['facts', 'I reviewed the facts and explanations'],
+                ['answers', 'I checked every quiz answer and explanation'],
+                ['mappings', 'I previewed the visuals and confirmed component mappings'],
+                ['rights', 'I have permission to use and share these materials'],
+              ].map(([key, label]) => (
+                <label key={key} className="flex min-h-11 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={!!review[key!]}
+                    onChange={(e) => setReview({ ...review, [key!]: e.target.checked })}
+                  />
+                  {label}
+                </label>
+              ))}
+              <button
+                className={action}
+                disabled={
+                  busy || !id || !['facts', 'answers', 'mappings', 'rights'].every((k) => review[k])
+                }
+                onClick={() =>
+                  void work(async () => {
+                    const current = dirty ? await save() : { revision };
+                    const r = await apiFetch<{ release: NonNullable<Draft['release']> }>(
+                      `/learning/lesson-plans/${id}/publish`,
+                      {
+                        method: 'POST',
+                        body: {
+                          revision: current.revision,
+                          visibility,
+                          review: {
+                            facts: true,
+                            answers: true,
+                            mappings: true,
+                            rights: true,
+                          },
+                        },
+                      },
+                    );
+                    setRelease(r.release);
+                    setRevision(r.release.revision);
+                    setMessage('Published. Open the released lesson to share, present or export.');
+                  })
+                }
+              >
+                Publish reviewed lesson
+              </button>
+            </div>
+          </details>
+        </Panel>
+      )}
+    </>
+  ) : null;
+
   return (
     <LearningLayout
+      playground={!!id || !!draft}
       title={draft?.title ?? 'Create a lesson'}
       description="Start with an idea or an asset. Let the agent draft the lesson, then review it in one place."
     >
-      {error && <Notice error>{error}</Notice>}
-      {message && <Notice>{message}</Notice>}
+      {!draft && error && <Notice error>{error}</Notice>}
+      {!draft && message && <Notice>{message}</Notice>}
       {q.error && <Notice error>{q.error.message}</Notice>}
       {id && q.isPending && <Notice>Loading lesson draft…</Notice>}
       {restore && (
@@ -419,21 +771,58 @@ export function LessonEditor({ id }: { id?: string }) {
           </div>
         </Panel>
       )}
-      {taskId && (
+      {taskId && !draft && (
         <AgentActivity
           steps={task.data?.task.progress ?? []}
           status={task.data?.task.status ?? 'queued'}
         />
       )}
-      {task.data?.task.status === 'failed' && (
+      {!draft && task.data?.task.status === 'failed' && (
         <Notice error>
           {task.data.task.error ??
             'The agent could not finish. Your saved draft is still available.'}
         </Notice>
       )}
       {draft && (
-        <>
-          <div className="flex flex-wrap items-center gap-3">
+        <div
+          className={'lesson-playground' + (annotating ? ' is-annotating' : '')}
+          data-panel={mobilePanel}
+        >
+          <header className="playground-header">
+            <div className="playground-title">
+              <Link href="/console/learn" aria-label="Back to lessons">
+                <ArrowLeft size={18} />
+              </Link>
+              <div>
+                <span>Lesson playground</span>
+                <h1>{draft.title}</h1>
+              </div>
+            </div>
+            <nav aria-label="Lesson modes" className="playground-modes">
+              <button aria-current="page">
+                <Wand2 size={15} />
+                Create
+              </button>
+              <button
+                aria-label="Study privately"
+                disabled={busy}
+                onClick={() => void openPlayground()}
+              >
+                <BookOpen size={15} />
+                Study
+              </button>
+              <button
+                aria-label="Present draft"
+                disabled={busy}
+                onClick={() => void openPlayground(true)}
+              >
+                <Clapperboard size={15} />
+                Present
+              </button>
+            </nav>
+            <PlaygroundFullscreen />
+          </header>
+          <div className="playground-toolbar">
             <button
               className={action}
               disabled={busy || (!dirty && !!id)}
@@ -445,392 +834,264 @@ export function LessonEditor({ id }: { id?: string }) {
             >
               {busy ? 'Working…' : 'Save draft'}
             </button>
-            <button className={action} onClick={() => setPreview(!preview)}>
-              {preview ? 'Edit this lesson' : 'Preview lesson'}
-            </button>
             <button
               className={action}
-              disabled={busy}
-              onClick={() =>
-                void work(async () => {
-                  const current = dirty || !id ? await save() : { id };
-                  const r = await apiFetch<{ release: { id: string; tenantId: string } }>(
-                    `/learning/lesson-plans/${current.id}/study`,
-                    { method: 'POST' },
-                  );
-                  router.push(
-                    `/console/learn/lessons/${r.release.id}?tenant=${r.release.tenantId}`,
-                  );
-                })
-              }
+              onClick={() => {
+                setPreview(!preview);
+                setAnnotating(false);
+                setShowProposal(false);
+              }}
             >
-              Study privately
+              {preview ? 'Edit this lesson' : 'Preview lesson'}
             </button>
-            <span role="status" className="text-sm text-ink-dim">
-              {dirty ? 'Unsaved changes' : 'Saved'} · {sum}/{draft.durationMinutes} minutes
-            </span>
-            {release && (
-              <>
-                <Link
-                  className={action}
-                  href={`/console/learn/lessons/${release.id}?tenant=${release.tenantId}&present=true`}
-                >
-                  Present published lesson
-                </Link>
-                <Link
-                  className={action}
-                  href={`/console/learn/lessons/${release.id}?tenant=${release.tenantId}`}
-                >
-                  Study published lesson
-                </Link>
-              </>
+            {companionSection?.activity?.scene.kind === 'model' && (
+              <button
+                className={action}
+                aria-pressed={annotating}
+                onClick={() => {
+                  setAnnotating(!annotating);
+                  setShowProposal(false);
+                  setMobilePanel('lesson');
+                }}
+              >
+                {annotating ? 'Back to lesson' : 'Model annotations'}
+              </button>
             )}
+            <span role="status" className="text-sm text-ink-dim">
+              {message ||
+                `${dirty ? 'Unsaved changes' : 'Saved'} · ${sum}/${draft.durationMinutes} minutes`}
+            </span>
+            <button
+              className={action}
+              onClick={() => {
+                setMobilePanel('assistant');
+                if (publishRef.current) {
+                  publishRef.current.open = true;
+                  publishRef.current.scrollIntoView({ block: 'nearest' });
+                }
+              }}
+            >
+              Review &amp; share
+            </button>
           </div>
-          <div className="lesson-session-grid">
-            <aside className="lesson-session-steps" aria-label="Lesson outline">
-              {draft.sections.map((s, i) => (
-                <button
-                  key={s.id}
-                  aria-current={s.id === selected?.id ? 'step' : undefined}
-                  className={
-                    action +
-                    ' flex w-full items-center justify-between gap-2 text-left ' +
-                    (s.id === selected?.id ? 'bg-veil-6' : '')
-                  }
-                  onClick={() => setSectionId(s.id)}
-                >
+          <nav className="playground-mobile-tabs" aria-label="Playground panels">
+            <button
+              aria-pressed={mobilePanel === 'lesson'}
+              onClick={() => setMobilePanel('lesson')}
+            >
+              <Play size={16} />
+              Lesson
+            </button>
+            <button
+              aria-pressed={mobilePanel === 'assistant'}
+              onClick={() => setMobilePanel('assistant')}
+            >
+              <MessageCircle size={16} />
+              Assistant{proposal ? ' · Proposal ready' : ''}
+            </button>
+          </nav>
+          <div className="playground-body">
+            <section className="playground-stage" aria-label="Lesson stage and timeline">
+              <aside className="playground-timeline" aria-label="Lesson outline">
+                {draft.sections.map((s, i) => (
+                  <button
+                    key={s.id}
+                    aria-current={s.id === selected?.id ? 'step' : undefined}
+                    className={
+                      action +
+                      ' flex w-full items-center justify-between gap-2 text-left ' +
+                      (s.id === selected?.id ? 'bg-veil-6' : '')
+                    }
+                    onClick={() => {
+                      setSectionId(s.id);
+                      setAnnotating(false);
+                      setMobilePanel('lesson');
+                    }}
+                  >
+                    <span className="playground-step-title">
+                      <LessonSectionMark kind={s.kind} />
+                      <span>
+                        {i + 1}. {s.title}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-xs">{s.minutes} min</span>
+                  </button>
+                ))}
+              </aside>
+              <div className="playground-stage">
+                <div className="playground-stage-heading">
                   <span>
-                    {i + 1}. {s.title}
+                    {showProposal && proposal ? 'Proposal preview' : 'Current draft'} ·{' '}
+                    {stageSection?.kind}
                   </span>
-                  <span className="shrink-0 text-xs">{s.minutes} min</span>
-                </button>
-              ))}
-            </aside>
-            <div className="min-w-0 space-y-5">
-              {preview && selected ? (
-                <Panel>
-                  <h2 className="text-2xl font-semibold">{selected.title}</h2>
-                  <p className="whitespace-pre-wrap leading-relaxed">{selected.body}</p>
-                  {(selected.activity || companionSection?.activity) && (
-                    <LessonActivity
-                      key={`${selected.id}:${revision}`}
-                      activity={selected.activity ?? companionSection!.activity!}
-                      companion={
-                        selected.activity?.scene.kind === 'none'
-                          ? companionSection?.activity
-                          : undefined
-                      }
-                      visualUrl={visualSourceUrl(selected.activity ?? companionSection?.activity)}
-                      companionVisualUrl={visualSourceUrl(companionSection?.activity)}
-                      state={initialLessonActivityState()}
-                      onAction={() => {}}
-                      preview
-                      exploreOnly={!selected.activity || selected.kind === 'exploration'}
-                    />
-                  )}
-                  {draft.sketchfabUrl && selected.kind === 'exploration' && (
-                    <SketchfabWorkbench compact initialLink={draft.sketchfabUrl} />
-                  )}
-                  {selected.notes && (
-                    <details>
-                      <summary>Teaching notes</summary>
-                      <p className="whitespace-pre-wrap">{selected.notes}</p>
-                    </details>
-                  )}
-                </Panel>
-              ) : (
-                <>
-                  <details className="lesson-options">
-                    <summary>Lesson details · title, outcomes and timing</summary>
-                    <div className="grid gap-4 pt-4">
-                      <label className="grid gap-2">
-                        Lesson title
-                        <input
-                          className={control}
-                          value={draft.title}
-                          onChange={(e) => change({ ...draft, title: e.target.value })}
-                        />
-                      </label>
-                      <label className="grid gap-2">
-                        Summary
-                        <textarea
-                          className={control}
-                          value={draft.summary}
-                          onChange={(e) => change({ ...draft, summary: e.target.value })}
-                        />
-                      </label>
-                      <div className="grid gap-4 sm:grid-cols-2">
+                  <span>{stageSection?.minutes} min</span>
+                </div>
+                {showProposal && proposal && (
+                  <Notice>
+                    Previewing proposed changes. Your saved lesson has not changed.{' '}
+                    <button className="underline" onClick={() => setShowProposal(false)}>
+                      Return to current draft
+                    </button>
+                  </Notice>
+                )}
+                {annotating && companionSection?.activity ? (
+                  <LessonAnnotations
+                    key={companionSection.id}
+                    activity={companionSection.activity}
+                    busy={busy || ['queued', 'active'].includes(task.data?.task.status ?? '')}
+                    onChange={(activity) =>
+                      change({
+                        ...draft,
+                        sections: draft.sections.map((s) =>
+                          s.id === companionSection.id ? { ...s, activity } : s,
+                        ),
+                      })
+                    }
+                    onSuggest={async (views, instruction) => {
+                      await work(async () => {
+                        const current = dirty || !id ? await save() : { id, revision };
+                        const response = await apiFetch<{ task: Task }>(
+                          `/learning/lesson-plans/${current.id}/annotations`,
+                          {
+                            method: 'POST',
+                            body: {
+                              revision: current.revision,
+                              sectionId: companionSection.id,
+                              instruction:
+                                'Create detailed component explanations for this lesson: location, function, relationships and why each component matters. Suggest visible surface pins. Preserve confirmed component IDs. Mark uncertain identities for author review. ' +
+                                (instruction ?? ''),
+                              ...(views ? { views } : {}),
+                            },
+                          },
+                        );
+                        setTaskId(response.task.id);
+                      });
+                    }}
+                  />
+                ) : preview && stageSection ? (
+                  <Panel>
+                    <h2 className="text-2xl font-semibold">{stageSection.title}</h2>
+                    <p className="whitespace-pre-wrap leading-relaxed">{stageSection.body}</p>
+                    {(stageSection.activity || stageCompanion?.activity) && (
+                      <LessonActivity
+                        key={`${stageSection.id}:${revision}:${showProposal}`}
+                        activity={stageSection.activity ?? stageCompanion!.activity!}
+                        companion={
+                          stageSection.activity?.scene.kind === 'none'
+                            ? stageCompanion?.activity
+                            : undefined
+                        }
+                        visualUrl={visualSourceUrl(
+                          stageSection.activity ?? stageCompanion?.activity,
+                        )}
+                        companionVisualUrl={visualSourceUrl(stageCompanion?.activity)}
+                        state={initialLessonActivityState()}
+                        onAction={() => {}}
+                        preview
+                        exploreOnly={!stageSection.activity || stageSection.kind === 'exploration'}
+                      />
+                    )}
+                    {draft.sketchfabUrl && stageSection.kind === 'exploration' && (
+                      <SketchfabWorkbench compact initialLink={draft.sketchfabUrl} />
+                    )}
+                    {stageSection.notes && (
+                      <details>
+                        <summary>Teaching notes</summary>
+                        <p className="whitespace-pre-wrap">{stageSection.notes}</p>
+                      </details>
+                    )}
+                  </Panel>
+                ) : (
+                  <>
+                    <details className="lesson-options">
+                      <summary>Lesson details · title, outcomes and timing</summary>
+                      <div className="grid gap-4 pt-4">
                         <label className="grid gap-2">
-                          Audience
+                          Lesson title
                           <input
                             className={control}
-                            value={draft.audience}
-                            onChange={(e) => change({ ...draft, audience: e.target.value })}
+                            value={draft.title}
+                            onChange={(e) => change({ ...draft, title: e.target.value })}
                           />
                         </label>
                         <label className="grid gap-2">
-                          Total minutes
-                          <input
+                          Summary
+                          <textarea
                             className={control}
-                            type="number"
-                            min={5}
-                            max={180}
-                            value={draft.durationMinutes}
+                            value={draft.summary}
+                            onChange={(e) => change({ ...draft, summary: e.target.value })}
+                          />
+                        </label>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label className="grid gap-2">
+                            Audience
+                            <input
+                              className={control}
+                              value={draft.audience}
+                              onChange={(e) => change({ ...draft, audience: e.target.value })}
+                            />
+                          </label>
+                          <label className="grid gap-2">
+                            Total minutes
+                            <input
+                              className={control}
+                              type="number"
+                              min={5}
+                              max={180}
+                              value={draft.durationMinutes}
+                              onChange={(e) =>
+                                change({ ...draft, durationMinutes: Number(e.target.value) })
+                              }
+                            />
+                          </label>
+                        </div>
+                        <label className="grid gap-2">
+                          Learning outcomes (one per line)
+                          <textarea
+                            className={control}
+                            value={draft.objectives.join('\n')}
                             onChange={(e) =>
-                              change({ ...draft, durationMinutes: Number(e.target.value) })
+                              change({ ...draft, objectives: e.target.value.split('\n') })
                             }
                           />
                         </label>
                       </div>
-                      <label className="grid gap-2">
-                        Learning outcomes (one per line)
-                        <textarea
-                          className={control}
-                          value={draft.objectives.join('\n')}
-                          onChange={(e) =>
-                            change({ ...draft, objectives: e.target.value.split('\n') })
+                    </details>
+                    {selected && (
+                      <Panel>
+                        <LessonSectionEditor
+                          section={selected}
+                          sources={
+                            sources.data?.sources.filter((s) => sourceIds.includes(s.id)) ?? []
+                          }
+                          onChange={(next) =>
+                            change({
+                              ...draft,
+                              sections: draft.sections.map((s) => (s.id === next.id ? next : s)),
+                            })
                           }
                         />
-                      </label>
-                    </div>
-                  </details>
-                  {selected && (
-                    <Panel>
-                      <LessonSectionEditor
-                        section={selected}
-                        sources={
-                          sources.data?.sources.filter((s) => sourceIds.includes(s.id)) ?? []
-                        }
-                        onChange={(next) =>
-                          change({
-                            ...draft,
-                            sections: draft.sections.map((s) => (s.id === next.id ? next : s)),
-                          })
-                        }
+                      </Panel>
+                    )}
+                    <details className="lesson-options">
+                      <summary>Source materials</summary>{' '}
+                      <LessonSources
+                        selected={sourceIds}
+                        onChange={(ids) => {
+                          setSourceIds(ids);
+                          change({ ...draft, sourceIds: ids });
+                        }}
                       />
-                    </Panel>
-                  )}
-                  <details className="lesson-options">
-                    <summary>Source materials</summary>{' '}
-                    <LessonSources
-                      selected={sourceIds}
-                      onChange={(ids) => {
-                        setSourceIds(ids);
-                        change({ ...draft, sourceIds: ids });
-                      }}
-                    />
-                  </details>
-                </>
-              )}
-              <Panel>
-                <h2 className="text-lg font-semibold">Work with the lesson agent</h2>
-                <label className="grid gap-2">
-                  What should change?
-                  <textarea
-                    className={control}
-                    value={instruction}
-                    maxLength={3000}
-                    placeholder="Simplify this explanation and add a worked example"
-                    onChange={(e) => setInstruction(e.target.value)}
-                  />
-                </label>
-                <label className="flex min-h-11 items-center gap-3">
-                  <input
-                    type="checkbox"
-                    checked={onlySection}
-                    onChange={(e) => setOnlySection(e.target.checked)}
-                  />
-                  Change only the selected section
-                </label>
-                <button
-                  className={action}
-                  disabled={
-                    !id ||
-                    busy ||
-                    instruction.trim().length < 5 ||
-                    ['queued', 'active'].includes(task.data?.task.status ?? '')
-                  }
-                  onClick={() =>
-                    void work(async () => {
-                      const p = dirty ? await save() : { id, revision };
-                      const r = await apiFetch<{ task: Task }>(
-                        `/learning/lesson-plans/${id}/revise`,
-                        {
-                          method: 'POST',
-                          body: {
-                            revision: p.revision,
-                            instruction,
-                            ...(onlySection && selected ? { sectionId: selected.id } : {}),
-                          },
-                        },
-                      );
-                      setTaskId(r.task.id);
-                    })
-                  }
-                >
-                  Propose changes
-                </button>
-                {!id && (
-                  <p className="text-sm text-ink-dim">
-                    Save this structure before asking for revisions.
-                  </p>
+                    </details>
+                  </>
                 )}
-                {proposal && (
-                  <div className="space-y-3 border-t border-hairline pt-4">
-                    <h3 className="font-semibold">Review the proposal</h3>
-                    {proposal.sections
-                      .filter(
-                        (s) =>
-                          JSON.stringify(s) !==
-                          JSON.stringify(draft.sections.find((x) => x.id === s.id)),
-                      )
-                      .map((s) => (
-                        <details key={s.id}>
-                          <summary className="cursor-pointer py-2">
-                            {s.title} · {s.minutes} min
-                          </summary>
-                          <p className="whitespace-pre-wrap">{s.body}</p>
-                          {s.activity && (
-                            <p>
-                              {s.activity.steps.length} activity questions; review keys in the
-                              editor after applying.
-                            </p>
-                          )}
-                        </details>
-                      ))}
-                    <button
-                      className={action}
-                      disabled={busy || dirty}
-                      onClick={() =>
-                        void work(async () => {
-                          setBefore(draft);
-                          const r = await apiFetch<{ plan: Draft }>(
-                            `/learning/lesson-plans/${id}/apply`,
-                            { method: 'POST', body: { taskId, revision } },
-                          );
-                          setDraft(r.plan.definition);
-                          setSourceIds(r.plan.definition.sourceIds);
-                          setRevision(r.plan.revision);
-                          setDirty(false);
-                          setReview({});
-                          setTaskId('');
-                          setMessage('Proposal applied. Review it before publishing.');
-                        })
-                      }
-                    >
-                      Apply reviewed proposal
-                    </button>
-                    <button className={action} onClick={() => setTaskId('')}>
-                      Keep current lesson
-                    </button>
-                  </div>
-                )}
-                {before && (
-                  <button
-                    className={action}
-                    onClick={() => {
-                      change(before);
-                      setBefore(null);
-                    }}
-                  >
-                    Undo last agent change
-                  </button>
-                )}
-              </Panel>
-              {can('learning:generate-private') && (
-                <Panel>
-                  <details className="lesson-publish">
-                    <summary>Review and publish</summary>
-                    <div className="grid gap-3 pt-4">
-                      <label className="grid gap-2">
-                        Who can study this lesson?
-                        <select
-                          className={control}
-                          value={visibility}
-                          onChange={(e) => setVisibility(e.target.value as typeof visibility)}
-                        >
-                          <option value="private">
-                            Private · only me and people I deliberately invite
-                          </option>
-                          {can('learning:manage') && (
-                            <option value="institution">
-                              Institution-only · members of this workspace
-                            </option>
-                          )}
-                          <option value="public">
-                            Public to everyone · listed in Discover lessons
-                          </option>
-                        </select>
-                      </label>
-                      {visibility === 'public' && (
-                        <Notice>
-                          Anyone can view this lesson’s approved content and visuals. Original PDFs
-                          and notes stay private. Confirm that you have the right to share any model
-                          or image used here.
-                        </Notice>
-                      )}
-                      <p className="text-sm text-ink-dim">
-                        Publication creates an immutable release. Later edits stay in a new draft.
-                        Uncited facts require your independent verification.
-                      </p>
-                      {[
-                        ['facts', 'I reviewed the facts and explanations'],
-                        ['answers', 'I checked every quiz answer and explanation'],
-                        ['mappings', 'I previewed the visuals and confirmed component mappings'],
-                        ['rights', 'I have permission to use and share these materials'],
-                      ].map(([key, label]) => (
-                        <label key={key} className="flex min-h-11 items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={!!review[key!]}
-                            onChange={(e) => setReview({ ...review, [key!]: e.target.checked })}
-                          />
-                          {label}
-                        </label>
-                      ))}
-                      <button
-                        className={action}
-                        disabled={
-                          busy ||
-                          !id ||
-                          !['facts', 'answers', 'mappings', 'rights'].every((k) => review[k])
-                        }
-                        onClick={() =>
-                          void work(async () => {
-                            const current = dirty ? await save() : { revision };
-                            const r = await apiFetch<{ release: NonNullable<Draft['release']> }>(
-                              `/learning/lesson-plans/${id}/publish`,
-                              {
-                                method: 'POST',
-                                body: {
-                                  revision: current.revision,
-                                  visibility,
-                                  review: {
-                                    facts: true,
-                                    answers: true,
-                                    mappings: true,
-                                    rights: true,
-                                  },
-                                },
-                              },
-                            );
-                            setRelease(r.release);
-                            setRevision(r.release.revision);
-                            setMessage(
-                              'Published. Open the released lesson to share, present or export.',
-                            );
-                          })
-                        }
-                      >
-                        Publish reviewed lesson
-                      </button>
-                    </div>
-                  </details>
-                </Panel>
-              )}
-            </div>
+              </div>
+            </section>
+            <aside className="playground-assistant" aria-label="Lesson assistant">
+              {assistantPanel}
+            </aside>
           </div>
-        </>
+        </div>
       )}
     </LearningLayout>
   );

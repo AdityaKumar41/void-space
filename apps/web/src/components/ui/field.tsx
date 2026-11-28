@@ -13,11 +13,12 @@ import { SearchIcon } from './icons';
 const CONTROL =
   'h-10 rounded-control border border-hairline bg-surface text-ink transition-colors duration-150 ease-standard hover:border-hairline-strong focus:border-brand focus:outline-none disabled:opacity-50';
 
-export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...props }, ref) => (
-    <input ref={ref} className={cn(CONTROL, 'w-full px-3 text-[15px]', className)} {...props} />
-  ),
-);
+export const Input = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement>
+>(({ className, ...props }, ref) => (
+  <input ref={ref} className={cn(CONTROL, 'w-full px-3 text-[15px]', className)} {...props} />
+));
 Input.displayName = 'Input';
 
 export const Textarea = React.forwardRef<
@@ -53,34 +54,6 @@ export const Select = React.forwardRef<
   </select>
 ));
 Select.displayName = 'Select';
-
-/**
- * A labelled field.
- *
- * The label is a real `<label>` wrapping the control, so clicking the words focuses the input — the
- * cheapest accessibility win in a form and the one most often replaced by a styled `<div>`.
- */
-export function Field({
-  label,
-  hint,
-  className,
-  children,
-}: {
-  label: string;
-  hint?: React.ReactNode;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className={cn('block', className)}>
-      <span className="mb-1.5 block text-[12px] font-semibold text-ink-faint">{label}</span>
-      {children}
-      {hint === undefined ? null : (
-        <span className="mt-1.5 block text-[12px] leading-relaxed text-ink-faint">{hint}</span>
-      )}
-    </label>
-  );
-}
 
 /**
  * The search field.

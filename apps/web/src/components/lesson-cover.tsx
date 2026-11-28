@@ -1,7 +1,14 @@
 import { Box, GitBranch, Image as ImageIcon, BookOpen } from 'lucide-react';
 export type LessonVisualKind = 'model' | 'diagram' | 'process' | 'none';
 /** Small format artwork; never downloads a model or pretends to be its thumbnail. */
-export function LessonCover({ kind = 'none' }: { kind?: LessonVisualKind }) {
+export function LessonCover({
+  kind = 'none',
+  title = '',
+}: {
+  kind?: LessonVisualKind;
+  title?: string;
+}) {
+  const variation = Array.from(title).reduce((n, c) => n + c.charCodeAt(0), 0) % 3;
   const Icon =
     kind === 'model'
       ? Box
@@ -11,34 +18,39 @@ export function LessonCover({ kind = 'none' }: { kind?: LessonVisualKind }) {
           ? ImageIcon
           : BookOpen;
   return (
-    <div className={`lesson-cover lesson-cover-${kind}`} aria-hidden="true">
-      <svg viewBox="0 0 420 210" fill="none">
+    <div className={`lesson-cover lesson-cover-${kind} cover-tone-${variation}`} aria-hidden="true">
+      <svg viewBox="0 0 420 210" fill="none" className="lesson-format-art">
         {kind === 'model' ? (
           <>
+            <circle cx="307" cy="73" r="31" fill="var(--cover-soft)" stroke="var(--cover-detail)" />
+            <path
+              d="M276 73h62m-31-31c15 18 15 44 0 62m0-62c-15 18-15 44 0 62"
+              stroke="var(--cover-detail)"
+            />
             <path
               d="m210 32 85 49v92l-85 49-85-49V81z"
-              fill="#e2e2e2"
+              fill="var(--cover-fill)"
               transform="translate(0 -24)"
             />
             <path
               d="m125 57 85 50 85-50M210 107v91M125 57v92l85 49 85-49V57l-85-49z"
-              stroke="#777777"
+              stroke="var(--cover-stroke)"
               strokeWidth="2"
             />
-            <ellipse cx="210" cy="196" rx="100" ry="8" fill="#dddddd" />
+            <ellipse cx="210" cy="196" rx="100" ry="8" fill="var(--cover-shadow)" />
             <path
               d="M210 13v182m-77-132 153 86m0-86-153 86"
-              stroke="#aaaaaa"
+              stroke="var(--cover-detail)"
               strokeDasharray="3 5"
             />
-            <circle cx="210" cy="107" r="5" fill="#777777" />
-            <path d="M97 42h-34m260 110h35" stroke="#bbbbbb" />
-            <circle cx="97" cy="42" r="4" fill="#777777" />
-            <circle cx="323" cy="152" r="4" fill="#777777" />
+            <circle cx="210" cy="107" r="5" fill="var(--cover-stroke)" />
+            <path d="M97 42h-34m260 110h35" stroke="var(--cover-detail)" />
+            <circle cx="97" cy="42" r="4" fill="var(--cover-stroke)" />
+            <circle cx="323" cy="152" r="4" fill="var(--cover-stroke)" />
           </>
         ) : kind === 'process' ? (
           <>
-            <path d="M92 105h236" stroke="#c4c4c4" strokeWidth="3" />
+            <path d="M92 105h236" stroke="var(--cover-detail)" strokeWidth="3" />
             {[100, 210, 320].map((x, i) => (
               <g key={x}>
                 <rect
@@ -47,10 +59,10 @@ export function LessonCover({ kind = 'none' }: { kind?: LessonVisualKind }) {
                   width="68"
                   height="68"
                   rx="20"
-                  fill={i === 1 ? '#dedede' : '#ececec'}
-                  stroke="#9b9b9b"
+                  fill={i === 1 ? 'var(--cover-fill)' : 'var(--cover-soft)'}
+                  stroke="var(--cover-stroke)"
                 />
-                <path d={`m${x - 10} 104 7 8 15-17`} stroke="#686868" strokeWidth="3" />
+                <path d={`m${x - 10} 104 7 8 15-17`} stroke="var(--cover-stroke)" strokeWidth="3" />
               </g>
             ))}
           </>
@@ -78,13 +90,13 @@ export function LessonCover({ kind = 'none' }: { kind?: LessonVisualKind }) {
           <>
             <path
               d="M210 65c-30-18-62-18-92-5v96c30-13 62-13 92 5 30-18 62-18 92-5V60c-30-13-62-13-92 5z"
-              fill="#dfdfe4"
-              stroke="#a1a1ad"
+              fill="var(--cover-fill)"
+              stroke="var(--cover-stroke)"
               strokeWidth="2"
             />
             <path
               d="M210 65v96m-70-78h45m-45 20h45m50-20h45m-45 20h45"
-              stroke="#a1a1ad"
+              stroke="var(--cover-stroke)"
               strokeWidth="2"
             />
           </>

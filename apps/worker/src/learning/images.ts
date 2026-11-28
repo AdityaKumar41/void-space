@@ -1,5 +1,6 @@
+import { writeLearningFile, deleteLearningFile } from '@void-space/db';
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
 import { withTenant, learningStorageRoot } from '@void-space/db';
@@ -97,6 +98,8 @@ export async function generateLearningImage(
   input: { prompt: string; title?: string },
   stagingDir = process.env.STAGING_DIR ?? '.staging',
 ) {
+  if (process.env.AI_IMAGE_ENABLED === 'false')
+    throw Error('Image generation is unavailable for now. Upload an approved image instead.');
   if (!process.env.AI_IMAGE_BASE_URL)
     throw Error('Image generation is not configured. Upload an approved image instead.');
   await learningToolProgress(tenantId, taskId, 'image', 'Creating an illustration', 'working');
@@ -106,10 +109,10 @@ export async function generateLearningImage(
     key: process.env.AI_IMAGE_API_KEY,
   });
   const id = randomUUID(),
-    directory = join(learningStorageRoot(stagingDir), tenantId),
-    path = join(directory, id);
+    directory = join(learningStorageRoot(stagingDir), tenantId);
+  let path = join(directory, id);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  await writeFile(path, bytes, { mode: 0o600, flag: 'wx' });
+  path = await writeLearningFile(path, bytes, stagingDir, 'image/png');
   try {
     await withTenant(tenantId, (db) =>
       db.learningSource.create({
@@ -131,7 +134,7 @@ export async function generateLearningImage(
       }),
     );
   } catch (e) {
-    await rm(path, { force: true });
+    await deleteLearningFile(path, stagingDir);
     throw e;
   }
   await learningToolProgress(

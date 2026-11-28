@@ -22,7 +22,7 @@ import { REPO_ROOT } from './env';
 import { buildGlbFixture } from './glb-fixture';
 import { buildShapeGlb, isShapeName, type ShapeName } from './glb-shapes';
 import { metadataFromGlbBuffer } from './glb-read';
-import { ipfsReachable, pinBuffer } from './ipfs-pin';
+import { storeAssetBytes } from '@void-space/storage';
 import { syncPublicCatalogEntry } from './public-catalog';
 import { withTenant } from './tenant';
 
@@ -85,7 +85,7 @@ export interface DemoAssetSpec {
     readonly reply?: { readonly body: string; readonly authorRole: 'Creator' | 'Assessor' };
   }[];
   readonly jobs?: readonly {
-    readonly queue: 'ai_enrichment' | 'ipfs_pin' | 'chain_license' | 'xr_publish';
+    readonly queue: 'ai_enrichment' | 'ipfs_pin' | 'chain_license';
     readonly status: 'completed' | 'failed' | 'active';
     readonly error?: string;
   }[];
@@ -502,44 +502,16 @@ async function buildFixture(
 }
 
 /**
- * Pins content, falling back to the placeholder CID when IPFS is not running.
+ * Stores real fixture bytes in S3; unavailable storage is an explicit setup error.
  *
  * Reachability is probed once per seed run: reseeding without the infra profile should warn and
  * carry on rather than fail part-way with tenants half-written.
  */
-let ipfsAvailable: boolean | null = null;
-let warnedAboutIpfs = false;
-
 async function pinFixture(
-  spec: DemoAssetSpec,
-  version: DemoVersionSpec,
-  content: Buffer,
+  _spec: DemoAssetSpec, _version: DemoVersionSpec, content: Buffer,
 ): Promise<{ cid: string; sizeBytes: number }> {
-  const apiUrl = process.env.IPFS_API_URL ?? 'http://127.0.0.1:5001';
-
-  if (ipfsAvailable === null) {
-    ipfsAvailable = await ipfsReachable(apiUrl);
-  }
-
-  if (ipfsAvailable) {
-    try {
-      const pinned = await pinBuffer(apiUrl, content);
-      return { cid: pinned.cid, sizeBytes: pinned.bytes };
-    } catch (error) {
-      ipfsAvailable = false;
-      console.warn(`[seed] IPFS pin failed for ${spec.key}:`, (error as Error).message);
-    }
-  }
-
-  if (!warnedAboutIpfs) {
-    warnedAboutIpfs = true;
-    console.warn(
-      `[seed] IPFS is not reachable at ${apiUrl}; storing placeholder CIDs. ` +
-        'Start the stack with `pnpm dev:up` and reseed to pin real content.',
-    );
-  }
-
-  return { cid: demoCid(`${spec.key}:v${version.versionNumber}`), sizeBytes: version.sizeBytes };
+  const stored = await storeAssetBytes(content);
+  return { cid: stored.cid, sizeBytes: stored.bytes };
 }
 
 const GLB = '.glb';

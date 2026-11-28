@@ -1,6 +1,6 @@
 'use client';
-import { Check, ChevronDown, CircleAlert, LoaderCircle, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { Check, ChevronDown, CircleAlert, LoaderCircle, Sparkles, Square } from 'lucide-react';
+import { useEffect, useState } from 'react';
 export interface AgentActivityStep {
   id: string;
   label: string;
@@ -17,15 +17,27 @@ export function AgentActivity({
   status: string;
   compact?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(true),
-    working = steps.find((s) => s.status === 'working'),
+  const [expanded, setExpanded] = useState(!['completed', 'cancelled'].includes(status)),
+    working = [...steps].reverse().find((s) => s.status === 'working'),
     complete = status === 'completed',
     failed = status === 'failed';
-  const title = failed
-    ? 'The agent needs your attention'
-    : complete
-      ? 'Ready for your review'
-      : (working?.label ?? 'Getting started');
+  const [now, setNow] = useState(() => Date.now());
+  const active = !['completed', 'failed', 'cancelled'].includes(status);
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+  const waitingLong = active && !!working?.updatedAt && now - Date.parse(working.updatedAt) > 20000;
+
+  const title =
+    status === 'cancelled'
+      ? 'Generation stopped'
+      : failed
+        ? 'The agent needs your attention'
+        : complete
+          ? 'Ready for your review'
+          : (working?.label ?? 'Getting started');
   return (
     <section
       className={'agent-activity ' + (compact ? 'is-compact' : '')}
@@ -39,6 +51,8 @@ export function AgentActivity({
         <span className={'agent-activity-symbol ' + (failed ? 'has-error' : '')}>
           {failed ? (
             <CircleAlert size={18} />
+          ) : status === 'cancelled' ? (
+            <Square size={18} />
           ) : complete ? (
             <Check size={18} />
           ) : (
@@ -48,15 +62,23 @@ export function AgentActivity({
         <span>
           <strong>{title}</strong>
           <small>
-            {complete
-              ? 'Your work is saved'
-              : failed
-                ? 'Your request and material are saved'
-                : 'Working with your request and selected material'}
+            {status === 'cancelled'
+              ? 'Your saved inputs remain available'
+              : complete
+                ? 'Your work is saved'
+                : failed
+                  ? 'Your request and material are saved'
+                  : 'Working with your request and selected material'}
           </small>
         </span>
         <ChevronDown className={expanded ? 'is-expanded' : ''} size={16} />
       </button>
+      {waitingLong && (
+        <p className="agent-activity-wait" role="status">
+          This step is taking longer. You can leave this page and return to History; your request is
+          saved.
+        </p>
+      )}
       {expanded && (
         <ol className="agent-activity-steps" aria-live="polite">
           {(steps.length
@@ -79,7 +101,12 @@ export function AgentActivity({
           ).map((raw) => {
             const step = {
               ...raw,
-              status: failed && raw.status === 'working' ? 'failed' : raw.status,
+              status:
+                status === 'cancelled' && raw.status === 'working'
+                  ? 'cancelled'
+                  : failed && raw.status === 'working'
+                    ? 'failed'
+                    : raw.status,
             };
             return (
               <li className={step.status} key={step.id}>
@@ -88,6 +115,8 @@ export function AgentActivity({
                     <Check size={13} />
                   ) : step.status === 'failed' ? (
                     <CircleAlert size={13} />
+                  ) : step.status === 'cancelled' ? (
+                    <Square size={13} />
                   ) : (
                     <LoaderCircle className="animate-spin" size={13} />
                   )}

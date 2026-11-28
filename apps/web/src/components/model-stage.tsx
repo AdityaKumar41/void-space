@@ -7,7 +7,7 @@
  * listing, the licence terms and the provenance table are readable (and crawlable) without a canvas or
  * any JavaScript beyond this component.
  *
- * There is no caption strip: the studio draws its own footer with the CID and the decoded triangle
+ * There is no caption strip: the viewer draws its own footer with the CID and the decoded triangle
  * count, and a second line of instructions underneath it was saying the same thing twice. The wireframe
  * and shading controls are likewise owned by `ModelViewer` alone — two controls for one setting is how
  * a UI starts disagreeing with itself.
@@ -38,9 +38,9 @@ export interface ModelStageProps {
    */
   readonly frameFit?: 'box' | 'sphere';
   /**
-   * Storefront chrome: keeps the model and the orbit hint, hides the inspection studio. Set by the
+   * Storefront chrome: keeps the model and the orbit hint, hides the inspection viewer. Set by the
    * marketplace hero, where the visitor is a buyer looking at a product rather than an artist checking
-   * an export. The full studio is one click away on the model page.
+   * an export. The full viewer is one click away on the model page.
    */
   readonly presentation?: boolean;
   /** Applied to the outer frame, so a caller can set the height without reaching inside. */

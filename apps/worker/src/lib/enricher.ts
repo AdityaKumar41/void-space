@@ -1,4 +1,4 @@
-import { generateText, isTextAiConfigured, type TextAiConfig } from '@void-space/studio-ai/text';
+import { generateText, isTextAiConfigured, type TextAiConfig } from '@void-space/ai/text';
 /**
  * AI metadata enrichment (SRS FR-7.1–FR-7.7).
  *
@@ -11,7 +11,7 @@ import { generateText, isTextAiConfigured, type TextAiConfig } from '@void-space
  * FR-7.7 requires the model and prompt versions plus the latency to be recorded for every
  * suggestion, so both implementations report them.
  */
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /** The exact shape the model must return (FR-7.3 — validated, never trusted). */
 export const enrichmentSchema = z.object({

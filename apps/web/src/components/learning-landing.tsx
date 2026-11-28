@@ -16,18 +16,16 @@ export function LearningLanding() {
         <MarketHeader current="product" />
         <section className="learning-site-intro" id="platform">
           <h1>
-            Ask.
+            Learning,
             <br />
-            Explore.
-            <br />
-            Understand.
+            made tangible.
           </h1>
           <div className="learning-site-promise">
             <span aria-hidden>/</span>
             <p>
-              Turn a question into
+              Your ideas, brought to life.
               <br />
-              <strong>a lesson you can explore.</strong>
+              <strong>Lessons you can see, touch and understand.</strong>
             </p>
             <Link href="/learn/signup" className="learning-black-button">
               Start learning
@@ -54,7 +52,7 @@ export function LearningLanding() {
           >
             <label htmlFor="landing-question">
               <Sparkles size={22} />
-              <span>Your next lesson starts with a question.</span>
+              <span>Describe a lesson. We’ll build the first draft together.</span>
             </label>
             <textarea
               id="landing-question"
@@ -62,7 +60,7 @@ export function LearningLanding() {
               maxLength={4000}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Create a lesson about the human heart…"
+              placeholder="Create a 30-minute lesson about the human heart, with a 3D exploration and quiz…"
               rows={2}
             />
             <div>
@@ -78,7 +76,7 @@ export function LearningLanding() {
             </div>
           </form>
           <p className="learning-scene-caption">
-            Your ideas. Your models. <strong>Your own way to understand.</strong>
+            Interactive lessons · AI-assisted planning · Your private model library
           </p>
         </section>
         <section className="learning-audiences" aria-label="Who Void Space is for">

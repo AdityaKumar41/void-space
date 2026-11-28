@@ -103,6 +103,14 @@ contract AssetLicenseRegistryTest is BaseRegistryTest {
         registry.setPublisher(STRANGER, true);
     }
 
+    function testTokenUriSupportsHttpsObjectStorage() public {
+        uint256 tokenId = _mintAsPublisher();
+        string memory uri = "https://void.example/api/v1/content/abcdef0123456789abcdef0123456789";
+        vm.prank(PUBLISHER);
+        registry.setLicenseMetadataCid(tokenId, uri);
+        assertEq(registry.tokenURI(tokenId), uri, "HTTPS metadata URI must not get an IPFS prefix");
+    }
+
     // --------------------------------------------------------- metadata / tokenURI
     function test_SetLicenseMetadataCid_PublishesTokenURI() public {
         uint256 tokenId = _mintAsPublisher();

@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const API_INTERNAL_URL = process.env.API_INTERNAL_URL ?? 'http://localhost:4000';
-const IPFS_GATEWAY_URL = process.env.IPFS_GATEWAY_URL ?? 'http://localhost:8080';
 
 const nextConfig = {
   // Isolated verification builds must not overwrite a running dev server's output.
@@ -8,7 +7,7 @@ const nextConfig = {
   reactStrictMode: true,
   // Workspace packages ship TypeScript source (see README "package strategy"),
   // so Next compiles them alongside the app.
-  transpilePackages: ['@void-space/ui', '@void-space/types'],
+  transpilePackages: ['@void-space/types'],
   experimental: {
     // 200 MB asset uploads go through the API, not Next's actions, so keep the
     // default body limit; this only affects server actions.
@@ -76,18 +75,7 @@ const nextConfig = {
       { source: '/api/:path*', destination: `${API_INTERNAL_URL}/api/:path*` },
     ];
   },
-  async headers() {
-    return [
-      {
-        source: '/ipfs/:path*',
-        headers: [
-          { key: 'Access-Control-Allow-Origin', value: '*' },
-          { key: 'Access-Control-Allow-Methods', value: 'GET, HEAD, OPTIONS' },
-          { key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' },
-        ],
-      },
-    ];
-  },
+
 };
 
 export default nextConfig;

@@ -58,10 +58,16 @@ test('image generation failure stays in history and can be resumed after reload'
       });
       await route.fulfill({ status: 202, json: { task: { id: retryId, status: 'failed' } } });
     });
+    // Exercise recovery independently of the local administrator's paused Flux setting.
+    // Generation and retry above remain intercepted; this never calls an image provider.
+    await page.route(/\/api\/v1\/learning\/agent\/activity(?:\?.*)?$/, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), imageAvailable: true } });
+    });
     await page.goto('/console/learn/agent');
     await page
       .getByRole('textbox', {
-        name: 'Ask me anything — I’m your personal learning agent.',
+        name: 'Message your learning agent',
         exact: true,
       })
       .fill('An illustration of a blue sphere');
@@ -72,6 +78,7 @@ test('image generation failure stays in history and can be resumed after reload'
     );
     await expect(page.getByRole('button', { name: 'Retry image', exact: true })).toBeVisible();
     await page.reload();
+    await page.getByRole('button', { name: 'Search conversations' }).click();
     await page.getByRole('button', { name: 'All AI work', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retry image', exact: true })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Conversations', exact: true })).toContainText(
@@ -80,9 +87,26 @@ test('image generation failure stays in history and can be resumed after reload'
     await page.getByRole('button', { name: 'Retry image', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`task=${retryId}`));
     await page.reload();
+    await page.getByRole('button', { name: 'Search conversations' }).click();
     await expect(page.getByRole('region', { name: 'Conversations', exact: true })).toContainText(
       'Flux is still unavailable.',
     );
+    await page.route(/\/api\/v1\/learning\/agent\/activity(?:\?.*)?$/, async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        json: { ...(await response.json()), imageAvailable: false },
+      });
+    });
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Images unavailable', exact: true }),
+    ).toBeDisabled();
+    await page.getByRole('button', { name: 'Search conversations' }).click();
+    await page.getByRole('button', { name: 'All AI work', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Retry image', exact: true })).toHaveCount(2);
+    for (const retry of await page.getByRole('button', { name: 'Retry image', exact: true }).all())
+      await expect(retry).toBeDisabled();
   } finally {
     if (tenant) await db.tenant.deleteMany({ where: { id: tenant } });
     await db.$disconnect();

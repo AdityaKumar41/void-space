@@ -5,7 +5,7 @@ import {
   TextAiError,
   textAiEnvSchema,
   textProviders,
-} from '../packages/studio-ai/src/text';
+} from '../packages/ai/src/text';
 
 loadRootEnv({ override: false });
 const config = textAiEnvSchema.parse(process.env);

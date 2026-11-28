@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises';
+import { sendAssetContent } from '../content/routes';
+import { sendPrivateFile } from '../../lib/private-files';
+
 import {
   withTenant,
   prisma,
@@ -15,7 +17,7 @@ import { requirePrivateAuthor } from '../learning-hub/access';
 import { accessibleRelease } from './service';
 export async function syncLessonListing(
   db: TenantClient,
-  release: Prisma.LessonPlanReleaseGetPayload<{}>,
+  release: Prisma.LessonPlanReleaseGetPayload<Record<string, never>>,
 ) {
   if (release.reviewed && release.visibility === 'public') {
     const d = lessonPlanSchema.parse(release.definition);
@@ -119,6 +121,7 @@ export async function publicLessonRoutes(app: FastifyInstance, { env }: { env: A
       { section } = z.object({ section: z.string() }).parse(request.query),
       entry = await prisma.publicLessonEntry.findUnique({ where: { id } });
     if (!entry) throw new NotFoundError('Public lesson');
+    let assetAddress: string | undefined;
     const source = await withTenant(entry.tenantId, async (db) => {
       const r = await db.lessonPlanRelease.findFirst({
         where: { id, reviewed: true, visibility: 'public' },
@@ -133,21 +136,28 @@ export async function publicLessonRoutes(app: FastifyInstance, { env }: { env: A
           : a?.scene.kind === 'model'
             ? a.scene.privateModelId
             : undefined;
+      if (
+        a?.scene.kind === 'model' &&
+        !a.scene.privateModelId &&
+        !a.scene.builtin &&
+        a.scene.assetId &&
+        a.scene.media?.cid
+      ) {
+        assetAddress = a.scene.media.cid;
+        return null;
+      }
       if (!sourceId) throw new NotFoundError('Lesson visual');
       return db.learningSource.findFirst({
         where: { id: sourceId, ownerId: r.ownerId, status: 'ready' },
       });
     });
+    if (assetAddress) return sendAssetContent(request, reply, assetAddress);
     if (
       !source?.storagePath ||
       !isLearningStoragePath(source.storagePath, env.STAGING_DIR) ||
       !['image/png', 'image/jpeg', 'image/webp', 'model/gltf-binary'].includes(source.mime)
     )
       throw new NotFoundError('Public lesson visual');
-    return reply
-      .header('cache-control', 'no-store')
-      .header('x-content-type-options', 'nosniff')
-      .type(source.mime)
-      .send(await readFile(source.storagePath));
+    return sendPrivateFile(request, reply, source.storagePath, source.mime, env.STAGING_DIR);
   });
 }

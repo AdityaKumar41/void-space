@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { LearningLayout } from './learning-ui';
 import { ArrowUpRight, BookOpen, Box, MessageCircle, Share2 } from 'lucide-react';
 const steps = [
   {
@@ -28,14 +29,10 @@ const steps = [
 ];
 export default function HelpPage() {
   return (
-    <div className="mx-auto max-w-4xl space-y-8 px-5 py-10">
-      <header>
-        <p className="text-sm text-ink-dim">A little guidance</p>
-        <h1 className="mt-3 text-3xl font-semibold">From a question to understanding.</h1>
-        <p className="mt-3 max-w-xl text-ink-dim">
-          Your agent helps with the setup. You stay in control of the lesson and who can see it.
-        </p>
-      </header>
+    <LearningLayout
+      title="Help and support"
+      description="Start with an idea, build an interactive lesson and choose who can learn from it."
+    >
       <div className="grid gap-5 sm:grid-cols-2">
         {steps.map(({ title, icon: Icon, href, text }, i) => (
           <Link
@@ -63,6 +60,6 @@ export default function HelpPage() {
         </Link>
         .
       </p>
-    </div>
+    </LearningLayout>
   );
 }

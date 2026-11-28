@@ -41,7 +41,7 @@ async function enqueue(
   producer: JobProducer,
   params: {
     readonly tenantId: string;
-    readonly queue: 'chain-license' | 'xr-publish' | 'notify';
+    readonly queue: 'chain-license' | 'notify';
     readonly entityType: string;
     readonly entityId: string;
     readonly payload: Record<string, unknown>;
@@ -393,7 +393,7 @@ function toDetail(license: LicenseRow, explorerBase: string): LicenseDetail {
     status: license.status as LicenseDetail['status'],
     revokedReason: license.revokedReason,
     mintedAt: license.mintedAt.toISOString(),
-    tokenUri: license.ipfsMetadataCid ? `/ipfs/${license.ipfsMetadataCid}` : null,
+    tokenUri: license.ipfsMetadataCid ? `/api/v1/content/${license.ipfsMetadataCid}` : null,
     approverRef: license.approverId,
     asset: license.asset ?? null,
     explorer: {

@@ -56,7 +56,7 @@ describe('FR-2.2 Google SSO', () => {
   it('sends the browser to Google, or refuses when Google is not configured', async () => {
     const response = await context.app.inject({
       method: 'GET',
-      url: '/api/v1/auth/google/start?next=/studio/connect',
+      url: '/api/v1/auth/google/start?next=/console/learn',
     });
 
     if (!context.env.GOOGLE_CLIENT_ID) {
@@ -68,7 +68,7 @@ describe('FR-2.2 Google SSO', () => {
     expect(response.statusCode).toBe(302);
     expect(String(response.headers.location)).toMatch(/^https:\/\/accounts\.google\.com\//);
     expect(readCookie(response.headers['set-cookie'], 'vs_oauth_state')).toBeTruthy();
-    expect(readCookie(response.headers['set-cookie'], 'vs_oauth_next')).toBe('/studio/connect');
+    expect(readCookie(response.headers['set-cookie'], 'vs_oauth_next')).toBe('/console/learn');
   });
 
   it('rejects a callback with a mismatched or missing state (login CSRF)', async () => {

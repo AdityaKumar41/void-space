@@ -9,6 +9,8 @@ import {
   validateGeneratedPlan,
 } from '../src/learning/lesson-plans';
 import { extractLearningPdf } from '../src/processors/learning';
+import { generateLessonAnnotationsTask } from '../src/learning/lesson-annotations';
+import { starterActivity } from '../../api/src/modules/learning-hub/starters';
 import { unzipSync, strFromU8 } from 'fflate';
 const tenantId = demoId('tenant:aurora');
 let ownerId = '',
@@ -61,6 +63,57 @@ async function task() {
   return id;
 }
 describe('lesson generation and real export files', () => {
+  it('recovers one invalid annotation response and preserves the private lesson as a proposal', async () => {
+    const id = await task();
+    const def = lessonTemplate(
+      {
+        topic: 'Synthetic geometry',
+        audience: 'Learners aged 13+',
+        durationMinutes: 30,
+        instructions: '',
+        sourceIds: [],
+      },
+      starterActivity('geometry')!,
+    );
+    const section = def.sections.find((s) => s.activity?.scene.kind === 'model')!;
+    const label = {
+      id: 'box',
+      label: 'Box',
+      explanation: 'A box has flat rectangular faces.',
+      sourceRefs: [],
+    };
+    responses.push(
+      JSON.stringify({ labels: [{ ...label, position: [0, 0, 0] }] }),
+      JSON.stringify({ labels: [label] }),
+    );
+    const result = await generateLessonAnnotationsTask(
+      tenantId,
+      id,
+      ownerId,
+      {
+        planId: randomUUID(),
+        baseRevision: 0,
+        definition: def,
+        sectionId: section.id,
+        instruction: 'Explain these synthetic geometry components',
+      },
+      { AI_TEXT_BASE_URL: url, AI_TEXT_PROTOCOL: 'openai', AI_TEXT_MODEL: 'test-local' },
+    );
+    expect(result.proposal).toBe(true);
+    expect(
+      result.definition.sections.find((s) => s.id === section.id)!.activity!.targets,
+    ).toHaveLength(3);
+    expect(def.sections.find((s) => s.id === section.id)!.activity!.targets).toHaveLength(3);
+    const saved = await withTenant(tenantId, (db) =>
+      db.learningTask.findUniqueOrThrow({ where: { id } }),
+    );
+    expect(saved.progress).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'annotation-recovery', status: 'complete' }),
+      ]),
+    );
+  });
+
   it('rejects invalid timing, unknown citations and invalid answer keys', () => {
     const def = example();
     def.sections[0]!.minutes++;
@@ -101,6 +154,38 @@ describe('lesson generation and real export files', () => {
     await expect(
       generateLessonPlanTask(tenantId, await task(), ownerId, input, {}),
     ).rejects.toThrow('editable lesson structure');
+  });
+  it('accepts a focused recap response without asking AI to reproduce the entire lesson', async () => {
+    const def = example();
+    const section = def.sections.at(-1)!;
+    response = JSON.stringify({
+      section: {
+        id: section.id,
+        kind: section.kind,
+        title: section.title,
+        minutes: section.minutes,
+        body: 'Review the key ideas, then write down one question for your next study session.',
+        notes: '',
+        sourceRefs: [],
+      },
+    });
+    const result = await generateLessonPlanTask(
+      tenantId,
+      await task(),
+      ownerId,
+      {
+        planId: randomUUID(),
+        baseRevision: 0,
+        definition: def,
+        sectionId: section.id,
+        instruction: 'Simplify the recap',
+      },
+      { AI_TEXT_BASE_URL: url, AI_TEXT_PROTOCOL: 'openai', AI_TEXT_MODEL: 'test-local' },
+    );
+    const proposal = result.definition as LessonPlan;
+    expect(proposal.sections.slice(0, -1)).toEqual(def.sections.slice(0, -1));
+    expect(proposal.sections.at(-1)!.body).toContain('one question');
+    expect(proposal.durationMinutes).toBe(def.durationMinutes);
   });
   it('rejects a section proposal that changes unrelated material', async () => {
     const def = example();

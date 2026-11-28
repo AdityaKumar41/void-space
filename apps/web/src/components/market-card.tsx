@@ -67,7 +67,7 @@ export function MarketCard({ item }: { item: PublicCatalogItem }) {
         ) : null}
 
         <span className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-1.5 items-center justify-between gap-2 bg-scrim px-3.5 py-2.5 text-[13px] font-semibold text-ink opacity-0 transition-all duration-200 ease-standard group-hover:translate-y-0 group-hover:opacity-100">
-          Open in the 3D studio
+          Open in the 3D viewer
           <span aria-hidden>→</span>
         </span>
       </div>

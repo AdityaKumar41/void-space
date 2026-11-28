@@ -1,4 +1,5 @@
 'use client';
+import type { CaptureLearningViews } from '../lib/model-learning-views';
 import { useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Html } from '@react-three/drei';
@@ -12,18 +13,26 @@ export default function LearningVisual({
   exploded,
   isolated,
   onMeshCount,
+  onPartsReady,
   visualUrl,
   showLabels = true,
   onSurfacePick,
+  onCaptureReady,
+  editorControls = false,
+  onPinMove,
 }: {
   activity: LearningActivity;
+  editorControls?: boolean;
+  onPinMove?: (id: string, position: [number, number, number]) => void;
   selected: string | null;
   onSelect: (id: string) => void;
   exploded: boolean;
   isolated: string | null;
   onMeshCount?: (n: number) => void;
+  onPartsReady?: (parts: { key: string; name: string }[]) => void;
   visualUrl?: string;
   showLabels?: boolean;
+  onCaptureReady?: (capture: CaptureLearningViews | null) => void;
   onSurfacePick?: (position: [number, number, number], meshKey: string) => void;
 }) {
   const [labelElement, setLabelElement] = useState<HTMLDivElement | null>(null);
@@ -37,7 +46,9 @@ export default function LearningVisual({
       onSurfacePick(position, meshKey);
       return;
     }
-    const candidates = activity.targets.filter((t) => t.meshKey === meshKey);
+    const candidates = activity.targets.filter(
+      (t) => t.placement !== 'unplaced' && t.meshKey === meshKey,
+    );
     const nearest = [...candidates].sort(
       (a, b) =>
         a.position.reduce((n, x, i) => n + (x - position[i]!) ** 2, 0) -
@@ -106,7 +117,7 @@ export default function LearningVisual({
   if (scene.kind === 'model' && scene.privateModelId)
     return (
       <ModelStage
-        presentation
+        presentation={!editorControls}
         cid={null}
         sourceUrl={visualUrl ?? `${API_PUBLIC_BASE}/learning/library/${scene.privateModelId}/file`}
         format="glb"
@@ -114,7 +125,11 @@ export default function LearningVisual({
         polycount={null}
         onGeometryDecoded={(g) => onMeshCount?.(g.meshes)}
         interaction={{
-          hotspots: onSurfacePick ? [] : activity.targets,
+          editorMode: editorControls,
+          onPinMove,
+          onPartsReady,
+          onCaptureReady,
+          hotspots: onSurfacePick ? [] : activity.targets.filter((t) => t.placement !== 'unplaced'),
           selectedId: selected,
           exploded,
           isolatedId: isolated,
@@ -128,14 +143,19 @@ export default function LearningVisual({
     const m = scene.media;
     return (
       <ModelStage
-        presentation
+        presentation={!editorControls}
         cid={m.cid}
+        sourceUrl={visualUrl}
         format={m.format}
         name={m.name}
         polycount={m.polycount}
-        onGeometryDecoded={(g, summary) => onMeshCount?.(g.meshes)}
+        onGeometryDecoded={(g) => onMeshCount?.(g.meshes)}
         interaction={{
-          hotspots: onSurfacePick ? [] : activity.targets,
+          editorMode: editorControls,
+          onPinMove,
+          onPartsReady,
+          onCaptureReady,
+          hotspots: onSurfacePick ? [] : activity.targets.filter((t) => t.placement !== 'unplaced'),
           selectedId: selected,
           exploded,
           isolatedId: isolated,

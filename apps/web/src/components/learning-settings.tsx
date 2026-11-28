@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { apiFetch } from '../lib/api';
 import { signInWithEthereum } from '../lib/siwe';
 import { useSession } from '../lib/session';
+import { LearningLayout } from './learning-ui';
+import { useLearningProfile } from '../lib/learning-profile';
 import { useToast } from '../components/toast';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
@@ -13,6 +15,8 @@ import { ErrorNote, EmptyState, LoadingBlock } from '../components/ui/feedback';
 
 export function LearningSettings() {
   const { session, signOut } = useSession();
+  const profile = useLearningProfile();
+  const institution = profile.data?.workspace.kind === 'organization';
   const client = useQueryClient();
   const toast = useToast();
   const wallets = useQuery({
@@ -60,111 +64,115 @@ export function LearningSettings() {
     }
   }
   return (
-    <div className="learning-settings-page space-y-6">
-      <header>
-        <p className="text-sm text-ink-dim">Your space</p>
-        <h1 className="mt-2 text-3xl font-semibold">Settings</h1>
-        <p className="mt-3 text-ink-dim">Your profile and how you access your workspace.</p>
-      </header>
-      <div className="learning-settings-profile">
-        <span>
-          <UserRound size={30} />
-        </span>
-        <div>
-          <h2>{session?.user.fullName}</h2>
-          <p>{session?.user.email}</p>
+    <LearningLayout
+      title="Settings"
+      description="Your account, workspace access and sign-in options."
+    >
+      <div className="learning-settings-content">
+        <div className="learning-settings-profile">
+          <span>
+            <UserRound size={30} />
+          </span>
+          <div>
+            <h2>{session?.user.fullName}</h2>
+            <p>{session?.user.email}</p>
+          </div>
+          <button onClick={() => void signOut().catch((e) => setError(e.message))}>
+            <LogOut size={16} />
+            Sign out
+          </button>
         </div>
-        <button onClick={() => void signOut().catch((e) => setError(e.message))}>
-          <LogOut size={16} />
-          Sign out
-        </button>
-      </div>
-      <div className="learning-settings-links">
-        <Link href="/console/learn/library">
-          <FolderLock size={25} />
-          <div>
-            <h2>Your private library</h2>
-            <p>Models and sources you choose to use for learning.</p>
-          </div>
-        </Link>
-        <Link href="/console/learn/institution">
-          <Building2 size={25} />
-          <div>
-            <h2>{session?.tenant.name}</h2>
-            <p>Institution lessons and workspace membership.</p>
-          </div>
-        </Link>
-      </div>
-      {error && <ErrorNote message={error} />}
-      <details className="lesson-options">
-        <summary>Advanced · wallet sign-in</summary>
-        <Card className="space-y-4 p-5">
-          <h2 className="font-semibold text-ink">Linked wallets</h2>
-          <p className="max-w-2xl text-sm text-ink-dim">
-            Link a browser wallet by signing an identity message. Linking does not send a
-            transaction or request a payment. On-chain credentials also require the workspace’s
-            credential service to be configured.
-          </p>
-          {error ? <ErrorNote message={error} /> : null}
-          {providers.error ? <ErrorNote message={(providers.error as Error).message} /> : null}
-          {providers.data?.wallet === false ? (
-            <p className="text-sm text-ink-dim">
-              Wallet linking is not enabled on this deployment. Your learning and verification
-              records remain available.
+        <div className="learning-settings-links">
+          <Link href="/console/learn/library">
+            <FolderLock size={25} />
+            <div>
+              <h2>Your private library</h2>
+              <p>Models and sources you choose to use for learning.</p>
+            </div>
+          </Link>
+          <Link href="/console/learn/institution">
+            <Building2 size={25} />
+            <div>
+              <h2>{institution ? session?.tenant.name : 'Institution access'}</h2>
+              <p>
+                {institution
+                  ? 'Your institution lessons, role and workspace membership.'
+                  : 'Join with an invitation. Your personal work stays in its own workspace.'}
+              </p>
+            </div>
+          </Link>
+        </div>
+        {error && <ErrorNote message={error} />}
+        <details className="lesson-options">
+          <summary>Advanced · wallet sign-in</summary>
+          <Card className="space-y-4 p-5">
+            <h2 className="font-semibold text-ink">Linked wallets</h2>
+            <p className="max-w-2xl text-sm text-ink-dim">
+              Link a browser wallet by signing an identity message. Linking does not send a
+              transaction or request a payment. On-chain credentials also require the workspace’s
+              credential service to be configured.
             </p>
-          ) : null}
-          <Button disabled={busy || !providers.data?.wallet} onClick={() => void link()}>
-            {busy ? 'Working…' : 'Link browser wallet'}
-          </Button>
-          {wallets.isLoading ? (
-            <LoadingBlock label="Loading linked wallets" />
-          ) : wallets.error ? (
-            <ErrorNote message={(wallets.error as Error).message} />
-          ) : wallets.data?.wallets.length === 0 ? (
-            <EmptyState
-              title="No linked wallets"
-              hint="You can continue using lessons, practice and application credentials without a wallet."
-            />
-          ) : (
-            <ul className="space-y-3">
-              {wallets.data?.wallets.map((wallet) => (
-                <li
-                  key={wallet.id}
-                  className="space-y-2 rounded-control border border-hairline p-3"
-                >
-                  <p className="break-all font-mono text-xs text-ink">{wallet.address}</p>
-                  <p className="text-xs text-ink-dim">
-                    Linked {new Date(wallet.createdAt).toLocaleDateString()}
-                  </p>
-                  {confirm === wallet.id ? (
-                    <div className="space-y-2">
-                      <p className="text-sm text-ink-dim">
-                        Disconnect this wallet? It will no longer sign in to this account. Existing
-                        verification records are retained.
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <Button disabled={busy} onClick={() => void unlink(wallet.id)}>
-                          Confirm disconnect
-                        </Button>
-                        <Button disabled={busy} onClick={() => setConfirm(null)}>
-                          Cancel
-                        </Button>
+            {error ? <ErrorNote message={error} /> : null}
+            {providers.error ? <ErrorNote message={(providers.error as Error).message} /> : null}
+            {providers.data?.wallet === false ? (
+              <p className="text-sm text-ink-dim">
+                Wallet linking is not enabled on this deployment. Your learning and verification
+                records remain available.
+              </p>
+            ) : null}
+            <Button disabled={busy || !providers.data?.wallet} onClick={() => void link()}>
+              {busy ? 'Working…' : 'Link browser wallet'}
+            </Button>
+            {wallets.isLoading ? (
+              <LoadingBlock label="Loading linked wallets" />
+            ) : wallets.error ? (
+              <ErrorNote message={(wallets.error as Error).message} />
+            ) : wallets.data?.wallets.length === 0 ? (
+              <EmptyState
+                title="No linked wallets"
+                hint="You can continue using lessons, practice and application credentials without a wallet."
+              />
+            ) : (
+              <ul className="space-y-3">
+                {wallets.data?.wallets.map((wallet) => (
+                  <li
+                    key={wallet.id}
+                    className="space-y-2 rounded-control border border-hairline p-3"
+                  >
+                    <p className="break-all font-mono text-xs text-ink">{wallet.address}</p>
+                    <p className="text-xs text-ink-dim">
+                      Linked {new Date(wallet.createdAt).toLocaleDateString()}
+                    </p>
+                    {confirm === wallet.id ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-ink-dim">
+                          Disconnect this wallet? It will no longer sign in to this account.
+                          Existing verification records are retained.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button disabled={busy} onClick={() => void unlink(wallet.id)}>
+                            Confirm disconnect
+                          </Button>
+                          <Button disabled={busy} onClick={() => setConfirm(null)}>
+                            Cancel
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <Button
-                      disabled={busy || !providers.data?.wallet}
-                      onClick={() => setConfirm(wallet.id)}
-                    >
-                      Disconnect wallet
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </details>
-    </div>
+                    ) : (
+                      <Button
+                        disabled={busy || !providers.data?.wallet}
+                        onClick={() => setConfirm(wallet.id)}
+                      >
+                        Disconnect wallet
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </details>
+      </div>
+    </LearningLayout>
   );
 }

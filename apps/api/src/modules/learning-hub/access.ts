@@ -12,7 +12,7 @@ export async function readableActivity(
   db: TenantClient,
   p: AuthPrincipal,
   id: string,
-): Promise<Prisma.SimulationScenarioGetPayload<{}>> {
+): Promise<Prisma.SimulationScenarioGetPayload<Record<string, never>>> {
   const row = await db.simulationScenario.findFirst({
     where: {
       id,

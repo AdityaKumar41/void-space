@@ -219,6 +219,7 @@ model Role {
 
 /// §5.1 User — one row per (person, tenant) membership.
 model User {
+  platformAccess PlatformAccess?
   learningThreads LearningThread[]
   learningFolders LearningFolder[]
   lessonPlans LessonPlan[]
@@ -348,8 +349,7 @@ model TenantSettings {
   defaultPolycountBudget Int?     @map("default_polycount_budget")
   requiredMetadataFields String[] @default([]) @map("required_metadata_fields")
   allowedCategories      String[] @default([]) @map("allowed_categories")
-  /// FR-18.1 — Studio AI feature gates. Explicit `false` disables; missing keys stay enabled.
-  aiFeatureFlags         Json     @default("{}") @map("ai_feature_flags")
+  /// FR-18.1 — Legacy authoring AI feature gates. Explicit `false` disables; missing keys stay enabled.
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")
 
@@ -1649,4 +1649,86 @@ model PublicLessonEntry {
  createdAt DateTime @default(now()) @map("created_at")
  @@index([createdAt])
  @@map("public_lesson_entries")
+}
+
+/// Private learning run metadata. Task ID remains the public run identifier.
+model LearningAgentRun {
+ id String @id @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ engine String @db.VarChar(20)
+ dispatchedAt DateTime? @map("dispatched_at")
+ cancelledAt DateTime? @map("cancelled_at")
+ createdAt DateTime @default(now()) @map("created_at")
+ @@index([tenantId,ownerId])
+ @@map("learning_agent_runs")
+}
+model LearningAgentEvent {
+ sequence Int @id @default(autoincrement())
+ tenantId String @map("tenant_id") @db.Uuid
+ runId String @map("run_id") @db.Uuid
+ payload Json
+ createdAt DateTime @default(now()) @map("created_at")
+ @@index([tenantId,runId,sequence])
+ @@map("learning_agent_events")
+}
+model LearningSourceCollection {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ title String @db.VarChar(200)
+ sourceIds Json @map("source_ids")
+ revision Int @default(0)
+ updatedAt DateTime @updatedAt @map("updated_at")
+ @@index([tenantId,ownerId])
+ @@map("learning_source_collections")
+}
+model LearningAnnotationRevision {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String @map("tenant_id") @db.Uuid
+ ownerId String @map("owner_id") @db.Uuid
+ modelId String @map("model_id") @db.Uuid
+ revision Int
+ labels Json
+ reviewed Boolean @default(false)
+ createdAt DateTime @default(now()) @map("created_at")
+ @@unique([modelId,revision])
+ @@index([tenantId,ownerId,modelId])
+ @@map("learning_annotation_revisions")
+}
+
+/// Central authority is deliberately separate from tenant memberships and email matching.
+model PlatformAccess {
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  sessions PlatformConsoleSession[]
+  userId String @id @map("user_id") @db.Uuid
+  role String @db.VarChar(30)
+  revokedAt DateTime? @map("revoked_at")
+  secretCipher String? @map("secret_cipher")
+  pendingCipher String? @map("pending_cipher")
+  recoveryHashes String[] @default([]) @map("recovery_hashes")
+  lastTotpStep BigInt @default(-1) @map("last_totp_step")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("platform_access")
+}
+model PlatformConsoleSession {
+  access PlatformAccess @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  tokenHash String @id @map("token_hash") @db.VarChar(64)
+  userId String @map("user_id") @db.Uuid
+  credentialHash String @map("credential_hash") @db.VarChar(64)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([userId])
+  @@map("platform_console_sessions")
+}
+model PlatformEvent {
+  id String @id @default(uuid()) @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  action String @db.VarChar(100)
+  targetId String? @map("target_id") @db.Uuid
+  details Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([createdAt])
+  @@map("platform_events")
 }

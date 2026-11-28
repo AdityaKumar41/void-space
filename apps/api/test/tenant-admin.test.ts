@@ -6,6 +6,8 @@
  * the seeded demo tenants and their users are never mutated — a re-run is safe.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { withPlatform } from '@void-space/db';
+import { totp } from '../src/modules/platform/totp';
 
 import {
   DEMO,
@@ -18,6 +20,7 @@ import {
 
 let context: TestApp;
 let suffix: string;
+const platformIds: string[] = [];
 
 beforeAll(async () => {
   context = await createTestApp();
@@ -26,6 +29,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // The suite creates real workspaces through the API; leave the dev database as we found it.
+  await withPlatform(async (db) => {
+    await db.platformConsoleSession.deleteMany({ where: { userId: { in: platformIds } } });
+    await db.platformAccess.deleteMany({ where: { userId: { in: platformIds } } });
+  });
   await removeTestTenants();
   await context?.close();
 });
@@ -59,8 +66,16 @@ async function newWorkspace(label: string): Promise<Registered> {
 
   return {
     tenantId: body.user.activeTenantId,
-    accessToken: cookies.find((c) => c.startsWith('vs_access='))?.split(';')[0]?.slice(10) ?? '',
-    refreshToken: cookies.find((c) => c.startsWith('vs_refresh='))?.split(';')[0]?.slice(11) ?? '',
+    accessToken:
+      cookies
+        .find((c) => c.startsWith('vs_access='))
+        ?.split(';')[0]
+        ?.slice(10) ?? '',
+    refreshToken:
+      cookies
+        .find((c) => c.startsWith('vs_refresh='))
+        ?.split(';')[0]
+        ?.slice(11) ?? '',
     cookies,
   };
 }
@@ -222,14 +237,43 @@ describe('FR-1.5 workspace suspension', () => {
     const workspace = await newWorkspace('suspend');
     const ownerEmail = `owner-suspend-${suffix}@example.test`;
 
-    const superAdmin = await login(context.app, DEMO.users.superAdmin);
-    expect(superAdmin.statusCode).toBe(200);
+    const central = await newWorkspace('central');
+    const authCookie = cookieHeader(central.cookies, 'vs_access');
+    const me = await context.app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/me',
+      headers: { cookie: authCookie },
+    });
+    const userId = me.json().user.id as string;
+    platformIds.push(userId);
+    await withPlatform((db) =>
+      db.platformAccess.create({ data: { userId, role: 'PlatformAdmin' } }),
+    );
+    const enrollment = await context.app.inject({
+      method: 'POST',
+      url: '/api/v1/platform/mfa/enroll',
+      headers: { cookie: authCookie },
+    });
+    expect(enrollment.statusCode).toBe(200);
+    const verification = await context.app.inject({
+      method: 'POST',
+      url: '/api/v1/platform/mfa/verify',
+      headers: { cookie: authCookie },
+      payload: { code: totp(enrollment.json().secret, Math.floor(Date.now() / 30000)) },
+    });
+    expect(verification.statusCode).toBe(200);
+    const values = verification.headers['set-cookie'];
+    const elevatedCookie = (Array.isArray(values) ? values : [values])
+      .filter((value): value is string => !!value && !value.includes('Max-Age=0'))
+      .map((value) => value.split(';')[0])
+      .join('; ');
+    const centralCookie = `${authCookie}; ${elevatedCookie}`;
 
-    // FR-14.1 — the platform tenant list is SuperAdmin-only.
+    // Platform metadata requires an explicit global grant and verified MFA.
     const list = await context.app.inject({
       method: 'GET',
       url: '/api/v1/tenants',
-      headers: { cookie: cookieHeader(superAdmin.cookies, 'vs_access') },
+      headers: { cookie: centralCookie },
     });
     expect(list.statusCode).toBe(200);
     const tenants = (list.json() as { tenants: Record<string, unknown>[] }).tenants;
@@ -249,7 +293,7 @@ describe('FR-1.5 workspace suspension', () => {
     const suspend = await context.app.inject({
       method: 'PATCH',
       url: `/api/v1/tenants/${workspace.tenantId}/status`,
-      headers: { cookie: cookieHeader(superAdmin.cookies, 'vs_access') },
+      headers: { cookie: centralCookie },
       payload: { status: 'suspended', reason: 'integration test' },
     });
     expect(suspend.statusCode).toBe(200);
@@ -271,7 +315,7 @@ describe('FR-1.5 workspace suspension', () => {
     const reinstate = await context.app.inject({
       method: 'PATCH',
       url: `/api/v1/tenants/${workspace.tenantId}/status`,
-      headers: { cookie: cookieHeader(superAdmin.cookies, 'vs_access') },
+      headers: { cookie: centralCookie },
       payload: { status: 'active' },
     });
     expect(reinstate.statusCode).toBe(200);
@@ -290,7 +334,7 @@ describe('FR-1.5 workspace suspension', () => {
     });
 
     expect(response.statusCode).toBe(403);
-    expect((response.json() as { code: string }).code).toBe('INSUFFICIENT_PERMISSION');
+    expect((response.json() as { code: string }).code).toBe('FORBIDDEN');
   });
 });
 
@@ -369,4 +413,3 @@ describe('FR-13.1 audit log', () => {
     }
   });
 });
-
